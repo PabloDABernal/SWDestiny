@@ -57,7 +57,10 @@ sentido depende de qué mecánicas existen ya en cada fase:
 
 - **v1:** personajes + dados + daño (melee/ranged/indirecto) + blancos + autómata básico **con
   trampas activas desde el inicio** (multiplicador de vida enemiga, reroll extra configurable).
-  Sin recursos, sin mano, sin cartas jugables, sin campo de batalla.
+  Sin recursos, sin mano, sin cartas jugables, sin campo de batalla. El ciclo de
+  ronda/mantenimiento aún no existe: se aproxima con un botón **"Reset" manual** que vacía el pool
+  y reactiva a todos, hasta que se implemente la fase de mantenimiento reglamentaria (fase
+  posterior).
 - **v2:** recursos y escudos.
 - **v3:** mano, mazo, robo, condición de victoria por deck-out.
 - **v4:** cartas jugables por capas (mejoras/apoyos "vanilla" → focus/reroll/especial → texto de
