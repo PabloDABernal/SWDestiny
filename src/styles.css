@@ -1,0 +1,149 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #14161c;
+  color: #e6e8ee;
+}
+
+.app {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+
+h1 {
+  font-size: 1.6rem;
+}
+
+.import-panel {
+  background: #1c1f28;
+  border: 1px solid #2a2e3a;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 24px;
+}
+
+.import-panel__hint {
+  color: #9aa0b0;
+  margin-top: 0;
+}
+
+.import-panel__textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  background: #0f1117;
+  color: #e6e8ee;
+  border: 1px solid #2a2e3a;
+  border-radius: 6px;
+  padding: 10px;
+  resize: vertical;
+}
+
+.import-panel__actions {
+  margin-top: 10px;
+}
+
+button {
+  background: #3b5bdb;
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 18px;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+button:disabled {
+  background: #3a3f4c;
+  cursor: not-allowed;
+}
+
+.import-panel__error {
+  color: #ff8787;
+  background: #2a1b1e;
+  border: 1px solid #5c2a30;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 0;
+}
+
+.roster__empty {
+  color: #9aa0b0;
+}
+
+.roster__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.character-card {
+  background: #1c1f28;
+  border: 1px solid #2a2e3a;
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.character-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.character-card__name {
+  font-weight: 600;
+}
+
+.character-card__health {
+  color: #ff8787;
+  white-space: nowrap;
+}
+
+.character-card__meta {
+  color: #9aa0b0;
+  font-size: 0.8rem;
+  margin: 4px 0 12px;
+}
+
+.dice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.die {
+  flex: 1 1 100px;
+}
+
+.die__label {
+  display: block;
+  font-size: 0.7rem;
+  color: #9aa0b0;
+  margin-bottom: 4px;
+}
+
+.die__sides {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.side {
+  background: #0f1117;
+  border: 1px solid #2a2e3a;
+  border-radius: 4px;
+  text-align: center;
+  padding: 6px 2px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+}

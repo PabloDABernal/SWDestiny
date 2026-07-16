@@ -6,6 +6,8 @@
 
 - **React 19 + Vite**. Juego de navegador, mobile-first no es prioritario (juego de mesa digital,
   pantalla grande recomendable pero no excluyente).
+- **TypeScript en todo el código** (tipado del modelo `Character`/`Die` y del motor de dados/autómata;
+  sin overhead en runtime). Decidido en SPEC-001.
 - **Zustand** para el estado de partida (personajes, dados, pools, recursos...). Encaja bien con
   el volumen de estado mutable y las transiciones frecuentes de este tipo de juego.
 - **Sin backend en v1.** Todo el estado vive en el cliente. Los datos de cartas/mazos se importan
