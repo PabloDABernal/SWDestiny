@@ -1,6 +1,6 @@
 # SPEC-001: Importar mazos (pegar JSON) y modelo de personajes/dados
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** §7 (mazo de referencia), §5 (alcance v1), §3 (reglas base); SDD "Importador de mazos" y caché de datos
 **Depende de:** ninguna
 
@@ -88,4 +88,5 @@ verificable; **(2)** render de fichas con vida y las 6 caras. Decidir al empezar
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+2026-07-16: playtest manual completo. Todos los pasos del guion QA pasaron (camino feliz,
+casos límite, red/offline). Confirmado por el usuario.
