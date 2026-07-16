@@ -6,6 +6,7 @@ node_modules/
 dist/
 .vite/
 *.log
+*.tsbuildinfo
 
 # OS
 Thumbs.db
