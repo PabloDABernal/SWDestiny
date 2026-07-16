@@ -1,0 +1,12 @@
+# Local Claude settings (per-machine, not shared)
+.claude/settings.local.json
+
+# Node / Vite (aún sin código, preparado para v1)
+node_modules/
+dist/
+.vite/
+*.log
+
+# OS
+Thumbs.db
+.DS_Store
