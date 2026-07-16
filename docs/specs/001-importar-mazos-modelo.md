@@ -47,6 +47,10 @@ Verificables jugando. Formato: acción → resultado observable.
 - **Mazo sin personajes** → error "el mazo no tiene personajes", no pantalla vacía silenciosa.
 - **Sin red / CORS al resolver cartas y sin caché previa** → error claro. Con caché previa del
   mismo mazo, la importación funciona offline.
+- **Contenido mínimo de todo mensaje de error**: debe indicar el motivo distinguible entre
+  (a) JSON inválido/ilegible, (b) mazo sin personajes, (c) código de carta no encontrado
+  —incluyendo el código—, (d) fallo de red/CORS al resolver. Un error genérico sin motivo no
+  cumple.
 - **Personaje no-único con 2 copias** → 2 fichas con dados independientes.
   **Personaje único jugado elite** → 1 ficha con 2 dados.
 - **Reimportar el mismo mazo** → resultado idéntico, sin duplicar fichas.
@@ -55,18 +59,32 @@ Verificables jugando. Formato: acción → resultado observable.
 
 Restricciones que vienen del SDD (arquitectura):
 
-- **Caché: localStorage** (esta spec resuelve el "a decidir en SPEC-001" del SDD). Se cachea el
-  export parseado y/o las cartas de personaje resueltas, para que recargar y jugar offline
-  funcionen.
+- **Caché: localStorage** (esta spec resuelve el "a decidir en SPEC-001" del SDD). Estrategia
+  única: persistir el **modelo de personajes ya construido** (lista de `Character` con sus dados)
+  bajo una sola clave, más las cartas de personaje resueltas por código para no re-pedirlas a la
+  API. Recargar reconstruye la pantalla desde esa caché sin volver a pegar ni llamar a la red.
 - **Resolución de caras**: vía la API pública de ARH DB (`/api/public/card/{code}` o
   `/api/public/cards/`), cacheada localmente. Sin backend propio en v1.
 - El **motor de resolución de dados NO entra** en esta spec: los símbolos se guardan y muestran
   como dato, no se interpretan como efecto.
-- Modelo interno mínimo sugerido (a fijar en implementación):
-  `Character { name, health, points, isUnique, isElite, dice: Die[] }`, `Die { sides: string[] }`.
+- Modelo interno mínimo (a fijar en implementación):
+  `Character { name, health, isUnique, isElite, dice: Die[] }`, `Die { sides: string[] }`.
+  `points` NO se incluye: ningún criterio de aceptación lo verifica en v1; se añadirá cuando una
+  spec lo necesite.
+- **Formato del export pegado**: JSON de ARH DB con `slots` (mapa código→cantidad); las caras NO
+  vienen en el export, se resuelven por código contra `/api/public/card/{code}`. Validar la
+  estructura real contra un export de Unduli al implementar; un JSON sin `slots` cuenta como
+  "JSON inválido".
 - El export del sitio identifica los personajes por su código de carta; el mapeo exacto de
   **elite / número de copias / número de dados** debe validarse contra un export real de Unduli
   durante la implementación (los criterios de aceptación fijan el resultado observable esperado).
+
+## Nota de tamaño (regla 4 CLAUDE.md)
+
+La spec combina parseo/validación, llamada a API + caché, modelado y UI de fichas. Puede superar
+las ~300 líneas de cambios. Si al planificar la implementación se confirma, dividir en dos
+rebanadas: **(1)** importar + resolver + cachear + modelo (`Character`/`Die`), con volcado mínimo
+verificable; **(2)** render de fichas con vida y las 6 caras. Decidir al empezar a implementar.
 
 ## Resultado del playtest
 
