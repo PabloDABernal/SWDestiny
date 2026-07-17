@@ -1,6 +1,6 @@
 # SPEC-002: Activar personajes y tirar sus dados a un pool
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** §3 (pool de dados, símbolos, fases de acción), §5 (alcance v1)
 **Depende de:** SPEC-001 (mazo importado con personajes y sus dados)
 
@@ -81,4 +81,6 @@ lógica de tirada.
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+2026-07-17: playtest manual completo. Todos los criterios y casos límite pasaron (activar/pool
+acumulativo, no-reactivable, Reset incl. caso mixto, no persistencia + regresión SPEC-001).
+Confirmado por el usuario.
