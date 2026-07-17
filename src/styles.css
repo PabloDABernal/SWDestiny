@@ -147,3 +147,65 @@ button:disabled {
   font-family: ui-monospace, monospace;
   font-size: 0.8rem;
 }
+
+.character-card__actions {
+  margin-top: 12px;
+}
+
+.character-card--activated {
+  opacity: 0.6;
+  border-color: #3b5bdb;
+}
+
+.pool {
+  margin-top: 28px;
+  background: #1c1f28;
+  border: 1px solid #2a2e3a;
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.pool__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pool__head h2 {
+  margin: 0;
+}
+
+.pool__empty {
+  color: #9aa0b0;
+}
+
+.pool__dice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.pool-die {
+  min-width: 64px;
+  background: #0f1117;
+  border: 1px solid #3b5bdb;
+  border-radius: 6px;
+  padding: 10px 8px;
+  text-align: center;
+}
+
+.pool-die__face {
+  display: block;
+  font-family: ui-monospace, monospace;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.pool-die__owner {
+  display: block;
+  color: #9aa0b0;
+  font-size: 0.7rem;
+  margin-top: 4px;
+}

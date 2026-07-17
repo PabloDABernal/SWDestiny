@@ -1,9 +1,12 @@
 import { useGameStore } from './store/gameStore';
 import { ImportPanel } from './components/ImportPanel';
 import { CharacterCard } from './components/CharacterCard';
+import { DicePool } from './components/DicePool';
 
 export function App() {
   const characters = useGameStore((s) => s.characters);
+  const activated = useGameStore((s) => s.activated);
+  const activate = useGameStore((s) => s.activate);
 
   return (
     <main className="app">
@@ -16,11 +19,17 @@ export function App() {
         ) : (
           <div className="roster__grid">
             {characters.map((c, i) => (
-              <CharacterCard character={c} key={`${c.code}-${i}`} />
+              <CharacterCard
+                character={c}
+                activated={activated[i] === true}
+                onActivate={() => activate(i)}
+                key={`${c.code}-${i}`}
+              />
             ))}
           </div>
         )}
       </section>
+      <DicePool />
     </main>
   );
 }

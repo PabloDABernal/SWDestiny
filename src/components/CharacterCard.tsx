@@ -1,8 +1,14 @@
 import type { Character } from '../model/types';
 
-export function CharacterCard({ character }: { character: Character }) {
+interface CharacterCardProps {
+  character: Character;
+  activated: boolean;
+  onActivate: () => void;
+}
+
+export function CharacterCard({ character, activated, onActivate }: CharacterCardProps) {
   return (
-    <div className="character-card">
+    <div className={`character-card${activated ? ' character-card--activated' : ''}`}>
       <header className="character-card__head">
         <span className="character-card__name">{character.name}</span>
         <span className="character-card__health" title="Vida">
@@ -27,6 +33,11 @@ export function CharacterCard({ character }: { character: Character }) {
             </ol>
           </div>
         ))}
+      </div>
+      <div className="character-card__actions">
+        <button onClick={onActivate} disabled={activated}>
+          {activated ? 'Activado' : 'Activar'}
+        </button>
       </div>
     </div>
   );
