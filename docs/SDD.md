@@ -1,6 +1,6 @@
 # SDD — Star Wars Destiny: PVE con mazos de la comunidad
 
-**Estado:** Borrador inicial (v0.1) — pendiente de confirmación del usuario
+**Estado:** Vivo (v0.2) — decisiones confirmadas por specs jugadas (TypeScript, Zustand, localStorage, proxy /arh)
 
 ## Stack propuesto
 
