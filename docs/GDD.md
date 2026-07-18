@@ -60,7 +60,9 @@ sentido depende de qué mecánicas existen ya en cada fase:
   Sin recursos, sin mano, sin cartas jugables, sin campo de batalla. El ciclo de
   ronda/mantenimiento aún no existe: se aproxima con un botón **"Reset" manual** que vacía el pool
   y reactiva a todos, hasta que se implemente la fase de mantenimiento reglamentaria (fase
-  posterior).
+  posterior). Mientras no exista el enemigo (SPEC-004), el daño de los dados se puede aplicar a
+  **cualquier** personaje en pantalla (incluidos los propios) como andamiaje de prueba del motor
+  de daño/KO; los bandos llegan con el autómata.
 - **v2:** recursos y escudos.
 - **v3:** mano, mazo, robo, condición de victoria por deck-out.
 - **v4:** cartas jugables por capas (mejoras/apoyos "vanilla" → focus/reroll/especial → texto de
