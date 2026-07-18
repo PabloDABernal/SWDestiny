@@ -1,6 +1,6 @@
 # SPEC-003: Resolver daño de los dados del pool (melee/ranged/indirecto) con KO
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** §3 (símbolos de daño, vida), §5 (alcance v1: daño melee/ranged/indirecto)
 **Depende de:** SPEC-001 (personajes con vida), SPEC-002 (pool de dados)
 
@@ -85,4 +85,6 @@ estado visual KO. Debería caber en ~300 líneas; confirmar al empezar. Si se di
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+2026-07-19: playtest manual completo. Todos los criterios y casos límite pasaron (aplicar daño,
+tipos iguales, dado sin daño inerte, KO + retirada de dados, Reset no cura, reimportar cura,
+recarga pierde daño; regresión SPEC-001/002). Confirmado por el usuario.
