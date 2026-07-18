@@ -60,9 +60,11 @@ sentido depende de qué mecánicas existen ya en cada fase:
   Sin recursos, sin mano, sin cartas jugables, sin campo de batalla. El ciclo de
   ronda/mantenimiento aún no existe: se aproxima con un botón **"Reset" manual** que vacía el pool
   y reactiva a todos, hasta que se implemente la fase de mantenimiento reglamentaria (fase
-  posterior). Mientras no exista el enemigo (SPEC-004), el daño de los dados se puede aplicar a
-  **cualquier** personaje en pantalla (incluidos los propios) como andamiaje de prueba del motor
-  de daño/KO; los bandos llegan con el autómata.
+  posterior). El andamiaje de "daño a cualquier personaje" de SPEC-003 queda superado en SPEC-004:
+  con el mazo enemigo importado hay **dos bandos** y el daño de un dado solo se aplica al **bando
+  contrario**. Cuando un bando se queda sin personajes en pie (todos KO) hay **fin de partida**
+  (Victoria/Derrota); la Derrota solo se dispara cuando el enemigo ataca (autómata). El enemigo es
+  **pasivo** hasta que exista el autómata.
 - **v2:** recursos y escudos.
 - **v3:** mano, mazo, robo, condición de victoria por deck-out.
 - **v4:** cartas jugables por capas (mejoras/apoyos "vanilla" → focus/reroll/especial → texto de
