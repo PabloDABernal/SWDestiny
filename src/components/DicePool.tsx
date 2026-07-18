@@ -1,8 +1,11 @@
 import { useGameStore } from '../store/gameStore';
+import { parseDamage } from '../game/damage';
 
 export function DicePool() {
   const pool = useGameStore((s) => s.pool);
   const reset = useGameStore((s) => s.reset);
+  const selectedDie = useGameStore((s) => s.selectedDie);
+  const selectDie = useGameStore((s) => s.selectDie);
 
   return (
     <section className="pool">
@@ -12,16 +15,29 @@ export function DicePool() {
           Reset
         </button>
       </div>
+      {selectedDie !== null && (
+        <p className="pool__hint">Dado de daño seleccionado. Pulsa un personaje para aplicarlo.</p>
+      )}
       {pool.length === 0 ? (
         <p className="pool__empty">Activa un personaje para tirar sus dados aquí.</p>
       ) : (
         <div className="pool__dice">
-          {pool.map((d, i) => (
-            <div className="pool-die" key={i} title={`${d.name} · dado ${d.dieIndex + 1}`}>
-              <span className="pool-die__face">{d.face}</span>
-              <span className="pool-die__owner">{d.name}</span>
-            </div>
-          ))}
+          {pool.map((d, i) => {
+            const isDamage = parseDamage(d.face) !== null;
+            const selected = selectedDie === i;
+            return (
+              <button
+                key={i}
+                className={`pool-die${isDamage ? ' pool-die--damage' : ''}${selected ? ' pool-die--selected' : ''}`}
+                title={`${d.name} · dado ${d.dieIndex + 1}`}
+                onClick={() => selectDie(i)}
+                disabled={!isDamage}
+              >
+                <span className="pool-die__face">{d.face}</span>
+                <span className="pool-die__owner">{d.name}</span>
+              </button>
+            );
+          })}
         </div>
       )}
     </section>

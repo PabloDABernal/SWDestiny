@@ -3,16 +3,45 @@ import type { Character } from '../model/types';
 interface CharacterCardProps {
   character: Character;
   activated: boolean;
+  /** Vida restante (vida base menos daño). */
+  health: number;
+  ko: boolean;
+  /** true si hay un dado de daño seleccionado esperando objetivo. */
+  targetable: boolean;
   onActivate: () => void;
+  onTarget: () => void;
 }
 
-export function CharacterCard({ character, activated, onActivate }: CharacterCardProps) {
+export function CharacterCard({
+  character,
+  activated,
+  health,
+  ko,
+  targetable,
+  onActivate,
+  onTarget,
+}: CharacterCardProps) {
+  // Un KO no es objetivo; si hay dado seleccionado y no es KO, la ficha es clicable como objetivo.
+  const canTarget = targetable && !ko;
+  const className =
+    'character-card' +
+    (activated ? ' character-card--activated' : '') +
+    (ko ? ' character-card--ko' : '') +
+    (canTarget ? ' character-card--targetable' : '');
+
   return (
-    <div className={`character-card${activated ? ' character-card--activated' : ''}`}>
+    <div
+      className={className}
+      onClick={canTarget ? onTarget : undefined}
+      role={canTarget ? 'button' : undefined}
+    >
       <header className="character-card__head">
-        <span className="character-card__name">{character.name}</span>
-        <span className="character-card__health" title="Vida">
-          ♥ {character.health}
+        <span className="character-card__name">
+          {character.name}
+          {ko && <span className="character-card__ko"> · KO</span>}
+        </span>
+        <span className="character-card__health" title="Vida restante">
+          ♥ {health}/{character.health}
         </span>
       </header>
       <div className="character-card__meta">
@@ -35,8 +64,14 @@ export function CharacterCard({ character, activated, onActivate }: CharacterCar
         ))}
       </div>
       <div className="character-card__actions">
-        <button onClick={onActivate} disabled={activated}>
-          {activated ? 'Activado' : 'Activar'}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onActivate();
+          }}
+          disabled={activated || ko}
+        >
+          {ko ? 'KO' : activated ? 'Activado' : 'Activar'}
         </button>
       </div>
     </div>

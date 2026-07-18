@@ -5,6 +5,7 @@ import { resolveCards } from '../import/resolveCards';
 import { buildCharacters } from '../import/buildCharacters';
 import { ImportError } from '../import/errors';
 import { rollCharacter, type PooledDie } from '../game/roll';
+import { parseDamage, isKO } from '../game/damage';
 
 const DECK_KEY = 'swd:deck';
 
@@ -35,9 +36,17 @@ interface GameState {
   pool: PooledDie[];
   /** Activación por índice de instancia en `characters`. */
   activated: boolean[];
+  /** Daño acumulado por índice de instancia (SPEC-003), NO persistido. */
+  damage: number[];
+  /** Índice en `pool` del dado de daño seleccionado como fuente, o null. */
+  selectedDie: number | null;
   importDeck: (raw: string) => Promise<void>;
   activate: (index: number) => void;
   reset: () => void;
+  /** Selecciona/deselecciona un dado del pool como fuente de daño (solo si es de daño). */
+  selectDie: (poolIndex: number) => void;
+  /** Aplica el dado seleccionado a la instancia objetivo. */
+  applyDamageTo: (targetIndex: number) => void;
 }
 
 export const useGameStore = create<GameState>((set) => ({
@@ -48,6 +57,8 @@ export const useGameStore = create<GameState>((set) => ({
   error: null,
   pool: [],
   activated: [],
+  damage: [],
+  selectedDie: null,
 
   importDeck: async (raw: string) => {
     set({ status: 'importing', error: null });
@@ -57,7 +68,16 @@ export const useGameStore = create<GameState>((set) => ({
       const characters = buildCharacters(slots, cards);
       // Reemplaza el mazo anterior (no se acumulan personajes) y reinicia el estado de partida.
       persistDeck(characters);
-      set({ characters, status: 'idle', error: null, pool: [], activated: [] });
+      // Reinicia TODO el estado de partida, incluido el daño (vida completa al reimportar).
+      set({
+        characters,
+        status: 'idle',
+        error: null,
+        pool: [],
+        activated: [],
+        damage: [],
+        selectedDie: null,
+      });
     } catch (e) {
       const message =
         e instanceof ImportError
@@ -71,8 +91,9 @@ export const useGameStore = create<GameState>((set) => ({
   activate: (index: number) =>
     set((state) => {
       const character = state.characters[index];
-      // No hay personaje en ese índice o ya está activado: sin efecto.
+      // Sin personaje, ya activado, o KO: sin efecto.
       if (!character || state.activated[index]) return state;
+      if (isKO(character, state.damage[index] ?? 0)) return state;
       const activated = state.activated.slice();
       activated[index] = true;
       return {
@@ -81,8 +102,39 @@ export const useGameStore = create<GameState>((set) => ({
       };
     }),
 
-  // Stand-in del ciclo de ronda: vacía el pool y deja a todos activables.
-  reset: () => set({ pool: [], activated: [] }),
+  // Stand-in del ciclo de ronda: vacía el pool y reactiva. NO cura (el daño persiste).
+  reset: () => set({ pool: [], activated: [], selectedDie: null }),
+
+  selectDie: (poolIndex: number) =>
+    set((state) => {
+      const die = state.pool[poolIndex];
+      // Solo los dados de daño son seleccionables como fuente.
+      if (!die || parseDamage(die.face) === null) return state;
+      return { selectedDie: state.selectedDie === poolIndex ? null : poolIndex };
+    }),
+
+  applyDamageTo: (targetIndex: number) =>
+    set((state) => {
+      if (state.selectedDie === null) return state;
+      const die = state.pool[state.selectedDie];
+      const target = state.characters[targetIndex];
+      if (!die || !target) return { selectedDie: null };
+      const amount = parseDamage(die.face);
+      if (amount === null) return { selectedDie: null };
+      // Un KO no es objetivo válido.
+      if (isKO(target, state.damage[targetIndex] ?? 0)) return state;
+
+      const damage = state.characters.map((_, i) => state.damage[i] ?? 0);
+      damage[targetIndex] = Math.min(target.health, damage[targetIndex] + amount);
+
+      // El dado aplicado sale del pool.
+      let pool = state.pool.filter((_, i) => i !== state.selectedDie);
+      // Si el objetivo queda KO, retira del pool todos sus dados restantes.
+      if (isKO(target, damage[targetIndex])) {
+        pool = pool.filter((d) => d.characterIndex !== targetIndex);
+      }
+      return { damage, pool, selectedDie: null };
+    }),
 }));
 
 /** True si la instancia en `index` está activada. Helper de conveniencia para la UI. */

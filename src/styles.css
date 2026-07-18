@@ -157,6 +157,42 @@ button:disabled {
   border-color: #3b5bdb;
 }
 
+.character-card--ko {
+  opacity: 0.45;
+  border-color: #5c2a30;
+  filter: grayscale(0.6);
+}
+
+.character-card__ko {
+  color: #ff8787;
+  font-weight: 600;
+}
+
+.character-card--targetable {
+  cursor: pointer;
+  border-color: #ff8787;
+  box-shadow: 0 0 0 2px rgba(255, 135, 135, 0.35);
+}
+
+.pool__hint {
+  color: #ffd479;
+  margin: 8px 0 0;
+}
+
+.pool-die--damage {
+  cursor: pointer;
+}
+
+.pool-die--selected {
+  border-color: #ffd479;
+  box-shadow: 0 0 0 2px rgba(255, 212, 121, 0.45);
+}
+
+.pool-die:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
 .pool {
   margin-top: 28px;
   background: #1c1f28;
