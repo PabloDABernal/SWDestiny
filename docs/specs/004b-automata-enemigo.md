@@ -1,6 +1,6 @@
 # SPEC-004b: Autómata enemigo (tabla de prioridades) + trampas activas
 
-**Estado:** En curso — 004b-1 implementada (motor puro + tests + trampa de vida al importar, sin UI); 004b-2 (botón "Turno enemigo", rerolls en el store, Derrota jugable) pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** §4 (el autómata enemigo, tabla de prioridades y trampas), §5 (alcance v1: "autómata básico con trampas activas desde el inicio")
 **Depende de:** SPEC-001 (personajes/dados), SPEC-002 (activar y tirar al pool), SPEC-003 (resolver daño con KO), SPEC-004 (dos bandos, fin de partida)
 
@@ -125,4 +125,10 @@ implementación:
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+2026-07-19: playtest manual completo (004b-1 + 004b-2 juntas). Todos los criterios y casos límite
+pasaron: vida enemiga multiplicada x1.5 al importar (redondeo hacia arriba), botón "Turno enemigo"
+ejecuta una acción por pulsación con feedback visible (activar/atacar/reroll gratuito y
+extra/pasar), el enemigo ataca siempre al personaje del jugador con menos vida, Derrota jugable
+con bloqueo de tablero simétrico a Victoria, Reset reinicia pools/activaciones/rerolls sin curar
+ni deshacer el fin, reimportar reinicia el bando completo, botón deshabilitado sin mazo enemigo o
+con partida terminada; regresión SPEC-001/002/003/004 sin problemas. Confirmado por el usuario.

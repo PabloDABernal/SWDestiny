@@ -63,8 +63,10 @@ sentido depende de qué mecánicas existen ya en cada fase:
   posterior). El andamiaje de "daño a cualquier personaje" de SPEC-003 queda superado en SPEC-004:
   con el mazo enemigo importado hay **dos bandos** y el daño de un dado solo se aplica al **bando
   contrario**. Cuando un bando se queda sin personajes en pie (todos KO) hay **fin de partida**
-  (Victoria/Derrota); la Derrota solo se dispara cuando el enemigo ataca (autómata). El enemigo es
-  **pasivo** hasta que exista el autómata.
+  (Victoria/Derrota). Desde SPEC-004b el enemigo **ya no es pasivo**: un botón "Turno enemigo"
+  ejecuta la tabla de prioridades del autómata (una acción legal por pulsación) con las trampas de
+  v1 activas (vida x1.5, reroll extra), y la Derrota se dispara jugando cuando el autómata deja KO
+  a todo el bando jugador. Con esto queda completo el alcance descrito para v1.
 - **v2:** recursos y escudos.
 - **v3:** mano, mazo, robo, condición de victoria por deck-out.
 - **v4:** cartas jugables por capas (mejoras/apoyos "vanilla" → focus/reroll/especial → texto de
