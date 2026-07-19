@@ -3,8 +3,11 @@ import type { DeckSlot } from './parseDeck';
 import { ImportError } from './errors';
 
 const CARD_KEY = (code: string) => `swd:card:${code}`;
-// En dev la request va por el proxy /arh (ver vite.config.ts) para evitar CORS.
-const CARD_URL = (code: string) => `/arh/api/public/card/${code}`;
+// En dev la request va por el proxy /arh (ver vite.config.ts) para evitar CORS; en producción
+// (sin backend, sin proxy: GitHub Pages sirve estáticos) se llama directo a la API pública.
+// Si ARH DB no manda CORS abierto, esto seguirá fallando en prod (ver docs/BACKLOG.md).
+const ARH_API_BASE = import.meta.env.DEV ? '/arh' : 'https://db.swdrenewedhope.com';
+const CARD_URL = (code: string) => `${ARH_API_BASE}/api/public/card/${code}`;
 
 function readCache(code: string): ArhCard | null {
   try {
