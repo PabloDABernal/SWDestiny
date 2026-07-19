@@ -179,6 +179,79 @@ button:disabled {
   margin: 8px 0 0;
 }
 
+.app__hint {
+  color: #ffd479;
+  background: #2a2416;
+  border: 1px solid #5c4e2a;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.controls {
+  margin: 12px 0 20px;
+}
+
+.battle-side {
+  border: 1px solid #2a2e3a;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.battle-side--enemy {
+  background: #1f1a1c;
+  border-color: #4a2a30;
+}
+
+.battle-side--player {
+  background: #171d22;
+  border-color: #2a3d4a;
+}
+
+.battle-side__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.battle-side__head h2 {
+  margin: 0;
+}
+
+.battle-side__head .import-panel {
+  flex: 1 1 320px;
+  max-width: 480px;
+  margin-bottom: 0;
+}
+
+.pool__title {
+  font-weight: 600;
+}
+
+.outcome {
+  text-align: center;
+  font-size: 1.4rem;
+  font-weight: 700;
+  padding: 12px;
+  border-radius: 10px;
+  margin-bottom: 12px;
+}
+
+.outcome--victory {
+  background: #16301c;
+  border: 1px solid #2f7d45;
+  color: #7ee0a0;
+}
+
+.outcome--defeat {
+  background: #2a1b1e;
+  border: 1px solid #5c2a30;
+  color: #ff8787;
+}
+
 .pool-die--damage {
   cursor: pointer;
 }

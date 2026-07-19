@@ -6,8 +6,10 @@ interface CharacterCardProps {
   /** Vida restante (vida base menos daño). */
   health: number;
   ko: boolean;
-  /** true si hay un dado de daño seleccionado esperando objetivo. */
+  /** true si hay un dado de daño seleccionado esperando objetivo (y esta ficha es válida). */
   targetable: boolean;
+  /** El enemigo es pasivo en v1: no muestra botón Activar. */
+  showActivate: boolean;
   onActivate: () => void;
   onTarget: () => void;
 }
@@ -18,6 +20,7 @@ export function CharacterCard({
   health,
   ko,
   targetable,
+  showActivate,
   onActivate,
   onTarget,
 }: CharacterCardProps) {
@@ -63,17 +66,19 @@ export function CharacterCard({
           </div>
         ))}
       </div>
-      <div className="character-card__actions">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onActivate();
-          }}
-          disabled={activated || ko}
-        >
-          {ko ? 'KO' : activated ? 'Activado' : 'Activar'}
-        </button>
-      </div>
+      {showActivate && (
+        <div className="character-card__actions">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onActivate();
+            }}
+            disabled={activated || ko}
+          >
+            {ko ? 'KO' : activated ? 'Activado' : 'Activar'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

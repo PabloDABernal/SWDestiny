@@ -1,46 +1,78 @@
-import { useGameStore } from './store/gameStore';
+import { useGameStore, opposite, type Side } from './store/gameStore';
 import { ImportPanel } from './components/ImportPanel';
 import { CharacterCard } from './components/CharacterCard';
 import { DicePool } from './components/DicePool';
 import { currentHealth, isKO } from './game/damage';
 
+function BattleSide({ side, label }: { side: Side; label: string }) {
+  const s = useGameStore((st) => st.sides[side]);
+  const selection = useGameStore((st) => st.selection);
+  const outcome = useGameStore((st) => st.outcome);
+  const activate = useGameStore((st) => st.activate);
+  const applyDamageTo = useGameStore((st) => st.applyDamageTo);
+
+  // Esta ficha es objetivo válido si el dado seleccionado es del bando contrario y no hay fin.
+  const targetableSide = outcome === null && selection !== null && opposite(selection.side) === side;
+  const isPlayer = side === 'player';
+
+  return (
+    <section className={`battle-side battle-side--${side}`}>
+      <div className="battle-side__head">
+        <h2>{label}</h2>
+        <ImportPanel side={side} label={label} />
+      </div>
+      {s.characters.length === 0 ? (
+        <p className="roster__empty">Sin mazo importado.</p>
+      ) : (
+        <div className="roster__grid">
+          {s.characters.map((c, i) => {
+            const dmg = s.damage[i] ?? 0;
+            const ko = isKO(c, dmg);
+            return (
+              <CharacterCard
+                character={c}
+                activated={s.activated[i] === true}
+                health={currentHealth(c, dmg)}
+                ko={ko}
+                targetable={targetableSide && !ko}
+                showActivate={isPlayer}
+                onActivate={() => activate(side, i)}
+                onTarget={() => applyDamageTo(side, i)}
+                key={`${c.code}-${i}`}
+              />
+            );
+          })}
+        </div>
+      )}
+      <DicePool side={side} />
+    </section>
+  );
+}
+
 export function App() {
-  const characters = useGameStore((s) => s.characters);
-  const activated = useGameStore((s) => s.activated);
-  const damage = useGameStore((s) => s.damage);
-  const selectedDie = useGameStore((s) => s.selectedDie);
-  const activate = useGameStore((s) => s.activate);
-  const applyDamageTo = useGameStore((s) => s.applyDamageTo);
+  const outcome = useGameStore((s) => s.outcome);
+  const selection = useGameStore((s) => s.selection);
+  const reset = useGameStore((s) => s.reset);
 
   return (
     <main className="app">
       <h1>Star Wars Destiny — PVE</h1>
-      <ImportPanel />
-      <section className="roster">
-        <h2>Personajes ({characters.length})</h2>
-        {characters.length === 0 ? (
-          <p className="roster__empty">Aún no hay personajes. Importa un mazo arriba.</p>
-        ) : (
-          <div className="roster__grid">
-            {characters.map((c, i) => {
-              const dmg = damage[i] ?? 0;
-              return (
-                <CharacterCard
-                  character={c}
-                  activated={activated[i] === true}
-                  health={currentHealth(c, dmg)}
-                  ko={isKO(c, dmg)}
-                  targetable={selectedDie !== null}
-                  onActivate={() => activate(i)}
-                  onTarget={() => applyDamageTo(i)}
-                  key={`${c.code}-${i}`}
-                />
-              );
-            })}
-          </div>
-        )}
-      </section>
-      <DicePool />
+
+      {outcome && (
+        <div className={`outcome outcome--${outcome}`} role="status">
+          {outcome === 'victory' ? '🏆 Victoria' : '💀 Derrota'}
+        </div>
+      )}
+      {selection !== null && outcome === null && (
+        <p className="app__hint">Dado de daño seleccionado. Pulsa un personaje enemigo para aplicarlo.</p>
+      )}
+
+      <div className="controls">
+        <button onClick={reset}>Reset (nueva ronda)</button>
+      </div>
+
+      <BattleSide side="enemy" label="Enemigo" />
+      <BattleSide side="player" label="Jugador" />
     </main>
   );
 }
