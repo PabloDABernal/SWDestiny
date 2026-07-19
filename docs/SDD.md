@@ -1,6 +1,7 @@
 # SDD — Star Wars Destiny: PVE con mazos de la comunidad
 
-**Estado:** Vivo (v0.2) — decisiones confirmadas por specs jugadas (TypeScript, Zustand, localStorage, proxy /arh)
+**Estado:** Vivo (v1.0) — decisiones confirmadas por specs jugadas (TypeScript, Zustand, localStorage,
+proxy /arh, estado por bando y motor del autómata desde SPEC-004/004b)
 
 ## Stack propuesto
 
