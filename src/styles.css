@@ -106,6 +106,11 @@ button:disabled {
   white-space: nowrap;
 }
 
+.character-card__shields {
+  color: #74c0fc;
+  white-space: nowrap;
+}
+
 .character-card__meta {
   color: #9aa0b0;
   font-size: 0.8rem;
@@ -254,6 +259,11 @@ button:disabled {
 
 .pool-die--damage {
   cursor: pointer;
+}
+
+.pool-die--shield {
+  cursor: pointer;
+  border-color: #74c0fc;
 }
 
 .pool-die--selected {

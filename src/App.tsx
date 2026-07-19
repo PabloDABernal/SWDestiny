@@ -2,17 +2,24 @@ import { useGameStore, opposite, type Side } from './store/gameStore';
 import { ImportPanel } from './components/ImportPanel';
 import { CharacterCard } from './components/CharacterCard';
 import { DicePool } from './components/DicePool';
-import { currentHealth, isKO } from './game/damage';
+import { currentHealth, isKO, parseShield } from './game/damage';
 
 function BattleSide({ side, label }: { side: Side; label: string }) {
   const s = useGameStore((st) => st.sides[side]);
   const selection = useGameStore((st) => st.selection);
   const outcome = useGameStore((st) => st.outcome);
   const activate = useGameStore((st) => st.activate);
-  const applyDamageTo = useGameStore((st) => st.applyDamageTo);
+  const applyDieTo = useGameStore((st) => st.applyDieTo);
+  const selectedDie = useGameStore((st) =>
+    st.selection ? st.sides[st.selection.side].pool[st.selection.poolIndex] : undefined,
+  );
+  const isShieldSelected = selectedDie !== undefined && parseShield(selectedDie.face) !== null;
 
-  // Esta ficha es objetivo válido si el dado seleccionado es del bando contrario y no hay fin.
-  const targetableSide = outcome === null && selection !== null && opposite(selection.side) === side;
+  // Objetivo válido: dado de daño → bando contrario; dado de escudo → el propio bando.
+  const targetableSide =
+    outcome === null &&
+    selection !== null &&
+    (isShieldSelected ? selection.side === side : opposite(selection.side) === side);
   const isPlayer = side === 'player';
 
   return (
@@ -33,11 +40,12 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
                 character={c}
                 activated={s.activated[i] === true}
                 health={currentHealth(c, dmg)}
+                shields={s.shields[i] ?? 0}
                 ko={ko}
                 targetable={targetableSide && !ko}
                 showActivate={isPlayer}
                 onActivate={() => activate(side, i)}
-                onTarget={() => applyDamageTo(side, i)}
+                onTarget={() => applyDieTo(side, i)}
                 key={`${c.code}-${i}`}
               />
             );
@@ -52,6 +60,10 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
 export function App() {
   const outcome = useGameStore((s) => s.outcome);
   const selection = useGameStore((s) => s.selection);
+  const selectedDie = useGameStore((s) =>
+    s.selection ? s.sides[s.selection.side].pool[s.selection.poolIndex] : undefined,
+  );
+  const isShieldSelected = selectedDie !== undefined && parseShield(selectedDie.face) !== null;
   const reset = useGameStore((s) => s.reset);
   const enemyTurn = useGameStore((s) => s.enemyTurn);
   const lastEnemyAction = useGameStore((s) => s.lastEnemyAction);
@@ -67,7 +79,11 @@ export function App() {
         </div>
       )}
       {selection !== null && outcome === null && (
-        <p className="app__hint">Dado de daño seleccionado. Pulsa un personaje enemigo para aplicarlo.</p>
+        <p className="app__hint">
+          {isShieldSelected
+            ? 'Dado de escudo seleccionado. Pulsa un personaje de tu propio bando para aplicarlo.'
+            : 'Dado de daño seleccionado. Pulsa un personaje enemigo para aplicarlo.'}
+        </p>
       )}
       {lastEnemyAction && <p className="app__hint">{lastEnemyAction}</p>}
 

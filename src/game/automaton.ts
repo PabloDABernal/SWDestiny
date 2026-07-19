@@ -90,7 +90,7 @@ function blankDieIndices(pool: PooledDie[]): number[] {
 /**
  * Evalúa la tabla de prioridades del GDD §4 de arriba abajo y devuelve la primera acción legal.
  * Función pura: no tira dados ni muta estado; quien la llama ejecuta la acción devuelta
- * reutilizando `activate`/`applyDamageTo` del store (SPEC-002/003) o rerolleando los índices dados.
+ * reutilizando `activate`/`applyDieTo` del store (SPEC-002/003) o rerolleando los índices dados.
  */
 export function nextAutomatonAction(
   enemy: AutomatonSide,

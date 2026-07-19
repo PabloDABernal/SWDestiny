@@ -20,3 +20,30 @@ export function currentHealth(character: Character, damage: number): number {
 export function isKO(character: Character, damage: number): boolean {
   return damage >= character.health;
 }
+
+/** Máximo de escudos que puede acumular un personaje (SPEC-005). */
+export const MAX_SHIELDS = 3;
+
+/**
+ * Cantidad de escudo de una cara, o null si no es cara de escudo. Cara = `<n>Sh` (1Sh/2Sh/3Sh).
+ */
+export function parseShield(face: string): number | null {
+  const m = /^(\d+)Sh$/.exec(face);
+  return m ? Number(m[1]) : null;
+}
+
+/** Nuevo total de escudos tras aplicar un dado de escudo, topado a MAX_SHIELDS. */
+export function addShields(current: number, amount: number): number {
+  return Math.min(MAX_SHIELDS, current + amount);
+}
+
+/**
+ * Reparte un daño entrante entre escudos (primero) y vida (el sobrante), en una sola resolución.
+ */
+export function resolveShieldedDamage(
+  shields: number,
+  amount: number,
+): { shieldsRemaining: number; healthDamage: number } {
+  const absorbed = Math.min(shields, amount);
+  return { shieldsRemaining: shields - absorbed, healthDamage: amount - absorbed };
+}

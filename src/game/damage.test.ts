@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { parseDamage, currentHealth, isKO } from './damage';
+import {
+  parseDamage,
+  currentHealth,
+  isKO,
+  parseShield,
+  addShields,
+  resolveShieldedDamage,
+  MAX_SHIELDS,
+} from './damage';
 import type { Character } from '../model/types';
 
 const target: Character = {
@@ -41,5 +49,46 @@ describe('currentHealth / isKO', () => {
     expect(isKO(target, 10)).toBe(false);
     expect(isKO(target, 11)).toBe(true);
     expect(isKO(target, 12)).toBe(true);
+  });
+});
+
+describe('parseShield', () => {
+  it('reconoce 1Sh/2Sh/3Sh con su cantidad', () => {
+    expect(parseShield('1Sh')).toBe(1);
+    expect(parseShield('2Sh')).toBe(2);
+    expect(parseShield('3Sh')).toBe(3);
+  });
+
+  it('no es escudo: daño, recurso, focus, especial, descarte, blanco', () => {
+    for (const face of ['2MD', '1RD', '2ID', '1R', '1F', 'Sp', 'Dc', '-']) {
+      expect(parseShield(face)).toBeNull();
+    }
+  });
+});
+
+describe('addShields', () => {
+  it('suma escudos', () => {
+    expect(addShields(0, 2)).toBe(2);
+    expect(addShields(1, 1)).toBe(2);
+  });
+
+  it(`topa a MAX_SHIELDS (${MAX_SHIELDS})`, () => {
+    expect(addShields(2, 3)).toBe(MAX_SHIELDS);
+    expect(addShields(MAX_SHIELDS, 1)).toBe(MAX_SHIELDS);
+  });
+});
+
+describe('resolveShieldedDamage', () => {
+  it('sin escudo: todo el daño pasa a vida', () => {
+    expect(resolveShieldedDamage(0, 5)).toEqual({ shieldsRemaining: 0, healthDamage: 5 });
+  });
+
+  it('escudo absorbe todo el daño si alcanza', () => {
+    expect(resolveShieldedDamage(3, 2)).toEqual({ shieldsRemaining: 1, healthDamage: 0 });
+    expect(resolveShieldedDamage(3, 3)).toEqual({ shieldsRemaining: 0, healthDamage: 0 });
+  });
+
+  it('escudo parcial: absorbe lo que puede, el sobrante pasa a vida', () => {
+    expect(resolveShieldedDamage(2, 5)).toEqual({ shieldsRemaining: 0, healthDamage: 3 });
   });
 });

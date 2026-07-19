@@ -1,10 +1,13 @@
 import type { Character } from '../model/types';
+import { MAX_SHIELDS } from '../game/damage';
 
 interface CharacterCardProps {
   character: Character;
   activated: boolean;
   /** Vida restante (vida base menos daño). */
   health: number;
+  /** Escudos acumulados (0-3, SPEC-005). */
+  shields: number;
   ko: boolean;
   /** true si hay un dado de daño seleccionado esperando objetivo (y esta ficha es válida). */
   targetable: boolean;
@@ -18,6 +21,7 @@ export function CharacterCard({
   character,
   activated,
   health,
+  shields,
   ko,
   targetable,
   showActivate,
@@ -46,6 +50,11 @@ export function CharacterCard({
         <span className="character-card__health" title="Vida restante">
           ♥ {health}/{character.health}
         </span>
+        {shields > 0 && (
+          <span className="character-card__shields" title="Escudos">
+            🛡 {shields}/{MAX_SHIELDS}
+          </span>
+        )}
       </header>
       <div className="character-card__meta">
         {character.isUnique ? 'Único' : 'No único'}

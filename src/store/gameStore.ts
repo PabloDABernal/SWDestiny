@@ -5,7 +5,7 @@ import { resolveCards } from '../import/resolveCards';
 import { buildCharacters } from '../import/buildCharacters';
 import { ImportError } from '../import/errors';
 import { rollCharacter, rollDie, type PooledDie } from '../game/roll';
-import { parseDamage, isKO } from '../game/damage';
+import { parseDamage, parseShield, addShields, resolveShieldedDamage, isKO } from '../game/damage';
 import { computeOutcome as computeOutcomePure, type Outcome, type SideView } from '../game/outcome';
 import {
   applyEnemyHealthMultiplier,
@@ -42,6 +42,8 @@ interface SideState {
   characters: Character[];
   activated: boolean[];
   damage: number[];
+  /** Escudos acumulados por instancia (SPEC-005), tope MAX_SHIELDS. Ganados solo vía dado NSh. */
+  shields: number[];
   pool: PooledDie[];
   /** Rerolls de blancos gastados esta "ronda" (solo relevantes para el bando enemigo/autómata). */
   rerollsUsed: RerollsUsed;
@@ -54,6 +56,7 @@ function freshSide(characters: Character[]): SideState {
     characters,
     activated: [],
     damage: [],
+    shields: [],
     pool: [],
     rerollsUsed: { free: false, extra: 0 },
     importStatus: 'idle',
@@ -74,8 +77,9 @@ interface DamageResolution {
 
 /**
  * Aplica un dado de daño de `sourceSide` (por posición en su pool) a un personaje de
- * `targetSide`. Devuelve `null` si el dado o el objetivo no son válidos (usado tanto por
- * `applyDamageTo`, jugador vía selección, como por `enemyTurn`, autómata).
+ * `targetSide`. Los escudos del objetivo absorben primero (SPEC-005); solo el sobrante baja la
+ * vida. Devuelve `null` si el dado o el objetivo no son válidos (usado tanto por `applyDieTo`,
+ * jugador vía selección, como por `enemyTurn`, autómata).
  */
 function resolveDamage(
   sides: Record<Side, SideState>,
@@ -93,8 +97,15 @@ function resolveDamage(
   if (amount === null) return null;
   if (isKO(character, target.damage[targetIndex] ?? 0)) return null;
 
+  const { shieldsRemaining, healthDamage } = resolveShieldedDamage(
+    target.shields[targetIndex] ?? 0,
+    amount,
+  );
+  const shields = target.characters.map((_, i) => target.shields[i] ?? 0);
+  shields[targetIndex] = shieldsRemaining;
+
   const damage = target.characters.map((_, i) => target.damage[i] ?? 0);
-  damage[targetIndex] = Math.min(character.health, damage[targetIndex] + amount);
+  damage[targetIndex] = Math.min(character.health, damage[targetIndex] + healthDamage);
 
   // El dado aplicado sale del pool de su dueño.
   const sourcePool = source.pool.filter((_, i) => i !== dieIndex);
@@ -108,9 +119,40 @@ function resolveDamage(
     ...sides,
     [sourceSide]: { ...source, pool: sourcePool },
   };
-  nextSides[targetSide] = { ...nextSides[targetSide], damage, pool: targetPool };
+  nextSides[targetSide] = { ...nextSides[targetSide], damage, shields, pool: targetPool };
 
   return { sides: nextSides, outcome: computeOutcome(nextSides), amount };
+}
+
+interface ShieldResolution {
+  sides: Record<Side, SideState>;
+  amount: number;
+}
+
+/**
+ * Aplica un dado de escudo de `side` (por posición en su pool) a un personaje del MISMO bando
+ * (SPEC-005). Devuelve `null` si el dado o el objetivo no son válidos.
+ */
+function resolveShield(
+  sides: Record<Side, SideState>,
+  side: Side,
+  dieIndex: number,
+  targetIndex: number,
+): ShieldResolution | null {
+  const s = sides[side];
+  const die = s.pool[dieIndex];
+  const character = s.characters[targetIndex];
+  if (!die || !character) return null;
+  const amount = parseShield(die.face);
+  if (amount === null) return null;
+  if (isKO(character, s.damage[targetIndex] ?? 0)) return null;
+
+  const shields = s.characters.map((_, i) => s.shields[i] ?? 0);
+  shields[targetIndex] = addShields(shields[targetIndex], amount);
+  const pool = s.pool.filter((_, i) => i !== dieIndex);
+
+  const nextSides: Record<Side, SideState> = { ...sides, [side]: { ...s, shields, pool } };
+  return { sides: nextSides, amount };
 }
 
 interface Selection {
@@ -128,7 +170,7 @@ interface GameState {
   activate: (side: Side, index: number) => void;
   reset: () => void;
   selectDie: (side: Side, poolIndex: number) => void;
-  applyDamageTo: (targetSide: Side, index: number) => void;
+  applyDieTo: (targetSide: Side, index: number) => void;
   enemyTurn: () => void;
 }
 
@@ -198,26 +240,35 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((state) => {
       if (state.outcome !== null) return state;
       const die = state.sides[side].pool[poolIndex];
-      if (!die || parseDamage(die.face) === null) return state;
+      if (!die || (parseDamage(die.face) === null && parseShield(die.face) === null)) return state;
       const same = state.selection?.side === side && state.selection?.poolIndex === poolIndex;
       return { selection: same ? null : { side, poolIndex } };
     }),
 
-  applyDamageTo: (targetSide: Side, index: number) =>
+  applyDieTo: (targetSide: Side, index: number) =>
     set((state) => {
       if (state.outcome !== null || state.selection === null) return state;
-      // El objetivo debe ser del bando CONTRARIO al dueño del dado.
-      if (targetSide === state.selection.side) return state;
+      const { side: sourceSide, poolIndex } = state.selection;
+      const die = state.sides[sourceSide].pool[poolIndex];
+      if (!die) return { selection: null };
 
-      const result = resolveDamage(
-        state.sides,
-        state.selection.side,
-        state.selection.poolIndex,
-        targetSide,
-        index,
-      );
-      if (result === null) return { selection: null };
-      return { sides: result.sides, selection: null, outcome: result.outcome };
+      if (parseDamage(die.face) !== null) {
+        // Dado de daño: el objetivo debe ser del bando CONTRARIO al dueño del dado.
+        if (targetSide === sourceSide) return state;
+        const result = resolveDamage(state.sides, sourceSide, poolIndex, targetSide, index);
+        if (result === null) return { selection: null };
+        return { sides: result.sides, selection: null, outcome: result.outcome };
+      }
+
+      if (parseShield(die.face) !== null) {
+        // Dado de escudo: el objetivo debe ser del MISMO bando que el dueño del dado.
+        if (targetSide !== sourceSide) return state;
+        const result = resolveShield(state.sides, sourceSide, poolIndex, index);
+        if (result === null) return { selection: null };
+        return { sides: result.sides, selection: null };
+      }
+
+      return { selection: null };
     }),
 
   // Turno del autómata (GDD §4): evalúa la tabla de prioridades (motor puro en game/automaton)
