@@ -1,6 +1,6 @@
 # SPEC-004b: Autómata enemigo (tabla de prioridades) + trampas activas
 
-**Estado:** Pendiente
+**Estado:** En curso — 004b-1 implementada (motor puro + tests + trampa de vida al importar, sin UI); 004b-2 (botón "Turno enemigo", rerolls en el store, Derrota jugable) pendiente
 **Sección del GDD:** §4 (el autómata enemigo, tabla de prioridades y trampas), §5 (alcance v1: "autómata básico con trampas activas desde el inicio")
 **Depende de:** SPEC-001 (personajes/dados), SPEC-002 (activar y tirar al pool), SPEC-003 (resolver daño con KO), SPEC-004 (dos bandos, fin de partida)
 
