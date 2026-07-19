@@ -53,6 +53,9 @@ export function App() {
   const outcome = useGameStore((s) => s.outcome);
   const selection = useGameStore((s) => s.selection);
   const reset = useGameStore((s) => s.reset);
+  const enemyTurn = useGameStore((s) => s.enemyTurn);
+  const lastEnemyAction = useGameStore((s) => s.lastEnemyAction);
+  const enemyHasDeck = useGameStore((s) => s.sides.enemy.characters.length > 0);
 
   return (
     <main className="app">
@@ -66,9 +69,13 @@ export function App() {
       {selection !== null && outcome === null && (
         <p className="app__hint">Dado de daño seleccionado. Pulsa un personaje enemigo para aplicarlo.</p>
       )}
+      {lastEnemyAction && <p className="app__hint">{lastEnemyAction}</p>}
 
       <div className="controls">
         <button onClick={reset}>Reset (nueva ronda)</button>
+        <button onClick={enemyTurn} disabled={outcome !== null || !enemyHasDeck}>
+          Turno enemigo
+        </button>
       </div>
 
       <BattleSide side="enemy" label="Enemigo" />
