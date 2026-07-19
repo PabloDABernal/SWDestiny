@@ -84,6 +84,18 @@ escudos, primero se descuentan de los escudos; si el daño sobra tras agotarlos,
 vida en la misma aplicación. Los escudos **no se recuperan** con el botón Reset (igual que la vida
 no cura); solo volver a importar el mazo los pone a 0 de nuevo (no hay fuente de escudo "impresa"
 en la carta).
+
+### Recursos (primera pieza — solo generación, GDD v2)
+
+Resolver un dado que muestra `1R` en el pool (un solo clic, sin elegir objetivo) añade **1
+recurso** a un **contador único por bando** (no por personaje, a diferencia de los escudos),
+consumiendo el dado. El contador se **vacía con el botón Reset**, igual que el pool de dados y a
+diferencia de vida/escudos (fiel al reglamento: los recursos no se acumulan entre rondas).
+
+**Gastar** recursos —para pagar caras de dado con coste, o para jugar cartas más adelante— queda
+fuera de esta primera pieza: el formato exacto en que ARH DB codifica una cara de dado *con coste*
+(distinto de `1R`, que *produce* un recurso) todavía no está confirmado y se investigará en una
+spec posterior, una vez exista un consumidor real de recursos.
 - **v3:** mano, mazo, robo, condición de victoria por deck-out.
 - **v4:** cartas jugables por capas (mejoras/apoyos "vanilla" → focus/reroll/especial → texto de
   cartas y keywords, empezando por los más simples como Ambush).
