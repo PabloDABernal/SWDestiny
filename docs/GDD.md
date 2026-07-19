@@ -68,6 +68,22 @@ sentido depende de qué mecánicas existen ya en cada fase:
   v1 activas (vida x1.5, reroll extra), y la Derrota se dispara jugando cuando el autómata deja KO
   a todo el bando jugador. Con esto queda completo el alcance descrito para v1.
 - **v2:** recursos y escudos.
+
+### Escudos (primera pieza de v2)
+
+Los escudos se obtienen resolviendo una cara de dado de escudo (`1Sh`/`2Sh`/`3Sh`, según el valor
+mostrado), igual que hoy se resuelve un dado de daño: clic en el dado del propio pool → clic en un
+personaje objetivo. A diferencia del daño (que solo puede aplicarse al bando contrario), el
+objetivo de un dado de escudo debe ser un personaje **del propio bando** (uno mismo u otro aliado
+no-KO), elegido por quien resuelve el dado. Cada personaje acumula escudos hasta un **máximo de
+3**; aplicar un dado que superaría el máximo simplemente lo deja en 3 (el excedente se pierde, el
+dado se consume igual).
+
+Los escudos absorben daño **antes** que la vida: al aplicar un dado de daño a un personaje con
+escudos, primero se descuentan de los escudos; si el daño sobra tras agotarlos, el resto pasa a la
+vida en la misma aplicación. Los escudos **no se recuperan** con el botón Reset (igual que la vida
+no cura); solo volver a importar el mazo los pone a 0 de nuevo (no hay fuente de escudo "impresa"
+en la carta).
 - **v3:** mano, mazo, robo, condición de victoria por deck-out.
 - **v4:** cartas jugables por capas (mejoras/apoyos "vanilla" → focus/reroll/especial → texto de
   cartas y keywords, empezando por los más simples como Ambush).
