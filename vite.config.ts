@@ -4,6 +4,8 @@ import react from '@vitejs/plugin-react';
 // El proxy /arh evita CORS en desarrollo al resolver cartas contra la API pública de ARH DB.
 // En producción no hay backend (v1): resolver CORS de prod está anotado en docs/BACKLOG.md.
 export default defineConfig({
+  // GitHub Pages sirve el proyecto en /SWDestiny/, no en la raíz.
+  base: '/SWDestiny/',
   plugins: [react()],
   server: {
     proxy: {
