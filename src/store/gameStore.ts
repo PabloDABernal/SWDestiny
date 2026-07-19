@@ -7,6 +7,7 @@ import { ImportError } from '../import/errors';
 import { rollCharacter, type PooledDie } from '../game/roll';
 import { parseDamage, isKO } from '../game/damage';
 import { computeOutcome as computeOutcomePure, type Outcome } from '../game/outcome';
+import { applyEnemyHealthMultiplier } from '../game/automaton';
 
 export type Side = 'player' | 'enemy';
 export const SIDES: Side[] = ['player', 'enemy'];
@@ -89,7 +90,9 @@ export const useGameStore = create<GameState>((set) => ({
     try {
       const slots = parseDeck(raw);
       const cards = await resolveCards(slots);
-      const characters = buildCharacters(slots, cards);
+      const built = buildCharacters(slots, cards);
+      // Trampa (GDD §4): la vida del bando enemigo se multiplica al importar.
+      const characters = side === 'enemy' ? applyEnemyHealthMultiplier(built) : built;
       persistDeck(side, characters);
       // Reinicia el estado de partida de ESTE bando (vida completa) y recalcula el fin.
       set((state) => {
