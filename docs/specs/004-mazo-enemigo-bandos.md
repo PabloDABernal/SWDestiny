@@ -1,6 +1,6 @@
 # SPEC-004: Importar mazo enemigo, dos bandos y fin de partida por KO
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** §2 (jugador vs enemigo, ambos con mazo), §3 (condiciones de victoria), §5 (v1)
 **Depende de:** SPEC-001 (importar), SPEC-002 (activar/pool), SPEC-003 (daño/KO)
 
@@ -94,4 +94,7 @@ su propia sesión.
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+2026-07-19: playtest manual completo. Todos los criterios y casos límite pasaron (dos bandos +
+import por bando, enemigo pasivo, daño solo al contrario, KO, Victoria y bloqueo posterior,
+reimport por bando reinicia + limpia outcome, recarga mantiene ambos mazos; Reset no deshace el
+fin; regresión SPEC-001/002/003). Derrota cubierta por test unitario. Confirmado por el usuario.
