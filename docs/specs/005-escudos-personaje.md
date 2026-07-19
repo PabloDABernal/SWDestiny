@@ -1,6 +1,6 @@
 # SPEC-005: Escudos (resolver dado de escudo, tope 3 por personaje)
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** §5 "Escudos (primera pieza de v2)"
 **Depende de:** SPEC-001 (personajes/dados), SPEC-002 (pool de dados), SPEC-003 (resolver daño con KO), SPEC-004 (dos bandos)
 
@@ -116,4 +116,15 @@ selección de objetivo propio bando + `DicePool` + render de escudos.
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+2026-07-19: playtest manual completo, jugado en despliegue de GitHub Pages
+(https://pablodabernal.github.io/SWDestiny/) en vez de localhost. Todos los criterios y casos
+límite pasaron: dado `NSh` aplicado a un personaje del propio bando suma escudos, no aplicable al
+bando contrario, tope de 3, escudo absorbe daño antes que vida en una sola aplicación, Reset no
+cura escudos, reimportar los pone a 0, turno del enemigo respeta escudos del jugador (misma
+`resolveDamage`); regresión SPEC-001 a SPEC-004b sin problemas. Confirmado por el usuario.
+
+De paso, este playtest destapó un bug de infraestructura no relacionado con el gameplay de
+escudos: en producción (sin el proxy `/arh` de dev) la resolución de cartas fallaba con "carta no
+encontrada" en vez de un error de red/CORS. Corregido en `src/import/resolveCards.ts` (llamar
+directo a la API de ARH DB fuera de dev); confirmado que la API sí permite CORS abierto desde el
+navegador. Detalle en `docs/BACKLOG.md`.
