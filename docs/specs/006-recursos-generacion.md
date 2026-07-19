@@ -26,6 +26,9 @@ Verificables jugando. Formato: acción → resultado observable.
 - [ ] Pulsar **Reset** vacía el contador de recursos de **ambos** bandos a 0 (junto con el pool y
       las activaciones, como ya hacía).
 - [ ] **Reimportar** un mazo pone el contador de recursos de ese bando a **0**.
+- [ ] Con un dado de **daño o escudo ya seleccionado** (esperando objetivo), los dados `1R` del pool
+      aparecen **deshabilitados**: no se pueden resolver hasta elegir objetivo para el dado
+      seleccionado (o cancelar esa selección haciendo clic de nuevo sobre él).
 
 ## Fuera de alcance (explícito)
 
@@ -43,8 +46,8 @@ Verificables jugando. Formato: acción → resultado observable.
 
 ## Casos límite
 
-- **Bando sin ningún dado `1R` resuelto** → contador se muestra en 0 (o no se muestra, a decidir en
-  implementación de forma consistente con cómo SPEC-005 oculta "🛡 0").
+- **Bando sin ningún dado `1R` resuelto** → mismo patrón que SPEC-005 con los escudos: el contador
+  no se muestra si está en 0 (nada que ver todavía), solo aparece desde 1 en adelante.
 - **Reset con recursos acumulados** → el contador vuelve a 0 en ambos bandos, igual que el pool.
 - **Reimportar con recursos acumulados** → el bando reimportado vuelve a 0; el otro bando no se
   toca.
@@ -64,16 +67,18 @@ Verificables jugando. Formato: acción → resultado observable.
 - **Interacción de un solo clic**: a diferencia de daño/escudo (seleccionar dado → elegir objetivo,
   vía `selection`/`applyDieTo`), resolver un dado de recurso no pasa por ese flujo de selección: un
   clic en el dado del pool lo resuelve directamente (incrementa `resources` del bando dueño del
-  dado, retira el dado del pool). No debe interferir con la selección de daño/escudo en curso si
-  las hubiera (si hay un dado de daño/escudo ya seleccionado, resolver un `1R` no debería
-  cancelarla de forma confusa; validar el comportamiento concreto en implementación).
+  dado, retira el dado del pool).
+- **Con `selection !== null`** (hay un dado de daño/escudo esperando objetivo): los dados `1R`
+  quedan deshabilitados (igual visualmente que un dado no accionable), en cualquier bando, hasta
+  que la selección se resuelva o se cancele. Evita el riesgo de reindexar `selection.poolIndex` al
+  filtrar el pool si se resolviera un `1R` a mitad.
 - **`DicePool.tsx`**: los dados `1R` deben ser "accionables" (clicables) igual que daño/escudo, pero
   con un manejador distinto (resolución directa, no `selectDie`).
 - **UI**: mostrar el contador de recursos del bando en algún punto de `BattleSide` (p. ej. junto al
   título "Enemigo"/"Jugador" o junto al pool), no en cada `CharacterCard` (no es por personaje).
-- Priorizar **test unitario** de `parseResource` y de la función que suma al contador con tope
-  (aquí sin tope, pero mantener el patrón de SPEC-005 de motor puro + tests antes que solo
-  playtest).
+- Priorizar **test unitario** de `parseResource` (sin función de tope que testear: la suma es
+  directa, sin máximo, a diferencia de `addShields`), manteniendo el patrón de SPEC-005 de motor
+  puro + tests antes que solo playtest.
 
 ## Nota de tamaño (regla 4 CLAUDE.md)
 
