@@ -34,6 +34,9 @@ Verificables jugando. Formato: acción → resultado observable.
 - [ ] Pulsar **Reset** no cambia los escudos de nadie (igual que no cura la vida).
 - [ ] **Reimportar** un mazo pone los escudos de ese bando a **0** (no hay escudo "de partida"; solo
       se ganan resolviendo dados `NSh`), igual que reinicia vida/pool/activaciones.
+- [ ] Un personaje del **jugador** con escudos recibe un ataque del **autómata** (botón "Turno
+      enemigo", SPEC-004b) → los escudos bajan primero exactamente igual que con un ataque del
+      jugador (misma lógica compartida, no un camino aparte).
 
 ## Fuera de alcance (explícito)
 
@@ -64,6 +67,10 @@ Verificables jugando. Formato: acción → resultado observable.
   restricción de "no autoaplicar".
 - **Recargar la página a mitad de partida** → escudos se pierden igual que vida/pool/activaciones
   (estado de sesión no persistido).
+- **Personaje que queda KO en la misma aplicación de un dado de daño con escudos** → siempre
+  termina con escudos en 0 (consecuencia directa del orden "escudos primero, sobrante a vida": solo
+  se llega a KO si los escudos ya se agotaron en esa resolución). No hace falta ningún "reset de
+  escudos al quedar KO" aparte; es resultado natural de la resta, no un caso especial a programar.
 
 ## Notas técnicas (opcional)
 
@@ -86,16 +93,26 @@ Verificables jugando. Formato: acción → resultado observable.
 - **Tope de 3**: `Math.min(3, shields[index] + amount)`.
 - **UI**: mostrar escudos junto a la vida en `CharacterCard` (p. ej. `🛡 N/3` si `N>0`, u oculto si
   `N===0` para no ensuciar personajes sin escudos).
+- **`DicePool.tsx`**: hoy deshabilita cada dado con `disabled={!isDamage}` (`parseDamage(face) !==
+  null`); hay que ampliar la condición para que un dado `NSh` también sea seleccionable (no solo
+  los de daño), o el criterio de "el jugador lo selecciona" es imposible de cumplir.
+- **Texto de ayuda** (`App.tsx`, hoy fijo "Dado de daño seleccionado. Pulsa un personaje enemigo
+  para aplicarlo."): debe distinguir si el dado seleccionado es de daño (pulsa un enemigo) o de
+  escudo (pulsa un aliado).
+- **Tests**: igual que en SPEC-004b, priorizar tests unitarios del `parseShield` y de la función de
+  resolución de daño-con-escudo (casos: sin escudo, escudo absorbe todo, escudo parcial + sobrante
+  a vida, tope de 3) antes que depender solo del playtest manual.
 
 ## Nota de tamaño (regla 4 CLAUDE.md)
 
 Toca: `damage.ts` (parseShield), `gameStore.ts` (estado `shields`, extender `resolveDamage`,
 extender la lógica de selección/objetivo para permitir apuntar al propio bando con dados de
-escudo), `CharacterCard.tsx` (mostrar escudos), `App.tsx`/`BattleSide` (calcular objetivo válido
-según tipo de dado). Riesgo moderado, probablemente dentro de las ~300 líneas; si al implementar se
-dispara (sobre todo por la lógica de "objetivo según tipo de dado", que toca varios componentes),
-dividir en **(005-1)** estado + motor de resolución (shields, resolveDamage con escudo, tests) y
-**(005-2)** UI de selección de objetivo propio bando + render de escudos.
+escudo), `CharacterCard.tsx` (mostrar escudos), `DicePool.tsx` (dados `NSh` seleccionables),
+`App.tsx`/`BattleSide` (calcular objetivo válido según tipo de dado, texto de ayuda). Riesgo
+moderado, probablemente dentro de las ~300 líneas; si al implementar se dispara (sobre todo por la
+lógica de "objetivo según tipo de dado", que toca varios componentes), dividir en **(005-1)**
+estado + motor de resolución (shields, resolveDamage con escudo, tests) y **(005-2)** UI de
+selección de objetivo propio bando + `DicePool` + render de escudos.
 
 ## Resultado del playtest
 
