@@ -32,7 +32,7 @@ blanco), recursos, mano/mazo/descarte, fases de acción y mantenimiento, condici
 ## 4. El autómata enemigo
 
 Evalúa, en su turno, una tabla de prioridades de arriba abajo y ejecuta la primera acción legal.
-Tabla inicial (v1, ver SPEC-004 para el detalle definitivo):
+Tabla inicial (v1, ver SPEC-004b para el detalle definitivo):
 
 1. Si tiene dados de daño en su pool, resuelve el conjunto de mayor daño total, dirigido al
    personaje del jugador con menos vida restante.
