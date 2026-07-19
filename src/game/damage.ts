@@ -47,3 +47,12 @@ export function resolveShieldedDamage(
   const absorbed = Math.min(shields, amount);
   return { shieldsRemaining: shields - absorbed, healthDamage: amount - absorbed };
 }
+
+/**
+ * Cantidad de recurso de una cara, o null si no es cara de recurso. Cara = `<n>R` (p. ej. `1R`).
+ * Ojo: `1RD` es daño ranged (parseDamage), no recurso; el ancla `$` evita esa colisión.
+ */
+export function parseResource(face: string): number | null {
+  const m = /^(\d+)R$/.exec(face);
+  return m ? Number(m[1]) : null;
+}

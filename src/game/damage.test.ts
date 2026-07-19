@@ -7,6 +7,7 @@ import {
   addShields,
   resolveShieldedDamage,
   MAX_SHIELDS,
+  parseResource,
 } from './damage';
 import type { Character } from '../model/types';
 
@@ -90,5 +91,18 @@ describe('resolveShieldedDamage', () => {
 
   it('escudo parcial: absorbe lo que puede, el sobrante pasa a vida', () => {
     expect(resolveShieldedDamage(2, 5)).toEqual({ shieldsRemaining: 0, healthDamage: 3 });
+  });
+});
+
+describe('parseResource', () => {
+  it('reconoce 1R/2R con su cantidad', () => {
+    expect(parseResource('1R')).toBe(1);
+    expect(parseResource('2R')).toBe(2);
+  });
+
+  it('no es recurso: daño (incluido 1RD), escudo, focus, especial, descarte, blanco', () => {
+    for (const face of ['2MD', '1RD', '2ID', '1Sh', '1F', 'Sp', 'Dc', '-']) {
+      expect(parseResource(face)).toBeNull();
+    }
   });
 });

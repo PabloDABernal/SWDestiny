@@ -5,7 +5,14 @@ import { resolveCards } from '../import/resolveCards';
 import { buildCharacters } from '../import/buildCharacters';
 import { ImportError } from '../import/errors';
 import { rollCharacter, rollDie, type PooledDie } from '../game/roll';
-import { parseDamage, parseShield, addShields, resolveShieldedDamage, isKO } from '../game/damage';
+import {
+  parseDamage,
+  parseShield,
+  addShields,
+  resolveShieldedDamage,
+  parseResource,
+  isKO,
+} from '../game/damage';
 import { computeOutcome as computeOutcomePure, type Outcome, type SideView } from '../game/outcome';
 import {
   applyEnemyHealthMultiplier,
@@ -44,6 +51,8 @@ interface SideState {
   damage: number[];
   /** Escudos acumulados por instancia (SPEC-005), tope MAX_SHIELDS. Ganados solo vía dado NSh. */
   shields: number[];
+  /** Recursos del bando (SPEC-006), contador único, no por personaje. Sin tope. */
+  resources: number;
   pool: PooledDie[];
   /** Rerolls de blancos gastados esta "ronda" (solo relevantes para el bando enemigo/autómata). */
   rerollsUsed: RerollsUsed;
@@ -57,6 +66,7 @@ function freshSide(characters: Character[]): SideState {
     activated: [],
     damage: [],
     shields: [],
+    resources: 0,
     pool: [],
     rerollsUsed: { free: false, extra: 0 },
     importStatus: 'idle',
@@ -171,6 +181,7 @@ interface GameState {
   reset: () => void;
   selectDie: (side: Side, poolIndex: number) => void;
   applyDieTo: (targetSide: Side, index: number) => void;
+  resolveResource: (side: Side, poolIndex: number) => void;
   enemyTurn: () => void;
 }
 
@@ -224,13 +235,25 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { sides: { ...state.sides, [side]: { ...s, activated, pool } } };
     }),
 
-  // Stand-in del ciclo de ronda: vacía pools, reactiva y restablece rerolls en ambos bandos.
-  // NO cura ni deshace el fin.
+  // Stand-in del ciclo de ronda: vacía pools, reactiva, restablece rerolls y VACÍA los recursos
+  // (fiel al reglamento: no se acumulan entre rondas) en ambos bandos. NO cura ni deshace el fin.
   reset: () =>
     set((state) => ({
       sides: {
-        player: { ...state.sides.player, pool: [], activated: [], rerollsUsed: { free: false, extra: 0 } },
-        enemy: { ...state.sides.enemy, pool: [], activated: [], rerollsUsed: { free: false, extra: 0 } },
+        player: {
+          ...state.sides.player,
+          pool: [],
+          activated: [],
+          rerollsUsed: { free: false, extra: 0 },
+          resources: 0,
+        },
+        enemy: {
+          ...state.sides.enemy,
+          pool: [],
+          activated: [],
+          rerollsUsed: { free: false, extra: 0 },
+          resources: 0,
+        },
       },
       selection: null,
       lastEnemyAction: null,
@@ -269,6 +292,21 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
 
       return { selection: null };
+    }),
+
+  // Resolución de un solo clic (sin elegir objetivo, a diferencia de daño/escudo). Bloqueada
+  // mientras haya una selección de daño/escudo pendiente (evita reindexar `selection.poolIndex`
+  // al filtrar el pool).
+  resolveResource: (side: Side, poolIndex: number) =>
+    set((state) => {
+      if (state.outcome !== null || state.selection !== null) return state;
+      const s = state.sides[side];
+      const die = s.pool[poolIndex];
+      if (!die) return state;
+      const amount = parseResource(die.face);
+      if (amount === null) return state;
+      const pool = s.pool.filter((_, i) => i !== poolIndex);
+      return { sides: { ...state.sides, [side]: { ...s, resources: s.resources + amount, pool } } };
     }),
 
   // Turno del autómata (GDD §4): evalúa la tabla de prioridades (motor puro en game/automaton)

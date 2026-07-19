@@ -266,6 +266,11 @@ button:disabled {
   border-color: #74c0fc;
 }
 
+.pool-die--resource {
+  cursor: pointer;
+  border-color: #ffd43b;
+}
+
 .pool-die--selected {
   border-color: #ffd479;
   box-shadow: 0 0 0 2px rgba(255, 212, 121, 0.45);
@@ -293,6 +298,11 @@ button:disabled {
 
 .pool__head h2 {
   margin: 0;
+}
+
+.pool__resources {
+  color: #ffd43b;
+  white-space: nowrap;
 }
 
 .pool__empty {
