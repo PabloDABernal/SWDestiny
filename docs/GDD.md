@@ -30,6 +30,11 @@ Continuing Committee) sin modificarlo, salvo por las limitaciones de alcance de 
 símbolos (melee, ranged, indirecto, escudo, recurso, disrupt, descarte, focus, reroll, especial,
 blanco), recursos, mano/mazo/descarte, fases de acción y mantenimiento, condiciones de victoria.
 
+**Resolución de dados:** desde SPEC-008a el jugador puede resolver **varios dados del mismo
+símbolo** en una acción (melee, ranged e indirecto son símbolos distintos y no se mezclan, aunque
+en v1 los tres resten vida por igual). Pagar costes de cara (SPEC-008b) y combinar modificadores
+`+X` (SPEC-008c) llegan después.
+
 ## 4. El autómata enemigo
 
 Evalúa, en su turno, una tabla de prioridades de arriba abajo y ejecuta la primera acción legal
