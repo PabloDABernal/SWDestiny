@@ -1,6 +1,6 @@
 # SPEC-009: Recursos iniciales, persistencia entre rondas y separar "Nueva ronda" / "Reset total"
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** §3 (recursos, fases), §5 (v2: recursos)
 **Depende de:** SPEC-006 (recursos) — **corrige** su comportamiento de Reset. SPEC-002 (pool/activar).
 
@@ -96,4 +96,7 @@ Muy por debajo de 300 líneas.
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+2026-07-20: playtest manual OK. Confirmado: 2 recursos al importar (ambos bandos), "Nueva ronda"
+solo re-tira dados (recursos/vida/escudos/KO intactos), "Reset total" vuelve al estado inicial
+(recursos 2, vida llena, sin escudos/KO/fin) sin reimportar, reimportar vuelve a 2, "Nueva ronda"
+no-op tras fin. revisor-codigo: CUMPLE. Confirmado por el usuario.
