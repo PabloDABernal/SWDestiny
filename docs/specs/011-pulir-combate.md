@@ -1,6 +1,6 @@
 # SPEC-011: Pulir combate — +2 recursos por ronda y daño multi-objetivo
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** §3 (resolver dados), §5 (v2: recursos)
 **Depende de:** SPEC-009 (Nueva ronda / recursos), SPEC-008a/010 (resolución de dados)
 
@@ -87,4 +87,8 @@ dos acciones. Muy por debajo de 300 líneas.
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+2026-07-20/21: playtest manual OK. Confirmado: "Nueva ronda" da +2 recursos a cada bando (💰 2→4→6),
+"Reset total" a 2, no-op tras fin; daño multi-objetivo (dados del mismo símbolo a enemigos distintos,
+modo abierto entre tandas). Iterado: el modo se cierra si solo quedan modificadores sueltos (sin
+base). revisor-codigo: CUMPLE. Confirmado por el usuario. Nota: el +2 por ronda es fiel (RR pg 19,
+upkeep); "Nueva ronda" sigue siendo stand-in del mantenimiento completo (documentado en GDD/SDD).
