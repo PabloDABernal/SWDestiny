@@ -1,6 +1,6 @@
 # SPEC-008a: Resolver varios dados del mismo símbolo en una acción
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** §3 (símbolos, resolver dados), §5 (v1/v2: daño, escudos, recursos)
 **Depende de:** SPEC-003 (daño), SPEC-005 (escudos), SPEC-006 (recursos)
 
@@ -20,6 +20,10 @@ varios en la misma tanda. Melee, ranged e indirecto son símbolos **distintos** 
   seleccionables.
 - **Botones del modo** (Cancelar / "Resolver recursos") se renderizan en el `DicePool` del bando
   jugador. **"Resolver recursos"** está **deshabilitado con 0 dados marcados**.
+- **Reset** se muestra junto a **cada** pool (comodidad, para no desplazarse); llama a la acción
+  `reset` global de siempre (vacía pools/activaciones/recursos de ambos bandos, no cura).
+- **Tras aplicar** una tanda de daño/escudo (todos los marcados al objetivo), el modo se **cierra**
+  (una resolución = una acción); para otra tanda se vuelve a marcar.
 - **Activar sigue disponible**: se puede activar un personaje aunque haya un modo resolver abierto;
   los dados nuevos se añaden al final del pool sin afectar la selección en curso.
 - **Cambiar de símbolo**: clic en un dado de otro símbolo **reemplaza** el modo (empieza uno nuevo
@@ -104,4 +108,8 @@ apoya en los helpers puros existentes; confirmar al empezar.
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+2026-07-20: playtest manual OK (mazo Death Trooper 02001 x3 para daño ranged repetido). Confirmado:
+modo resolver por símbolo, marcar uno o varios del mismo símbolo, aplicar todos al mismo objetivo
+(suma; escudos absorben), recurso batch + botón, +2RD (modificador) no seleccionable, Reset por
+pool. revisor-codigo: CUMPLE. Confirmado por el usuario tras iterar la UX (marcar varios → mismo
+objetivo, sin repartir).
