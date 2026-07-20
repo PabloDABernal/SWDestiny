@@ -58,9 +58,10 @@ Verificables jugando. Formato: acción → resultado observable.
 
 ## Notas técnicas (opcional)
 
-- **Parseo de la cara**: la cara de recurso es exactamente `1R` (no confundir con `1RD`, que es
-  daño ranged — ya distinguido por `parseDamage`). Nueva función pura `parseResource(face): number
-  | null` en `src/game/damage.ts` (o módulo hermano), análoga a `parseShield`/`parseDamage`.
+- **Parseo de la cara**: cara de recurso = `<n>R` (`1R`, `2R`, según el valor mostrado — mismo
+  patrón que `1Sh/2Sh/3Sh` de SPEC-005). No confundir con `1RD`, que es daño ranged, ya distinguido
+  por `parseDamage`. Nueva función pura `parseResource(face): number | null` en
+  `src/game/damage.ts` (o módulo hermano), análoga a `parseShield`/`parseDamage`.
 - **Estado**: nuevo campo `resources: number` en `SideState` (no un array por instancia, a
   diferencia de `damage`/`shields`: es un total de bando). Inicializado a 0 en `freshSide`. Se
   resetea en `reset()` para ambos bandos, igual que `rerollsUsed`.

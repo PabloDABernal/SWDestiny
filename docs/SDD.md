@@ -1,7 +1,8 @@
 # SDD — Star Wars Destiny: PVE con mazos de la comunidad
 
-**Estado:** Vivo (v1.0) — decisiones confirmadas por specs jugadas (TypeScript, Zustand, localStorage,
-proxy /arh, estado por bando y motor del autómata desde SPEC-004/004b)
+**Estado:** Vivo (v1.0, v2 en curso) — decisiones confirmadas por specs jugadas (TypeScript,
+Zustand, localStorage, proxy /arh en dev, estado por bando y motor del autómata desde
+SPEC-004/004b, escudos y recursos por bando desde SPEC-005/006, despliegue a GitHub Pages)
 
 ## Stack propuesto
 
@@ -16,6 +17,11 @@ proxy /arh, estado por bando y motor del autómata desde SPEC-004/004b)
   localmente en **localStorage** (decidido en SPEC-001; IndexedDB queda como opción futura si el
   volumen lo exige).
 - Sin persistencia de partidas entre sesiones en v1 (a revisar si se pide más adelante).
+- **Despliegue**: GitHub Pages sirviendo el build estático desde `main` (`.github/workflows/deploy-pages.yml`,
+  `vite.config.ts` con `base: '/SWDestiny/'`). En dev, `resolveCards.ts` pasa por el proxy `/arh`
+  de Vite para evitar CORS; en producción llama directo a la API de ARH DB (confirmado que permite
+  CORS abierto desde el navegador, jugando en Pages durante el playtest de SPEC-005 — ver
+  BACKLOG.md).
 
 *(Alternativas descartadas por ahora, anotadas por si se quiere reabrir la decisión: Redux
 Toolkit en vez de Zustand — más ceremonia, no aporta aquí; SolidJS en vez de React — menos
@@ -36,6 +42,13 @@ ecosistema de componentes de tablero/dados ya hechos.)*
   activaciones, daño, pool de dados) se organiza por bando (`player` / `enemy`); cada bando tiene
   su propio pool. Los mazos importados se persisten en claves separadas por bando; el estado de
   partida (pools, activaciones, daño, fin de partida) no se persiste.
+- **Escudos y recursos** (desde SPEC-005/006): `shields: number[]` por instancia (tope
+  `MAX_SHIELDS`, absorben daño antes que la vida en `resolveDamage`) y `resources: number` único
+  por bando (sin tope, se vacía con Reset, a diferencia de vida/escudos que Reset no cura). El
+  objetivo válido de un dado ya no es siempre "el bando contrario": depende del tipo de dado
+  (daño → bando contrario; escudo → propio bando; recurso → sin objetivo, un solo clic). El
+  autómata (SPEC-004b) solo conoce daño/activar/reroll/pasar; no resuelve escudos ni recursos
+  (anotado en BACKLOG).
 
 ## Reglas técnicas de alcance por fase (para revisor-código y revisor-specs)
 

@@ -88,10 +88,11 @@ en la carta).
 
 ### Recursos (primera pieza — solo generación, GDD v2)
 
-Resolver un dado que muestra `1R` en el pool (un solo clic, sin elegir objetivo) añade **1
-recurso** a un **contador único por bando** (no por personaje, a diferencia de los escudos),
-consumiendo el dado. El contador se **vacía con el botón Reset**, igual que el pool de dados y a
-diferencia de vida/escudos (fiel al reglamento: los recursos no se acumulan entre rondas).
+Resolver un dado que muestra `1R`/`2R` (según el valor mostrado) en el pool (un solo clic, sin
+elegir objetivo) añade esa cantidad de **recursos** a un **contador único por bando** (no por
+personaje, a diferencia de los escudos), consumiendo el dado. El contador se **vacía con el botón
+Reset**, igual que el pool de dados y a diferencia de vida/escudos (fiel al reglamento: los
+recursos no se acumulan entre rondas).
 
 **Gastar** recursos —para pagar caras de dado con coste, o para jugar cartas más adelante— queda
 fuera de esta primera pieza: el formato exacto en que ARH DB codifica una cara de dado *con coste*
