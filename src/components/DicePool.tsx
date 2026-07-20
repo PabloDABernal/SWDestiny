@@ -1,5 +1,5 @@
 import { useGameStore, type Side } from '../store/gameStore';
-import { dieSymbol } from '../game/damage';
+import { dieSymbol, parsePlayerFace } from '../game/damage';
 
 export function DicePool({ side }: { side: Side }) {
   const pool = useGameStore((s) => s.sides[side].pool);
@@ -29,11 +29,18 @@ export function DicePool({ side }: { side: Side }) {
       </div>
 
       {interactive && mode && (
-        <div className="pool__mode">
-          <span className="pool__mode-label">
-            Resolviendo: {symbolLabel(mode.symbol)} ({mode.marked.length} marcado/s)
-          </span>
-          {mode.symbol === 'resource' && (
+        <div className={`pool__mode${mode.pendingEffect ? ' pool__mode--cost' : ''}`}>
+          {mode.pendingEffect ? (
+            <span className="pool__mode-label">
+              ✔ Efecto asignado. Paso 2/2: elige el aliado que recibe el coste indirecto (
+              {indirectTotal(pool, mode.marked)} de daño).
+            </span>
+          ) : (
+            <span className="pool__mode-label">
+              Resolviendo: {symbolLabel(mode.symbol)} ({mode.marked.length} marcado/s)
+            </span>
+          )}
+          {mode.symbol === 'resource' && !mode.pendingEffect && (
             <button onClick={resolveResources} disabled={mode.marked.length === 0}>
               Resolver recursos
             </button>
@@ -102,4 +109,13 @@ function symbolClass(s: string): string {
   if (s === 'shield') return 'shield';
   if (s === 'resource') return 'resource';
   return 'damage';
+}
+
+/** Suma el coste de daño indirecto de los dados marcados (para el mensaje del paso 2, SPEC-010). */
+function indirectTotal(pool: { face: string }[], marked: number[]): number {
+  return marked.reduce((acc, i) => {
+    const die = pool[i];
+    const p = die ? parsePlayerFace(die.face) : null;
+    return acc + (p ? p.indirectCost : 0);
+  }, 0);
 }
