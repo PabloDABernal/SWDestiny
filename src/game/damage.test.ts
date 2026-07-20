@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseDamage,
+  parseDamageDie,
+  dieSymbol,
   currentHealth,
   isKO,
   parseShield,
@@ -35,6 +37,36 @@ describe('parseDamage', () => {
   it('no es daño: recurso, focus, escudo, especial, descarte, blanco', () => {
     for (const face of ['1R', '2R', '1F', '2Sh', 'Sp', 'Dc', '-']) {
       expect(parseDamage(face)).toBeNull();
+    }
+  });
+});
+
+describe('parseDamageDie (símbolo + cantidad, SPEC-008a)', () => {
+  it('distingue melee/ranged/indirecto', () => {
+    expect(parseDamageDie('2MD')).toEqual({ kind: 'melee', amount: 2 });
+    expect(parseDamageDie('1RD')).toEqual({ kind: 'ranged', amount: 1 });
+    expect(parseDamageDie('3ID')).toEqual({ kind: 'indirect', amount: 3 });
+  });
+
+  it('null para no-daño (recurso, escudo, blanco, especial, coste, modificador)', () => {
+    for (const face of ['1R', '2Sh', '-', 'Sp', 'Dc', '2RD1', '2RDi1', '+2MD']) {
+      expect(parseDamageDie(face)).toBeNull();
+    }
+  });
+});
+
+describe('dieSymbol (SPEC-008a)', () => {
+  it('mapea cada cara resoluble a su símbolo', () => {
+    expect(dieSymbol('2MD')).toBe('melee');
+    expect(dieSymbol('1RD')).toBe('ranged');
+    expect(dieSymbol('2ID')).toBe('indirect');
+    expect(dieSymbol('2Sh')).toBe('shield');
+    expect(dieSymbol('1R')).toBe('resource');
+  });
+
+  it('null para caras no seleccionables (blanco, especial, descarte, coste, modificador)', () => {
+    for (const face of ['-', 'Sp', 'Dc', '2RD1', '2RDi1', '+2MD']) {
+      expect(dieSymbol(face)).toBeNull();
     }
   });
 });

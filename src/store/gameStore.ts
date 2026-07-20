@@ -7,11 +7,13 @@ import { ImportError } from '../import/errors';
 import { rollCharacter, rollDie, type PooledDie } from '../game/roll';
 import {
   parseDamage,
+  dieSymbol,
   parseShield,
   addShields,
   resolveShieldedDamage,
   parseResource,
   isKO,
+  type DieSymbol,
 } from '../game/damage';
 import { computeOutcome as computeOutcomePure, type Outcome, type SideView } from '../game/outcome';
 import {
@@ -189,23 +191,34 @@ function resolveResourcePure(
   return { sides: { ...sides, [side]: { ...s, resources: s.resources + amount, pool } }, amount };
 }
 
-interface Selection {
+/**
+ * "Modo resolver" del jugador (SPEC-008a): tras elegir un dado, solo se resuelven dados del MISMO
+ * bando y símbolo. Para daño/escudo, `marked` es el dado "actual" (0 o 1); para recurso, el conjunto
+ * de dados marcados que se resolverán juntos.
+ */
+interface ResolveMode {
   side: Side;
-  poolIndex: number;
+  symbol: DieSymbol;
+  marked: number[];
 }
 
 interface GameState {
   sides: Record<Side, SideState>;
-  selection: Selection | null;
+  resolve: ResolveMode | null;
   outcome: Outcome;
   /** Feedback de la última acción del autómata (incluida "pasa"), para mostrar en la UI. */
   lastEnemyAction: string | null;
   importDeck: (side: Side, raw: string) => Promise<void>;
   activate: (side: Side, index: number) => void;
   reset: () => void;
+  /** Marca/desmarca un dado del pool propio, entrando/cambiando el modo resolver por símbolo. */
   selectDie: (side: Side, poolIndex: number) => void;
+  /** Aplica el dado actual (daño/escudo) a un objetivo. */
   applyDieTo: (targetSide: Side, index: number) => void;
-  resolveResource: (side: Side, poolIndex: number) => void;
+  /** Resuelve juntos todos los dados de recurso marcados (suma al contador). */
+  resolveResources: () => void;
+  /** Cancela el modo resolver sin resolver nada. */
+  cancelResolve: () => void;
   enemyTurn: () => void;
 }
 
@@ -215,7 +228,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     player: freshSide(loadPersistedDeck('player')),
     enemy: freshSide(loadPersistedDeck('enemy')),
   },
-  selection: null,
+  resolve: null,
   outcome: null,
   lastEnemyAction: null,
 
@@ -233,7 +246,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Reinicia el estado de partida de ESTE bando (vida completa) y recalcula el fin.
       set((state) => {
         const sides = { ...state.sides, [side]: freshSide(characters) };
-        return { sides, selection: null, outcome: computeOutcome(sides) };
+        return { sides, resolve: null, outcome: computeOutcome(sides) };
       });
     } catch (e) {
       const message =
@@ -279,7 +292,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           resources: 0,
         },
       },
-      selection: null,
+      resolve: null,
       lastEnemyAction: null,
     })),
 
@@ -287,46 +300,78 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((state) => {
       if (state.outcome !== null) return state;
       const die = state.sides[side].pool[poolIndex];
-      if (!die || (parseDamage(die.face) === null && parseShield(die.face) === null)) return state;
-      const same = state.selection?.side === side && state.selection?.poolIndex === poolIndex;
-      return { selection: same ? null : { side, poolIndex } };
+      if (!die) return state;
+      const symbol = dieSymbol(die.face);
+      // Caras no seleccionables (blanco, especial, con coste o modificador → 008b/008c).
+      if (symbol === null) return state;
+
+      const cur = state.resolve;
+      // Distinto bando/símbolo, o sin modo: empieza modo nuevo con este dado (reemplaza).
+      if (!cur || cur.side !== side || cur.symbol !== symbol) {
+        return { resolve: { side, symbol, marked: [poolIndex] } };
+      }
+      // Mismo bando y símbolo:
+      if (symbol === 'resource') {
+        // Toggle en el conjunto marcado.
+        const marked = cur.marked.includes(poolIndex)
+          ? cur.marked.filter((i) => i !== poolIndex)
+          : [...cur.marked, poolIndex];
+        return { resolve: { ...cur, marked } };
+      }
+      // Daño/escudo: el dado "actual" es único. Reclicarlo lo deselecciona.
+      const marked = cur.marked[0] === poolIndex ? [] : [poolIndex];
+      return { resolve: { ...cur, marked } };
     }),
 
   applyDieTo: (targetSide: Side, index: number) =>
     set((state) => {
-      if (state.outcome !== null || state.selection === null) return state;
-      const { side: sourceSide, poolIndex } = state.selection;
-      const die = state.sides[sourceSide].pool[poolIndex];
-      if (!die) return { selection: null };
+      const cur = state.resolve;
+      if (state.outcome !== null || cur === null || cur.marked.length === 0) return state;
+      if (cur.symbol === 'resource') return state; // el recurso no tiene objetivo
+      const poolIndex = cur.marked[0];
+      const die = state.sides[cur.side].pool[poolIndex];
+      if (!die) return { resolve: { ...cur, marked: [] } };
 
-      if (parseDamage(die.face) !== null) {
-        // Dado de daño: el objetivo debe ser del bando CONTRARIO al dueño del dado.
-        if (targetSide === sourceSide) return state;
-        const result = resolveDamage(state.sides, sourceSide, poolIndex, targetSide, index);
-        if (result === null) return { selection: null };
-        return { sides: result.sides, selection: null, outcome: result.outcome };
+      if (cur.symbol === 'shield') {
+        // Escudo: objetivo del MISMO bando.
+        if (targetSide !== cur.side) return state;
+        const result = resolveShield(state.sides, cur.side, poolIndex, index);
+        if (result === null) return state;
+        // Se mantiene el modo (mismo símbolo) para seguir resolviendo; se limpia el dado actual.
+        return { sides: result.sides, resolve: { ...cur, marked: [] } };
       }
 
-      if (parseShield(die.face) !== null) {
-        // Dado de escudo: el objetivo debe ser del MISMO bando que el dueño del dado.
-        if (targetSide !== sourceSide) return state;
-        const result = resolveShield(state.sides, sourceSide, poolIndex, index);
-        if (result === null) return { selection: null };
-        return { sides: result.sides, selection: null };
-      }
-
-      return { selection: null };
+      // Daño (melee/ranged/indirecto): objetivo del bando CONTRARIO.
+      if (targetSide === cur.side) return state;
+      const result = resolveDamage(state.sides, cur.side, poolIndex, targetSide, index);
+      if (result === null) return state;
+      const resolveNext = result.outcome !== null ? null : { ...cur, marked: [] };
+      return { sides: result.sides, resolve: resolveNext, outcome: result.outcome };
     }),
 
-  // Resolución de un solo clic (sin elegir objetivo, a diferencia de daño/escudo). Bloqueada
-  // mientras haya una selección de daño/escudo pendiente (evita reindexar `selection.poolIndex`
-  // al filtrar el pool).
-  resolveResource: (side: Side, poolIndex: number) =>
+  // Resuelve juntos todos los dados de recurso marcados (SPEC-008a): suma sus valores al contador y
+  // los consume en una sola pasada (para no descuadrar índices).
+  resolveResources: () =>
     set((state) => {
-      if (state.outcome !== null || state.selection !== null) return state;
-      const result = resolveResourcePure(state.sides, side, poolIndex);
-      return result === null ? state : { sides: result.sides };
+      const cur = state.resolve;
+      if (state.outcome !== null || cur === null || cur.symbol !== 'resource') return state;
+      if (cur.marked.length === 0) return state;
+      const s = state.sides[cur.side];
+      const markedSet = new Set(cur.marked);
+      let total = 0;
+      for (const i of cur.marked) {
+        const die = s.pool[i];
+        const amount = die ? parseResource(die.face) : null;
+        if (amount !== null) total += amount;
+      }
+      const pool = s.pool.filter((_, i) => !markedSet.has(i));
+      return {
+        sides: { ...state.sides, [cur.side]: { ...s, resources: s.resources + total, pool } },
+        resolve: null,
+      };
     }),
+
+  cancelResolve: () => set({ resolve: null }),
 
   // Turno del autómata (GDD §4): evalúa la tabla de prioridades (motor puro en game/automaton)
   // y ejecuta como máximo UNA acción por llamada, reutilizando activate/resolveDamage.

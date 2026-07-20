@@ -1,12 +1,17 @@
 import { useGameStore, type Side } from '../store/gameStore';
-import { parseDamage, parseShield, parseResource } from '../game/damage';
+import { dieSymbol } from '../game/damage';
 
 export function DicePool({ side }: { side: Side }) {
   const pool = useGameStore((s) => s.sides[side].pool);
   const resources = useGameStore((s) => s.sides[side].resources);
-  const selection = useGameStore((s) => s.selection);
+  const resolve = useGameStore((s) => s.resolve);
   const selectDie = useGameStore((s) => s.selectDie);
-  const resolveResource = useGameStore((s) => s.resolveResource);
+  const resolveResources = useGameStore((s) => s.resolveResources);
+  const cancelResolve = useGameStore((s) => s.cancelResolve);
+
+  // El jugador solo resuelve su propio pool (SPEC-008a). El pool enemigo se muestra estático.
+  const interactive = side === 'player';
+  const mode = resolve && resolve.side === side ? resolve : null;
 
   return (
     <div className="pool">
@@ -14,27 +19,45 @@ export function DicePool({ side }: { side: Side }) {
         <span className="pool__title">Pool ({pool.length})</span>
         {resources > 0 && <span className="pool__resources">💰 {resources}</span>}
       </div>
+
+      {interactive && mode && (
+        <div className="pool__mode">
+          <span className="pool__mode-label">
+            Resolviendo: {symbolLabel(mode.symbol)}
+            {mode.symbol === 'resource' && ` (${mode.marked.length} marcado/s)`}
+          </span>
+          {mode.symbol === 'resource' && (
+            <button onClick={resolveResources} disabled={mode.marked.length === 0}>
+              Resolver recursos
+            </button>
+          )}
+          <button onClick={cancelResolve}>Cancelar</button>
+        </div>
+      )}
+
       {pool.length === 0 ? (
         <p className="pool__empty">Sin dados.</p>
       ) : (
         <div className="pool__dice">
           {pool.map((d, i) => {
-            const isDamage = parseDamage(d.face) !== null;
-            const isShield = parseShield(d.face) !== null;
-            const isResource = parseResource(d.face) !== null;
-            const selected = selection?.side === side && selection?.poolIndex === i;
-            // Un dado de recurso se resuelve de un clic (sin objetivo) y se bloquea mientras
-            // haya cualquier selección de daño/escudo pendiente (SPEC-006).
-            const disabled = isResource
-              ? selection !== null
-              : !isDamage && !isShield;
+            const symbol = dieSymbol(d.face);
+            const selectable = interactive && symbol !== null;
+            const marked = mode !== null && mode.marked.includes(i);
+            // En un modo activo, los dados de otro símbolo se atenúan (siguen clicables: clicarlos
+            // reemplaza el modo, SPEC-008a); las caras no resolubles quedan deshabilitadas.
+            const dimmed = mode !== null && symbol !== null && symbol !== mode.symbol;
+            const cls =
+              'pool-die' +
+              (symbol ? ` pool-die--${symbolClass(symbol)}` : '') +
+              (marked ? ' pool-die--selected' : '') +
+              (dimmed ? ' pool-die--dimmed' : '');
             return (
               <button
                 key={i}
-                className={`pool-die${isDamage ? ' pool-die--damage' : ''}${isShield ? ' pool-die--shield' : ''}${isResource ? ' pool-die--resource' : ''}${selected ? ' pool-die--selected' : ''}`}
+                className={cls}
                 title={`${d.name} · dado ${d.dieIndex + 1}`}
-                onClick={() => (isResource ? resolveResource(side, i) : selectDie(side, i))}
-                disabled={disabled}
+                onClick={selectable ? () => selectDie(side, i) : undefined}
+                disabled={!selectable}
               >
                 <span className="pool-die__face">{d.face}</span>
                 <span className="pool-die__owner">{d.name}</span>
@@ -45,4 +68,27 @@ export function DicePool({ side }: { side: Side }) {
       )}
     </div>
   );
+}
+
+function symbolLabel(s: string): string {
+  switch (s) {
+    case 'melee':
+      return 'daño melee';
+    case 'ranged':
+      return 'daño ranged';
+    case 'indirect':
+      return 'daño indirecto';
+    case 'shield':
+      return 'escudo';
+    case 'resource':
+      return 'recurso';
+    default:
+      return s;
+  }
+}
+
+function symbolClass(s: string): string {
+  if (s === 'shield') return 'shield';
+  if (s === 'resource') return 'resource';
+  return 'damage';
 }

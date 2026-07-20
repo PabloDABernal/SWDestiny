@@ -11,6 +11,32 @@ export function parseDamage(face: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
+/** Tipo de daño de una cara. Melee, ranged e indirecto son símbolos distintos (SPEC-008a). */
+export type DamageKind = 'melee' | 'ranged' | 'indirect';
+
+/** Símbolo resoluble de una cara sin coste ni modificador (SPEC-008a). */
+export type DieSymbol = DamageKind | 'shield' | 'resource';
+
+/** Distingue el símbolo de daño y su cantidad, o null si no es cara de daño (sin coste). */
+export function parseDamageDie(face: string): { kind: DamageKind; amount: number } | null {
+  const m = /^(\d+)(MD|RD|ID)$/.exec(face);
+  if (!m) return null;
+  const kind: DamageKind = m[2] === 'MD' ? 'melee' : m[2] === 'RD' ? 'ranged' : 'indirect';
+  return { kind, amount: Number(m[1]) };
+}
+
+/**
+ * Símbolo resoluble de una cara para el "modo resolver" del jugador (SPEC-008a), o null si la cara
+ * no es seleccionable aquí (blanco, especial, o cara con coste/modificador — esas van en 008b/008c).
+ */
+export function dieSymbol(face: string): DieSymbol | null {
+  const dmg = parseDamageDie(face);
+  if (dmg) return dmg.kind;
+  if (parseShield(face) !== null) return 'shield';
+  if (parseResource(face) !== null) return 'resource';
+  return null;
+}
+
 /** Vida restante de la instancia en `index`, dada la tabla de daño acumulado. */
 export function currentHealth(character: Character, damage: number): number {
   return Math.max(0, character.health - damage);

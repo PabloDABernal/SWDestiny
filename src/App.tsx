@@ -2,24 +2,22 @@ import { useGameStore, opposite, type Side } from './store/gameStore';
 import { ImportPanel } from './components/ImportPanel';
 import { CharacterCard } from './components/CharacterCard';
 import { DicePool } from './components/DicePool';
-import { currentHealth, isKO, parseShield } from './game/damage';
+import { currentHealth, isKO } from './game/damage';
 
 function BattleSide({ side, label }: { side: Side; label: string }) {
   const s = useGameStore((st) => st.sides[side]);
-  const selection = useGameStore((st) => st.selection);
+  const resolve = useGameStore((st) => st.resolve);
   const outcome = useGameStore((st) => st.outcome);
   const activate = useGameStore((st) => st.activate);
   const applyDieTo = useGameStore((st) => st.applyDieTo);
-  const selectedDie = useGameStore((st) =>
-    st.selection ? st.sides[st.selection.side].pool[st.selection.poolIndex] : undefined,
-  );
-  const isShieldSelected = selectedDie !== undefined && parseShield(selectedDie.face) !== null;
 
-  // Objetivo válido: dado de daño → bando contrario; dado de escudo → el propio bando.
+  // Objetivo válido: hay un dado de daño/escudo "actual" marcado. Daño → bando contrario;
+  // escudo → el propio bando. El recurso no tiene objetivo.
+  const hasTargetDie =
+    outcome === null && resolve !== null && resolve.marked.length > 0 && resolve.symbol !== 'resource';
   const targetableSide =
-    outcome === null &&
-    selection !== null &&
-    (isShieldSelected ? selection.side === side : opposite(selection.side) === side);
+    hasTargetDie &&
+    (resolve!.symbol === 'shield' ? resolve!.side === side : opposite(resolve!.side) === side);
   const isPlayer = side === 'player';
 
   return (
@@ -59,15 +57,20 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
 
 export function App() {
   const outcome = useGameStore((s) => s.outcome);
-  const selection = useGameStore((s) => s.selection);
-  const selectedDie = useGameStore((s) =>
-    s.selection ? s.sides[s.selection.side].pool[s.selection.poolIndex] : undefined,
-  );
-  const isShieldSelected = selectedDie !== undefined && parseShield(selectedDie.face) !== null;
+  const resolve = useGameStore((s) => s.resolve);
   const reset = useGameStore((s) => s.reset);
   const enemyTurn = useGameStore((s) => s.enemyTurn);
   const lastEnemyAction = useGameStore((s) => s.lastEnemyAction);
   const enemyHasDeck = useGameStore((s) => s.sides.enemy.characters.length > 0);
+
+  const hint =
+    resolve === null || outcome !== null || resolve.marked.length === 0
+      ? null
+      : resolve.symbol === 'shield'
+        ? 'Dado de escudo marcado. Pulsa un personaje de tu propio bando para aplicarlo.'
+        : resolve.symbol === 'resource'
+          ? null
+          : 'Dado de daño marcado. Pulsa un personaje enemigo para aplicarlo.';
 
   return (
     <main className="app">
@@ -78,13 +81,7 @@ export function App() {
           {outcome === 'victory' ? '🏆 Victoria' : '💀 Derrota'}
         </div>
       )}
-      {selection !== null && outcome === null && (
-        <p className="app__hint">
-          {isShieldSelected
-            ? 'Dado de escudo seleccionado. Pulsa un personaje de tu propio bando para aplicarlo.'
-            : 'Dado de daño seleccionado. Pulsa un personaje enemigo para aplicarlo.'}
-        </p>
-      )}
+      {hint && <p className="app__hint">{hint}</p>}
       {lastEnemyAction && <p className="app__hint">{lastEnemyAction}</p>}
 
       <div className="controls">

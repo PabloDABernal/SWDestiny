@@ -276,6 +276,27 @@ button:disabled {
   box-shadow: 0 0 0 2px rgba(255, 212, 121, 0.45);
 }
 
+.pool-die--dimmed {
+  opacity: 0.4;
+}
+
+.pool__mode {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  background: #14202a;
+  border: 1px solid #2a3d4a;
+  border-radius: 6px;
+}
+
+.pool__mode-label {
+  color: #ffd479;
+  font-size: 0.9rem;
+}
+
 .pool-die:disabled {
   opacity: 0.7;
   cursor: default;
