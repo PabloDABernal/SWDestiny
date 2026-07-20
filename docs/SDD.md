@@ -54,7 +54,10 @@ ecosistema de componentes de tablero/dados ya hechos.)*
 ## Reglas técnicas de alcance por fase (para revisor-código y revisor-specs)
 
 - **v1:** costes de recursos en caras de dado = tratados como si no se pudieran pagar nunca
-  (equivalente a blanco), hasta que exista el sistema de recursos (v2).
+  (equivalente a blanco), hasta que exista el sistema de recursos (v2). **Superado en SPEC-008b**:
+  con recursos ya implementados, el jugador paga costes de cara (recurso amarillo / daño indirecto
+  propio rojo). Formato de coste en ARH DB: `<valor><SÍMBOLO>[i]<coste>` (`i` = coste indirecto; sin
+  `i` = coste de recurso). El autómata sigue sin pagar costes.
 - Cualquier símbolo, keyword o mecánica no listada como "dentro de alcance" en la spec en curso
   se considera fuera de alcance y debe ir a BACKLOG.md, no implementarse "de paso".
 
