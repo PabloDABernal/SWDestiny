@@ -25,12 +25,12 @@ varios en la misma tanda. Melee, ranged e indirecto son símbolos **distintos** 
 - **Cambiar de símbolo**: clic en un dado de otro símbolo **reemplaza** el modo (empieza uno nuevo
   de ese símbolo). Nunca quedan símbolos mezclados.
 - **Cancelar**: un botón/acción **Cancelar** sale del modo sin resolver nada.
-- **Daño (melee/ranged/indirecto)**: dentro del modo, clic en un dado (queda como "actual") + clic
-  en un personaje **enemigo no-KO** → aplica **ese** dado a **ese** objetivo (los escudos absorben
-  primero, SPEC-005) y lo consume. Repites con otro dado del mismo símbolo, a otro objetivo si
-  quieres. Así se resuelven varios del mismo símbolo, cada uno a su objetivo elegido (sin
-  ambigüedad de correspondencia).
-- **Escudo**: igual que daño, pero el objetivo es un **aliado no-KO** del propio bando (tope 3).
+- **Daño (melee/ranged/indirecto)**: puedes **marcar uno o varios** dados del mismo símbolo (toggle;
+  se resaltan). Clic en un personaje **enemigo no-KO** aplica **todos** los marcados a **ese mismo**
+  objetivo (la suma; los escudos absorben primero, SPEC-005) y los consume. No se reparten entre
+  objetivos: todos van al que elijas. Puedes marcar uno solo o varios, como en el juego original.
+- **Escudo**: igual (marcar uno o varios), pero todos los marcados van a un **aliado no-KO** del
+  propio bando (suma, tope 3).
 - **Recurso**: no hay objetivo. **Marcas** (toggle) los dados de recurso que quieras y pulsas
   **"Resolver recursos"** → suma **todos** los marcados al contador del bando y los consume.
 
@@ -52,9 +52,9 @@ Verificables jugando. Formato: acción → resultado observable.
 
 - [ ] Al hacer clic en un dado de **daño melee** del pool, entro en modo resolver melee: los dados de
       ranged/indirecto/escudo/recurso quedan **atenuados y no seleccionables**.
-- [ ] Con modo melee activo, aplico un dado a un enemigo (clic dado actual → clic enemigo), y luego
-      **otro** dado melee a **otro** enemigo: cada uno baja la vida de su objetivo (escudos primero)
-      y se consume. Puedo asignar cantidades distintas a objetivos distintos.
+- [ ] Con modo melee activo puedo **marcar varios** dados melee (se resaltan); al clicar un enemigo,
+      **todos** los marcados le pegan (la suma; escudos primero) y se consumen. Marcar un solo dado
+      también vale (caso trivial).
 - [ ] Clic en un dado **ranged** mientras estoy en modo melee → **cambia** a modo ranged (la
       selección melee se descarta); nunca se resuelven melee y ranged en la misma tanda.
 - [ ] Pulsar **Cancelar** sale del modo sin resolver ni consumir dados.
@@ -84,7 +84,9 @@ Verificables jugando. Formato: acción → resultado observable.
   implementación sin cambiar su contrato observable.
 - La `selection` del store pasa de `{ side, poolIndex }` a un modo:
   `resolve: { side, symbol: 'melee'|'ranged'|'indirect'|'shield'|'resource', marked: number[] } |
-  null`. Para daño/escudo, `marked` es el dado "actual" (0 o 1); para recurso, el conjunto marcado.
+  null`. `marked` es un **conjunto** (uno o varios) del mismo símbolo. Daño/escudo: al clicar un
+  objetivo se aplican TODOS los marcados a ese objetivo (`resolveDamageBatch`/`resolveShieldBatch`,
+  suma). Recurso: botón "Resolver recursos" suma los marcados. El clic en otro símbolo reemplaza.
 - **Archivos afectados** (además del store): `src/components/DicePool.tsx` (marcado/atenuado por
   símbolo, botón "Resolver recursos", botón "Cancelar") y `src/App.tsx` (hoy lee `selection.poolIndex`
   y `parseShield(selectedDie.face)` en las líneas del hint/`targetable`; hay que adaptarlo al nuevo

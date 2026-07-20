@@ -8,6 +8,7 @@ export function DicePool({ side }: { side: Side }) {
   const selectDie = useGameStore((s) => s.selectDie);
   const resolveResources = useGameStore((s) => s.resolveResources);
   const cancelResolve = useGameStore((s) => s.cancelResolve);
+  const reset = useGameStore((s) => s.reset);
 
   // El jugador solo resuelve su propio pool (SPEC-008a). El pool enemigo se muestra estático.
   const interactive = side === 'player';
@@ -18,13 +19,17 @@ export function DicePool({ side }: { side: Side }) {
       <div className="pool__head">
         <span className="pool__title">Pool ({pool.length})</span>
         {resources > 0 && <span className="pool__resources">💰 {resources}</span>}
+        {interactive && (
+          <button className="pool__reset" onClick={reset}>
+            Reset
+          </button>
+        )}
       </div>
 
       {interactive && mode && (
         <div className="pool__mode">
           <span className="pool__mode-label">
-            Resolviendo: {symbolLabel(mode.symbol)}
-            {mode.symbol === 'resource' && ` (${mode.marked.length} marcado/s)`}
+            Resolviendo: {symbolLabel(mode.symbol)} ({mode.marked.length} marcado/s)
           </span>
           {mode.symbol === 'resource' && (
             <button onClick={resolveResources} disabled={mode.marked.length === 0}>

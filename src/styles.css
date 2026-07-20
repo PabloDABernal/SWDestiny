@@ -236,6 +236,12 @@ button:disabled {
   font-weight: 600;
 }
 
+.pool__reset {
+  margin-left: auto;
+  padding: 4px 12px;
+  font-size: 0.85rem;
+}
+
 .outcome {
   text-align: center;
   font-size: 1.4rem;

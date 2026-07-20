@@ -167,6 +167,87 @@ function resolveShield(
   return { sides: nextSides, amount };
 }
 
+/**
+ * Aplica varios dados de daño de `sourceSide` a UN personaje de `targetSide` (SPEC-008a): suma sus
+ * valores, los escudos absorben del total y el resto baja la vida; consume todos los dados. Devuelve
+ * null si no hay objetivo válido o ningún dado de daño en `dieIndexes`.
+ */
+function resolveDamageBatch(
+  sides: Record<Side, SideState>,
+  sourceSide: Side,
+  dieIndexes: number[],
+  targetSide: Side,
+  targetIndex: number,
+): DamageResolution | null {
+  const source = sides[sourceSide];
+  const target = sides[targetSide];
+  const character = target.characters[targetIndex];
+  if (!character) return null;
+  if (isKO(character, target.damage[targetIndex] ?? 0)) return null;
+
+  const marked = new Set(dieIndexes);
+  let total = 0;
+  for (const i of dieIndexes) {
+    const die = source.pool[i];
+    const amount = die ? parseDamage(die.face) : null;
+    if (amount !== null) total += amount;
+  }
+  if (total === 0) return null;
+
+  const { shieldsRemaining, healthDamage } = resolveShieldedDamage(
+    target.shields[targetIndex] ?? 0,
+    total,
+  );
+  const shields = target.characters.map((_, i) => target.shields[i] ?? 0);
+  shields[targetIndex] = shieldsRemaining;
+  const damage = target.characters.map((_, i) => target.damage[i] ?? 0);
+  damage[targetIndex] = Math.min(character.health, damage[targetIndex] + healthDamage);
+
+  const sourcePool = source.pool.filter((_, i) => !marked.has(i));
+  let targetPool = target.pool;
+  if (isKO(character, damage[targetIndex])) {
+    targetPool = target.pool.filter((d) => d.characterIndex !== targetIndex);
+  }
+
+  const nextSides: Record<Side, SideState> = {
+    ...sides,
+    [sourceSide]: { ...source, pool: sourcePool },
+  };
+  nextSides[targetSide] = { ...nextSides[targetSide], damage, shields, pool: targetPool };
+  return { sides: nextSides, outcome: computeOutcome(nextSides), amount: total };
+}
+
+/**
+ * Aplica varios dados de escudo de `side` a UN aliado (SPEC-008a): suma sus valores (tope
+ * MAX_SHIELDS) y consume todos los dados. Devuelve null si no hay objetivo válido o ningún dado de
+ * escudo en `dieIndexes`.
+ */
+function resolveShieldBatch(
+  sides: Record<Side, SideState>,
+  side: Side,
+  dieIndexes: number[],
+  targetIndex: number,
+): Record<Side, SideState> | null {
+  const s = sides[side];
+  const character = s.characters[targetIndex];
+  if (!character) return null;
+  if (isKO(character, s.damage[targetIndex] ?? 0)) return null;
+
+  const marked = new Set(dieIndexes);
+  let total = 0;
+  for (const i of dieIndexes) {
+    const die = s.pool[i];
+    const amount = die ? parseShield(die.face) : null;
+    if (amount !== null) total += amount;
+  }
+  if (total === 0) return null;
+
+  const shields = s.characters.map((_, i) => s.shields[i] ?? 0);
+  shields[targetIndex] = addShields(shields[targetIndex], total);
+  const pool = s.pool.filter((_, i) => !marked.has(i));
+  return { ...sides, [side]: { ...s, shields, pool } };
+}
+
 interface ResourceResolution {
   sides: Record<Side, SideState>;
   amount: number;
@@ -310,43 +391,33 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (!cur || cur.side !== side || cur.symbol !== symbol) {
         return { resolve: { side, symbol, marked: [poolIndex] } };
       }
-      // Mismo bando y símbolo:
-      if (symbol === 'resource') {
-        // Toggle en el conjunto marcado.
-        const marked = cur.marked.includes(poolIndex)
-          ? cur.marked.filter((i) => i !== poolIndex)
-          : [...cur.marked, poolIndex];
-        return { resolve: { ...cur, marked } };
-      }
-      // Daño/escudo: el dado "actual" es único. Reclicarlo lo deselecciona.
-      const marked = cur.marked[0] === poolIndex ? [] : [poolIndex];
+      // Mismo bando y símbolo: toggle en el conjunto marcado (uno o varios).
+      const marked = cur.marked.includes(poolIndex)
+        ? cur.marked.filter((i) => i !== poolIndex)
+        : [...cur.marked, poolIndex];
       return { resolve: { ...cur, marked } };
     }),
 
+  // Aplica TODOS los dados marcados (daño o escudo) a un mismo objetivo (SPEC-008a): no se
+  // reparten. Daño → bando contrario; escudo → propio bando.
   applyDieTo: (targetSide: Side, index: number) =>
     set((state) => {
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.marked.length === 0) return state;
       if (cur.symbol === 'resource') return state; // el recurso no tiene objetivo
-      const poolIndex = cur.marked[0];
-      const die = state.sides[cur.side].pool[poolIndex];
-      if (!die) return { resolve: { ...cur, marked: [] } };
 
       if (cur.symbol === 'shield') {
-        // Escudo: objetivo del MISMO bando.
         if (targetSide !== cur.side) return state;
-        const result = resolveShield(state.sides, cur.side, poolIndex, index);
+        const result = resolveShieldBatch(state.sides, cur.side, cur.marked, index);
         if (result === null) return state;
-        // Se mantiene el modo (mismo símbolo) para seguir resolviendo; se limpia el dado actual.
-        return { sides: result.sides, resolve: { ...cur, marked: [] } };
+        return { sides: result, resolve: null };
       }
 
       // Daño (melee/ranged/indirecto): objetivo del bando CONTRARIO.
       if (targetSide === cur.side) return state;
-      const result = resolveDamage(state.sides, cur.side, poolIndex, targetSide, index);
+      const result = resolveDamageBatch(state.sides, cur.side, cur.marked, targetSide, index);
       if (result === null) return state;
-      const resolveNext = result.outcome !== null ? null : { ...cur, marked: [] };
-      return { sides: result.sides, resolve: resolveNext, outcome: result.outcome };
+      return { sides: result.sides, resolve: null, outcome: result.outcome };
     }),
 
   // Resuelve juntos todos los dados de recurso marcados (SPEC-008a): suma sus valores al contador y
