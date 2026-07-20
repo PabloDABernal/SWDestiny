@@ -32,16 +32,20 @@ blanco), recursos, mano/mazo/descarte, fases de acción y mantenimiento, condici
 
 ## 4. El autómata enemigo
 
-Evalúa, en su turno, una tabla de prioridades de arriba abajo y ejecuta la primera acción legal.
-Tabla inicial (v1, ver SPEC-004b para el detalle definitivo):
+Evalúa, en su turno, una tabla de prioridades de arriba abajo y ejecuta la primera acción legal
+(ver SPEC-004b y SPEC-007 para el detalle definitivo):
 
-1. Si tiene dados de daño en su pool, resuelve el conjunto de mayor daño total, dirigido al
-   personaje del jugador con menos vida restante.
-2. Si tiene personajes sin activar, activa el de más vida restante.
-3. Si tiene 2 o más dados mostrando blanco, los rerollea (reroll gratuito, una vez por ronda).
-4. Pasa.
+1. Si tiene dados de daño en su pool, resuelve el de mayor daño, dirigido al personaje del jugador
+   con menos vida restante.
+2. Si tiene un dado de **escudo**, lo aplica a su aliado no-KO con menos vida restante (SPEC-007).
+3. Si tiene personajes sin activar, activa el de más vida restante.
+4. Si tiene un dado de **recurso**, lo resuelve sumándolo al contador de recursos del enemigo
+   (SPEC-007).
+5. Si tiene 2 o más dados mostrando blanco, los rerollea (reroll gratuito, luego el extra de la
+   trampa).
+6. Pasa.
 
-La tabla crece en fases posteriores conforme se implementan recursos, escudos y cartas.
+La tabla crece en fases posteriores conforme se implementan cartas.
 
 ### Asimetría / trampas (configurable por dificultad, **desde v1**)
 
