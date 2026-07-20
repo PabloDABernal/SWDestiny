@@ -1,6 +1,6 @@
 # SPEC-006: Recursos (generación, contador único por bando)
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** §5 "Recursos (primera pieza — solo generación, GDD v2)"
 **Depende de:** SPEC-001 (personajes/dados), SPEC-002 (pool de dados), SPEC-004 (dos bandos)
 
@@ -90,4 +90,9 @@ no se espera superar ~300 líneas ni necesitar división.
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+2026-07-20: playtest manual completo, jugado en GitHub Pages (https://pablodabernal.github.io/SWDestiny/).
+Todos los criterios y casos límite pasaron: resolver `1R`/`2R` de un solo clic suma al contador
+💰 del bando dueño y retira el dado del pool, contador acumulativo sin tope, dados de recurso
+deshabilitados en ambos pools mientras hay una selección de daño/escudo pendiente, Reset vacía los
+recursos de ambos bandos (a diferencia de vida/escudos), reimportar pone a 0 solo el bando
+reimportado; regresión SPEC-001 a SPEC-005 sin problemas. Confirmado por el usuario.
