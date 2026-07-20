@@ -1,6 +1,6 @@
 # SPEC-008b: Pagar el coste de recurso de las caras de dado
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** §3 (símbolos, resolver dados, costes), §5 (v2: recursos)
 **Depende de:** SPEC-006 (recursos), SPEC-008a (modo resolver por símbolo)
 
@@ -99,4 +99,9 @@ Bien por debajo de 300 líneas (el coste indirecto, que añadía UI, se movió a
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+2026-07-20: playtest manual OK (mazo First Order Stormtrooper 01002 x3, no único, con 2RD1 y 1R).
+Confirmado: caras con coste de recurso seleccionables, gasto del contador, aviso "recursos
+insuficientes" (mostrado junto al pool del jugador) cuando no llega, dado sigue marcado. Caras con
+coste indirecto/modificador siguen inertes. Autómata no paga costes. revisor-codigo: CUMPLE.
+Confirmado por el usuario. (Aprendido jugando: Greef 16096 es único → 1 dado; usar no-únicos para
+sacar varias caras con coste.)
