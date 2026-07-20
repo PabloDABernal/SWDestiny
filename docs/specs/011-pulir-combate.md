@@ -44,7 +44,8 @@ Verificables jugando. Formato: acción → resultado observable.
       (barra "Resolviendo: daño melee") → marco otro dado melee → aplico a **Enemigo B**: cada uno a
       su objetivo, mismo turno.
 - [ ] Sigo pudiendo marcar **varios** dados melee y mandarlos **al mismo** enemigo (suman), como antes.
-- [ ] Cuando ya no quedan dados de ese símbolo en el pool tras aplicar, el modo se **cierra** solo.
+- [ ] Cuando ya no queda ningún dado **base** de ese símbolo en el pool tras aplicar (aunque queden
+      **modificadores** sueltos, que solos no se resuelven), el modo se **cierra** solo.
 - [ ] **Cancelar** cierra el modo en cualquier momento sin aplicar los marcados.
 - [ ] Modificadores y costes (SPEC-010) siguen funcionando dentro de cada tanda (base+modificador a un
       objetivo; coste de recurso/indirecto se pagan por tanda).
@@ -72,9 +73,9 @@ Verificables jugando. Formato: acción → resultado observable.
 - Resolución (SPEC-010): en `applyDieTo`/`resolveResources`, tras un `resolvePlayerBatch` con éxito,
   en vez de `resolve: null`, **mantener el modo**: `resolve: { side, symbol, marked: [], pendingEffect:
   null }`, **salvo** que (a) el nuevo `outcome !== null` (partida terminada), o (b) en el nuevo pool
-  **del bando que resuelve** ya no quede ningún dado de ese símbolo (`dieSymbol` === symbol) →
-  entonces `resolve: null`. El chequeo (b) se hace sobre `nextSides[mode.side].pool`, no sobre el
-  del objetivo.
+  **del bando que resuelve** ya no quede ningún dado **base** de ese símbolo (`parsePlayerFace` con
+  `symbol === mode.symbol && !isModifier`; un modificador solo no se resuelve) → entonces
+  `resolve: null`. El chequeo (b) se hace sobre `nextSides[mode.side].pool`, no sobre el del objetivo.
 - Cuidado: al mantener el modo, los índices de `marked` se limpian (evita índices obsoletos tras
   consumir dados). El siguiente marcado parte de los índices nuevos del pool.
 - El autómata (`enemyTurn`) no se toca.

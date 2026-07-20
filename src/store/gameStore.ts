@@ -337,8 +337,9 @@ interface ResolveMode {
 /**
  * Tras aplicar una tanda con éxito (SPEC-011, multi-objetivo): mantener el modo abierto para seguir
  * mandando dados del MISMO símbolo a otros objetivos, salvo que la partida haya terminado o que ya no
- * queden dados de ese símbolo en el pool del bando que resuelve. `marked` se limpia (evita índices
- * obsoletos tras consumir dados).
+ * quede ningún dado **base** (no modificador) de ese símbolo en el pool del bando que resuelve — un
+ * modificador solo no se resuelve, así que si solo quedan modificadores el modo se cierra. `marked`
+ * se limpia (evita índices obsoletos tras consumir dados).
  */
 function nextResolveAfterApply(
   nextSides: Record<Side, SideState>,
@@ -346,8 +347,11 @@ function nextResolveAfterApply(
   outcome: Outcome,
 ): ResolveMode | null {
   if (outcome !== null) return null;
-  const hasSameSymbol = nextSides[mode.side].pool.some((d) => dieSymbol(d.face) === mode.symbol);
-  return hasSameSymbol
+  const hasBaseOfSymbol = nextSides[mode.side].pool.some((d) => {
+    const p = parsePlayerFace(d.face);
+    return p !== null && p.symbol === mode.symbol && !p.isModifier;
+  });
+  return hasBaseOfSymbol
     ? { side: mode.side, symbol: mode.symbol, marked: [], pendingEffect: null }
     : null;
 }
