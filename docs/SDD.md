@@ -45,7 +45,7 @@ ecosistema de componentes de tablero/dados ya hechos.)*
 - **Escudos y recursos** (desde SPEC-005/006): `shields: number[]` por instancia (tope
   `MAX_SHIELDS`, absorben daño antes que la vida en `resolveDamage`) y `resources: number` único
   por bando (sin tope; **persiste entre rondas** y empieza en 2 al importar, SPEC-009; "Nueva ronda"
-  no lo toca). El
+  suma **+2** a cada bando como mantenimiento, SPEC-011). El
   objetivo válido de un dado ya no es siempre "el bando contrario": depende del tipo de dado
   (daño → bando contrario; escudo → propio bando; recurso → sin objetivo, un solo clic). El
   autómata resuelve daño/escudo/activar/recurso/reroll/pasar (tabla ampliada en SPEC-007); el
