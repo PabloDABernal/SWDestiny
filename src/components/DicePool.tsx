@@ -9,6 +9,7 @@ export function DicePool({ side }: { side: Side }) {
   const resolveResources = useGameStore((s) => s.resolveResources);
   const cancelResolve = useGameStore((s) => s.cancelResolve);
   const reset = useGameStore((s) => s.reset);
+  const resolveError = useGameStore((s) => s.resolveError);
 
   // El jugador solo resuelve su propio pool (SPEC-008a). El pool enemigo se muestra estático.
   const interactive = side === 'player';
@@ -38,6 +39,10 @@ export function DicePool({ side }: { side: Side }) {
           )}
           <button onClick={cancelResolve}>Cancelar</button>
         </div>
+      )}
+
+      {interactive && resolveError && (
+        <p className="import-panel__error pool__error">{resolveError}</p>
       )}
 
       {pool.length === 0 ? (

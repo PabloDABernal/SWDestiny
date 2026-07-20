@@ -242,6 +242,10 @@ button:disabled {
   font-size: 0.85rem;
 }
 
+.pool__error {
+  margin: 8px 0 0;
+}
+
 .outcome {
   text-align: center;
   font-size: 1.4rem;
