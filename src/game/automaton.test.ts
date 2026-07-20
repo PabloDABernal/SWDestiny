@@ -129,6 +129,71 @@ describe('nextAutomatonAction — prioridad 2: activar', () => {
   });
 });
 
+describe('nextAutomatonAction — escudo (SPEC-007)', () => {
+  it('con un dado de escudo y sin daño, lo aplica al aliado no-KO de menor vida', () => {
+    const enemy = enemySide({ pool: [die(0, '2Sh')], damage: [0, 3] }); // A:10, B:5 → B
+    const action = nextAutomatonAction(enemy, playerSide(), noRerollsUsed);
+    expect(action).toEqual({ type: 'shield', dieIndex: 0, targetIndex: 1 });
+  });
+
+  it('elige el dado de escudo de MAYOR valor si hay varios', () => {
+    const enemy = enemySide({ pool: [die(0, '1Sh'), die(1, '3Sh')] });
+    const action = nextAutomatonAction(enemy, playerSide(), noRerollsUsed);
+    expect(action).toMatchObject({ type: 'shield', dieIndex: 1 });
+  });
+
+  it('atacar tiene prioridad sobre escudar', () => {
+    const enemy = enemySide({ pool: [die(0, '2Sh'), die(1, '2MD')] });
+    expect(nextAutomatonAction(enemy, playerSide(), noRerollsUsed).type).toBe('attack');
+  });
+
+  it('escudar tiene prioridad sobre activar', () => {
+    const enemy = enemySide({ pool: [die(0, '2Sh')], activated: [false, false] });
+    expect(nextAutomatonAction(enemy, playerSide(), noRerollsUsed).type).toBe('shield');
+  });
+
+  it('no escuda si el único aliado con vida es KO... cae a otra prioridad', () => {
+    // ambos KO no puede pasar (sería Derrota); probamos que sin objetivo válido no hay 'shield'
+    const enemy = enemySide({ pool: [die(0, '1Sh')], damage: [10, 8], activated: [true, true] });
+    expect(nextAutomatonAction(enemy, playerSide(), noRerollsUsed).type).not.toBe('shield');
+  });
+});
+
+describe('nextAutomatonAction — recurso (SPEC-007)', () => {
+  it('con un dado de recurso y nada mejor que hacer, lo resuelve', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [die(0, '2R')] });
+    expect(nextAutomatonAction(enemy, playerSide(), noRerollsUsed)).toEqual({
+      type: 'resource',
+      dieIndex: 0,
+    });
+  });
+
+  it('elige el dado de recurso de MAYOR valor', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [die(0, '1R'), die(1, '2R')] });
+    expect(nextAutomatonAction(enemy, playerSide(), noRerollsUsed)).toMatchObject({
+      type: 'resource',
+      dieIndex: 1,
+    });
+  });
+
+  it('activar tiene prioridad sobre recurso', () => {
+    const enemy = enemySide({ activated: [false, true], pool: [die(0, '2R')] });
+    expect(nextAutomatonAction(enemy, playerSide(), noRerollsUsed).type).toBe('activate');
+  });
+
+  it('recurso tiene prioridad sobre reroll de blancos', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [die(0, '2R'), die(0, '-'), die(1, '-')] });
+    expect(nextAutomatonAction(enemy, playerSide(), noRerollsUsed).type).toBe('resource');
+  });
+
+  it('1R (recurso) no se confunde con daño ranged 1RD', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [die(0, '1R')] });
+    expect(nextAutomatonAction(enemy, playerSide(), noRerollsUsed).type).toBe('resource');
+    const enemyRD = enemySide({ pool: [die(0, '1RD')] });
+    expect(nextAutomatonAction(enemyRD, playerSide(), noRerollsUsed).type).toBe('attack');
+  });
+});
+
 describe('nextAutomatonAction — prioridad 3/4: reroll gratuito y extra', () => {
   it('con 2+ blancos y nada más que hacer, rerollea gratis', () => {
     const enemy = enemySide({ activated: [true, true], pool: [die(0, '-'), die(1, '-')] });

@@ -165,6 +165,30 @@ function resolveShield(
   return { sides: nextSides, amount };
 }
 
+interface ResourceResolution {
+  sides: Record<Side, SideState>;
+  amount: number;
+}
+
+/**
+ * Resuelve un dado de recurso de `side` (por posición en su pool): suma su valor al contador del
+ * bando y consume el dado. Puro, SIN el guard de `selection` (lo usan el jugador vía acción y el
+ * autómata vía enemyTurn). Devuelve `null` si el dado no es de recurso.
+ */
+function resolveResourcePure(
+  sides: Record<Side, SideState>,
+  side: Side,
+  dieIndex: number,
+): ResourceResolution | null {
+  const s = sides[side];
+  const die = s.pool[dieIndex];
+  if (!die) return null;
+  const amount = parseResource(die.face);
+  if (amount === null) return null;
+  const pool = s.pool.filter((_, i) => i !== dieIndex);
+  return { sides: { ...sides, [side]: { ...s, resources: s.resources + amount, pool } }, amount };
+}
+
 interface Selection {
   side: Side;
   poolIndex: number;
@@ -300,13 +324,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   resolveResource: (side: Side, poolIndex: number) =>
     set((state) => {
       if (state.outcome !== null || state.selection !== null) return state;
-      const s = state.sides[side];
-      const die = s.pool[poolIndex];
-      if (!die) return state;
-      const amount = parseResource(die.face);
-      if (amount === null) return state;
-      const pool = s.pool.filter((_, i) => i !== poolIndex);
-      return { sides: { ...state.sides, [side]: { ...s, resources: s.resources + amount, pool } } };
+      const result = resolveResourcePure(state.sides, side, poolIndex);
+      return result === null ? state : { sides: result.sides };
     }),
 
   // Turno del autómata (GDD §4): evalúa la tabla de prioridades (motor puro en game/automaton)
@@ -342,10 +361,35 @@ export const useGameStore = create<GameState>((set, get) => ({
         });
         return;
       }
+      case 'shield': {
+        const die = enemy.pool[action.dieIndex];
+        const target = enemy.characters[action.targetIndex];
+        set((s) => {
+          const result = resolveShield(s.sides, 'enemy', action.dieIndex, action.targetIndex);
+          if (result === null) return s;
+          return {
+            sides: result.sides,
+            lastEnemyAction: `El enemigo aplica ${die.face} a ${target.name} (${result.amount} de escudo).`,
+          };
+        });
+        return;
+      }
       case 'activate': {
         const character = enemy.characters[action.index];
         get().activate('enemy', action.index);
         set({ lastEnemyAction: `El enemigo activa a ${character.name}.` });
+        return;
+      }
+      case 'resource': {
+        const die = enemy.pool[action.dieIndex];
+        set((s) => {
+          const result = resolveResourcePure(s.sides, 'enemy', action.dieIndex);
+          if (result === null) return s;
+          return {
+            sides: result.sides,
+            lastEnemyAction: `El enemigo resuelve ${die.face} (+${result.amount} recurso).`,
+          };
+        });
         return;
       }
       case 'reroll': {

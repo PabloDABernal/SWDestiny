@@ -47,8 +47,9 @@ ecosistema de componentes de tablero/dados ya hechos.)*
   por bando (sin tope, se vacía con Reset, a diferencia de vida/escudos que Reset no cura). El
   objetivo válido de un dado ya no es siempre "el bando contrario": depende del tipo de dado
   (daño → bando contrario; escudo → propio bando; recurso → sin objetivo, un solo clic). El
-  autómata (SPEC-004b) solo conoce daño/activar/reroll/pasar; no resuelve escudos ni recursos
-  (anotado en BACKLOG).
+  autómata resuelve daño/escudo/activar/recurso/reroll/pasar (tabla ampliada en SPEC-007); el
+  escudo lo aplica a su aliado no-KO de menor vida y el recurso suma a su contador. La resolución
+  pura de recurso (`resolveResourcePure`) se comparte entre el jugador y el autómata.
 
 ## Reglas técnicas de alcance por fase (para revisor-código y revisor-specs)
 

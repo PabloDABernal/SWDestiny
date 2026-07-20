@@ -1,7 +1,7 @@
 import type { Character } from '../model/types';
 import type { PooledDie } from './roll';
 import type { SideView } from './outcome';
-import { parseDamage, currentHealth, isKO } from './damage';
+import { parseDamage, parseShield, parseResource, currentHealth, isKO } from './damage';
 
 /** Trampas del autómata enemigo (GDD §4), fijas hasta que exista selector de dificultad. */
 export const ENEMY_HEALTH_MULTIPLIER = 1.5;
@@ -29,7 +29,9 @@ export interface RerollsUsed {
 
 export type AutomatonAction =
   | { type: 'attack'; dieIndex: number; targetIndex: number }
+  | { type: 'shield'; dieIndex: number; targetIndex: number }
   | { type: 'activate'; index: number }
+  | { type: 'resource'; dieIndex: number }
   | { type: 'reroll'; dieIndices: number[]; kind: 'free' | 'extra' }
   | { type: 'pass' };
 
@@ -80,6 +82,21 @@ function highestDamageDieIndex(pool: PooledDie[]): number {
   return best;
 }
 
+/** Índice (en `pool`) del dado con mayor valor según `parse`; -1 si no hay ninguno. */
+function highestDieIndexBy(pool: PooledDie[], parse: (face: string) => number | null): number {
+  let best = -1;
+  let bestAmount = -1;
+  for (let i = 0; i < pool.length; i++) {
+    const amount = parse(pool[i].face);
+    if (amount === null) continue;
+    if (amount > bestAmount) {
+      best = i;
+      bestAmount = amount;
+    }
+  }
+  return best;
+}
+
 function blankDieIndices(pool: PooledDie[]): number[] {
   return pool.reduce<number[]>((acc, die, i) => {
     if (isBlank(die.face)) acc.push(i);
@@ -97,6 +114,7 @@ export function nextAutomatonAction(
   player: SideView,
   rerollsUsed: RerollsUsed,
 ): AutomatonAction {
+  // 1. Atacar con el dado de daño de mayor valor al jugador con menos vida restante.
   const dieIndex = highestDamageDieIndex(enemy.pool);
   if (dieIndex !== -1) {
     const targetIndex = lowestHealthTargetIndex(player);
@@ -105,9 +123,25 @@ export function nextAutomatonAction(
     }
   }
 
+  // 2. Resolver un dado de escudo sobre el aliado no-KO de menor vida restante (SPEC-007).
+  const shieldDieIndex = highestDieIndexBy(enemy.pool, parseShield);
+  if (shieldDieIndex !== -1) {
+    const targetIndex = lowestHealthTargetIndex(enemy);
+    if (targetIndex !== -1) {
+      return { type: 'shield', dieIndex: shieldDieIndex, targetIndex };
+    }
+  }
+
+  // 3. Activar el personaje no-KO sin activar de mayor vida restante.
   const activateIndex = highestHealthActivatableIndex(enemy);
   if (activateIndex !== -1) {
     return { type: 'activate', index: activateIndex };
+  }
+
+  // 4. Resolver un dado de recurso, sumándolo al contador del enemigo (SPEC-007).
+  const resourceDieIndex = highestDieIndexBy(enemy.pool, parseResource);
+  if (resourceDieIndex !== -1) {
+    return { type: 'resource', dieIndex: resourceDieIndex };
   }
 
   const blanks = blankDieIndices(enemy.pool);
