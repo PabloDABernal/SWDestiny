@@ -22,7 +22,11 @@ Ideas que surgen durante la implementación. Una línea por idea. NO se implemen
   - También en cartas support/upgrade (fuera de alcance, `buildCharacters.ts` solo importa
     `type_code: "character"`): caras **modificadoras** `+1*` (22080 Renowned, se resuelven junto a
     otro dado) y símbolos con cantidad no vistos como `3Dc` (25033 Krayt Dragon).
-  - **Sin confirmar todavía**: la semántica exacta de cada sufijo de coste (¿desbloquea la cara,
-    o aumenta su valor base?). Antes de implementar "gastar recursos" habría que contrastar con el
-    reglamento oficial (Rules Reference v1.07.01, ver GDD §3), no seguir adivinando por patrones de
-    cartas sueltas.
+  - **Confirmado con el reglamento (2026-07-20, ver [reglas-resumen.md](reglas-resumen.md) → "Costes
+    en una cara", RR pg 10):** hay DOS tipos de coste, y el coste hay que **pagarlo para resolver la
+    cara** (no aumenta el valor base):
+    - Caja amarilla = **coste de recursos**: gastar N recursos. Encaja con el sufijo `<v><TIPO><n>`.
+    - Caja roja = **coste de daño indirecto a uno mismo**: hacerse N de daño indirecto. Encaja con
+      el sufijo `<v><TIPO>i<n>`.
+    - Pendiente solo: validar el string EXACTO que devuelve la API de ARH DB para cada tipo antes de
+      implementar "gastar recursos" (necesita además consumidor real de recursos).
