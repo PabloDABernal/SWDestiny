@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   parseDamage,
   parseDamageDie,
+  parseCostedFace,
   dieSymbol,
   currentHealth,
   isKO,
@@ -55,18 +56,40 @@ describe('parseDamageDie (símbolo + cantidad, SPEC-008a)', () => {
   });
 });
 
-describe('dieSymbol (SPEC-008a)', () => {
-  it('mapea cada cara resoluble a su símbolo', () => {
+describe('dieSymbol (SPEC-008a/008b)', () => {
+  it('mapea cada cara resoluble a su símbolo (con o sin coste de recurso)', () => {
     expect(dieSymbol('2MD')).toBe('melee');
     expect(dieSymbol('1RD')).toBe('ranged');
     expect(dieSymbol('2ID')).toBe('indirect');
     expect(dieSymbol('2Sh')).toBe('shield');
     expect(dieSymbol('1R')).toBe('resource');
+    // Con coste de recurso ya son seleccionables (008b).
+    expect(dieSymbol('2RD1')).toBe('ranged');
+    expect(dieSymbol('2R1')).toBe('resource');
   });
 
-  it('null para caras no seleccionables (blanco, especial, descarte, coste, modificador)', () => {
-    for (const face of ['-', 'Sp', 'Dc', '2RD1', '2RDi1', '+2MD']) {
+  it('null para no seleccionables (blanco, especial, coste indirecto `i`, modificador `+`)', () => {
+    for (const face of ['-', 'Sp', 'Dc', '3Shi1', '2RDi1', '+2MD', '1F']) {
       expect(dieSymbol(face)).toBeNull();
+    }
+  });
+});
+
+describe('parseCostedFace (SPEC-008b)', () => {
+  it('cara sin coste → resourceCost 0', () => {
+    expect(parseCostedFace('2MD')).toEqual({ symbol: 'melee', amount: 2, resourceCost: 0 });
+    expect(parseCostedFace('1R')).toEqual({ symbol: 'resource', amount: 1, resourceCost: 0 });
+    expect(parseCostedFace('2Sh')).toEqual({ symbol: 'shield', amount: 2, resourceCost: 0 });
+  });
+
+  it('cara con coste de recurso', () => {
+    expect(parseCostedFace('2RD1')).toEqual({ symbol: 'ranged', amount: 2, resourceCost: 1 });
+    expect(parseCostedFace('2R1')).toEqual({ symbol: 'resource', amount: 2, resourceCost: 1 });
+  });
+
+  it('rechaza coste indirecto (`i`), modificador (`+`) y no-resolubles', () => {
+    for (const face of ['3Shi1', '2RDi1', '+2MD', '-', 'Sp', '1F', 'Dc']) {
+      expect(parseCostedFace(face)).toBeNull();
     }
   });
 });

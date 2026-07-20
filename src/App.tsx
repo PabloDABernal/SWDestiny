@@ -58,6 +58,7 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
 export function App() {
   const outcome = useGameStore((s) => s.outcome);
   const resolve = useGameStore((s) => s.resolve);
+  const resolveError = useGameStore((s) => s.resolveError);
   const reset = useGameStore((s) => s.reset);
   const enemyTurn = useGameStore((s) => s.enemyTurn);
   const lastEnemyAction = useGameStore((s) => s.lastEnemyAction);
@@ -82,6 +83,7 @@ export function App() {
         </div>
       )}
       {hint && <p className="app__hint">{hint}</p>}
+      {resolveError && <p className="import-panel__error">{resolveError}</p>}
       {lastEnemyAction && <p className="app__hint">{lastEnemyAction}</p>}
 
       <div className="controls">
