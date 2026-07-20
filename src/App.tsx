@@ -58,7 +58,8 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
 export function App() {
   const outcome = useGameStore((s) => s.outcome);
   const resolve = useGameStore((s) => s.resolve);
-  const reset = useGameStore((s) => s.reset);
+  const newRound = useGameStore((s) => s.newRound);
+  const resetAll = useGameStore((s) => s.resetAll);
   const enemyTurn = useGameStore((s) => s.enemyTurn);
   const lastEnemyAction = useGameStore((s) => s.lastEnemyAction);
   const enemyHasDeck = useGameStore((s) => s.sides.enemy.characters.length > 0);
@@ -85,7 +86,10 @@ export function App() {
       {lastEnemyAction && <p className="app__hint">{lastEnemyAction}</p>}
 
       <div className="controls">
-        <button onClick={reset}>Reset (nueva ronda)</button>
+        <button onClick={newRound} disabled={outcome !== null}>
+          Nueva ronda
+        </button>
+        <button onClick={resetAll}>Reset total</button>
         <button onClick={enemyTurn} disabled={outcome !== null || !enemyHasDeck}>
           Turno enemigo
         </button>

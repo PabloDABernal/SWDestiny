@@ -8,7 +8,7 @@
 
 3. **Build verde ≠ funciona jugado.** Que compile y pasen los tests NO significa que la feature esté terminada. Al acabar cualquier implementación, SIEMPRE terminar el mensaje con la sección "🎮 Para probar a mano:" listando los pasos concretos que el usuario debe jugar para verificar. Una spec solo se marca como completada cuando el usuario confirma que la ha jugado.
 
-4. **Rebanadas verticales pequeñas.** Cada sesión de implementación aborda UNA spec. Si una spec parece requerir más de ~300 líneas de cambios, avisar y proponer dividirla antes de empezar.
+4. **Rebanadas verticales pequeñas, SIN subdividir un mismo número.** Cada sesión de implementación aborda UNA spec. Un spec lleva **todo lo que quepa** de su feature. Lo que no quepa (o requiera una decisión aparte) va al **siguiente spec numerado**, NO a un sufijo `a/b/c` del mismo número. Nada de `008a/008b/008c`: eso lía. Si hace falta reordenar, se **renumera**. Si una spec parece pasarse de ~300 líneas, avisar y valorar mover parte al siguiente número.
 
 5. **Las decisiones son del usuario.** Los agentes y Claude no deciden diseño de juego ni stack tecnológico. Si durante la implementación surge una decisión de diseño no cubierta por el GDD/spec, PARAR y preguntar. No rellenar huecos de diseño con suposiciones.
 

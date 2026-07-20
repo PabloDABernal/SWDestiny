@@ -63,13 +63,16 @@ interface SideState {
   importError: string | null;
 }
 
+/** Recursos iniciales por bando al importar / Reset total (SPEC-009); 0 si el bando está vacío. */
+const STARTING_RESOURCES = 2;
+
 function freshSide(characters: Character[]): SideState {
   return {
     characters,
     activated: [],
     damage: [],
     shields: [],
-    resources: 0,
+    resources: characters.length > 0 ? STARTING_RESOURCES : 0,
     pool: [],
     rerollsUsed: { free: false, extra: 0 },
     importStatus: 'idle',
@@ -304,7 +307,12 @@ interface GameState {
   lastEnemyAction: string | null;
   importDeck: (side: Side, raw: string) => Promise<void>;
   activate: (side: Side, index: number) => void;
-  reset: () => void;
+  /** Solo re-tira dados: vacía pools/activaciones/rerolls de ambos bandos; conserva recursos, vida,
+   * escudos y KO. No-op si la partida ya terminó (SPEC-009). */
+  newRound: () => void;
+  /** Devuelve todo al estado inicial de los mazos importados (vida completa, sin escudos/KO,
+   * recursos a 2), sin reimportar ni borrar personajes (SPEC-009). */
+  resetAll: () => void;
   /** Marca/desmarca un dado del pool propio, entrando/cambiando el modo resolver por símbolo. */
   selectDie: (side: Side, poolIndex: number) => void;
   /** Aplica el dado actual (daño/escudo) a un objetivo. */
@@ -367,30 +375,42 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { sides: { ...state.sides, [side]: { ...s, activated, pool } } };
     }),
 
-  // Stand-in del ciclo de ronda: vacía pools, reactiva, restablece rerolls y VACÍA los recursos
-  // (fiel al reglamento: no se acumulan entre rondas) en ambos bandos. NO cura ni deshace el fin.
-  reset: () =>
-    set((state) => ({
-      sides: {
-        player: {
-          ...state.sides.player,
-          pool: [],
-          activated: [],
-          rerollsUsed: { free: false, extra: 0 },
-          resources: 0,
-        },
-        enemy: {
-          ...state.sides.enemy,
-          pool: [],
-          activated: [],
-          rerollsUsed: { free: false, extra: 0 },
-          resources: 0,
-        },
-      },
-      resolve: null,
-      resolveError: null,
-      lastEnemyAction: null,
-    })),
+  // "Nueva ronda" (SPEC-009): solo re-tira dados. Vacía pools/activaciones/rerolls de ambos bandos;
+  // CONSERVA recursos, vida, escudos y KO. No-op si la partida ya terminó (solo "Reset total"
+  // reinicia entonces).
+  newRound: () =>
+    set((state) => {
+      if (state.outcome !== null) return state;
+      const clearDice = (s: SideState): SideState => ({
+        ...s,
+        pool: [],
+        activated: [],
+        rerollsUsed: { free: false, extra: 0 },
+      });
+      return {
+        sides: { player: clearDice(state.sides.player), enemy: clearDice(state.sides.enemy) },
+        resolve: null,
+        resolveError: null,
+        lastEnemyAction: null,
+      };
+    }),
+
+  // "Reset total" (SPEC-009): reconstruye ambos bandos a su estado inicial (vida completa, sin
+  // escudos/KO, recursos a 2), conservando los personajes importados. Recalcula el fin.
+  resetAll: () =>
+    set((state) => {
+      const sides: Record<Side, SideState> = {
+        player: freshSide(state.sides.player.characters),
+        enemy: freshSide(state.sides.enemy.characters),
+      };
+      return {
+        sides,
+        resolve: null,
+        resolveError: null,
+        lastEnemyAction: null,
+        outcome: computeOutcome(sides),
+      };
+    }),
 
   selectDie: (side: Side, poolIndex: number) =>
     set((state) => {
