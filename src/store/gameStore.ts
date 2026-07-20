@@ -334,6 +334,24 @@ interface ResolveMode {
   pendingEffect?: { effectIndex: number | null } | null;
 }
 
+/**
+ * Tras aplicar una tanda con éxito (SPEC-011, multi-objetivo): mantener el modo abierto para seguir
+ * mandando dados del MISMO símbolo a otros objetivos, salvo que la partida haya terminado o que ya no
+ * queden dados de ese símbolo en el pool del bando que resuelve. `marked` se limpia (evita índices
+ * obsoletos tras consumir dados).
+ */
+function nextResolveAfterApply(
+  nextSides: Record<Side, SideState>,
+  mode: ResolveMode,
+  outcome: Outcome,
+): ResolveMode | null {
+  if (outcome !== null) return null;
+  const hasSameSymbol = nextSides[mode.side].pool.some((d) => dieSymbol(d.face) === mode.symbol);
+  return hasSameSymbol
+    ? { side: mode.side, symbol: mode.symbol, marked: [], pendingEffect: null }
+    : null;
+}
+
 interface GameState {
   sides: Record<Side, SideState>;
   resolve: ResolveMode | null;
@@ -414,9 +432,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { sides: { ...state.sides, [side]: { ...s, activated, pool } } };
     }),
 
-  // "Nueva ronda" (SPEC-009): solo re-tira dados. Vacía pools/activaciones/rerolls de ambos bandos;
-  // CONSERVA recursos, vida, escudos y KO. No-op si la partida ya terminó (solo "Reset total"
-  // reinicia entonces).
+  // "Nueva ronda" (SPEC-009/011): mantenimiento. Re-tira dados (vacía pools/activaciones/rerolls) y
+  // suma +2 recursos a cada bando (persisten, SPEC-009). CONSERVA vida, escudos y KO. No-op si la
+  // partida ya terminó (solo "Reset total" reinicia entonces).
   newRound: () =>
     set((state) => {
       if (state.outcome !== null) return state;
@@ -425,6 +443,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         pool: [],
         activated: [],
         rerollsUsed: { free: false, extra: 0 },
+        resources: s.resources + 2,
       });
       return {
         sides: { player: clearDice(state.sides.player), enemy: clearDice(state.sides.enemy) },
@@ -487,7 +506,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (targetSide !== cur.side) return state;
         const res = resolvePlayerBatch(state.sides, cur, cur.pendingEffect.effectIndex, index);
         if (res === null || res === 'no-base' || res === 'insufficient') return state; // no debería
-        return { sides: res.sides, outcome: res.outcome, resolve: null, resolveError: null };
+        return {
+          sides: res.sides,
+          outcome: res.outcome,
+          resolve: nextResolveAfterApply(res.sides, cur, res.outcome),
+          resolveError: null,
+        };
       }
 
       if (cur.symbol === 'resource') return state; // el recurso se resuelve con su botón
@@ -507,7 +531,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Sin coste indirecto: resolver ya.
       const res = resolvePlayerBatch(state.sides, cur, index, null);
       if (res === null || res === 'no-base' || res === 'insufficient') return state;
-      return { sides: res.sides, outcome: res.outcome, resolve: null, resolveError: null };
+      return {
+        sides: res.sides,
+        outcome: res.outcome,
+        resolve: nextResolveAfterApply(res.sides, cur, res.outcome),
+        resolveError: null,
+      };
     }),
 
   // Resuelve la tanda de recurso marcada (SPEC-008b/010): base + modificadores suman al contador,
@@ -527,7 +556,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       const res = resolvePlayerBatch(state.sides, cur, null, null);
       if (res === null || res === 'no-base' || res === 'insufficient') return state;
-      return { sides: res.sides, outcome: res.outcome, resolve: null, resolveError: null };
+      return {
+        sides: res.sides,
+        outcome: res.outcome,
+        resolve: nextResolveAfterApply(res.sides, cur, res.outcome),
+        resolveError: null,
+      };
     }),
 
   cancelResolve: () => set({ resolve: null, resolveError: null }),
