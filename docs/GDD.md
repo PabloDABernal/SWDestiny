@@ -32,8 +32,8 @@ blanco), recursos, mano/mazo/descarte, fases de acción y mantenimiento, condici
 
 **Resolución de dados:** desde SPEC-008a el jugador puede resolver **varios dados del mismo
 símbolo** en una acción (melee, ranged e indirecto son símbolos distintos y no se mezclan, aunque
-en v1 los tres resten vida por igual). Pagar costes de cara (SPEC-008b) y combinar modificadores
-`+X` (SPEC-008c) llegan después.
+en v1 los tres resten vida por igual). Pagar el coste de recurso de las caras (SPEC-008b), y los
+modificadores `+X` junto al coste de daño indirecto propio (SPEC-010), llegan después.
 
 ## 4. El autómata enemigo
 
