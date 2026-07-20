@@ -68,8 +68,9 @@ sentido depende de qué mecánicas existen ya en cada fase:
 - **v1:** personajes + dados + daño (melee/ranged/indirecto) + blancos + autómata básico **con
   trampas activas desde el inicio** (multiplicador de vida enemiga, reroll extra configurable).
   Sin recursos, sin mano, sin cartas jugables, sin campo de batalla. El ciclo de
-  ronda/mantenimiento aún no existe: se aproxima con un botón **"Reset" manual** que vacía el pool
-  y reactiva a todos, hasta que se implemente la fase de mantenimiento reglamentaria (fase
+  ronda/mantenimiento aún no existe: se aproxima con el botón **"Nueva ronda"** (solo re-tira dados;
+  ver SPEC-009), más un **"Reset total"** para volver al estado inicial, hasta que se implemente la
+  fase de mantenimiento reglamentaria (fase
   posterior). El andamiaje de "daño a cualquier personaje" de SPEC-003 queda superado en SPEC-004:
   con el mazo enemigo importado hay **dos bandos** y el daño de un dado solo se aplica al **bando
   contrario**. Cuando un bando se queda sin personajes en pie (todos KO) hay **fin de partida**
@@ -99,9 +100,11 @@ en la carta).
 
 Resolver un dado que muestra `1R`/`2R` (según el valor mostrado) en el pool (un solo clic, sin
 elegir objetivo) añade esa cantidad de **recursos** a un **contador único por bando** (no por
-personaje, a diferencia de los escudos), consumiendo el dado. El contador se **vacía con el botón
-Reset**, igual que el pool de dados y a diferencia de vida/escudos (fiel al reglamento: los
-recursos no se acumulan entre rondas).
+personaje, a diferencia de los escudos), consumiendo el dado. **Corrección (SPEC-009):** los
+recursos **persisten** entre rondas (RR pg 19/25), no se vacían; cada bando empieza con **2** al
+importar. El botón **"Nueva ronda"** solo re-tira dados (no toca recursos/vida/escudos/KO); "Reset
+total" devuelve todo al estado inicial. *(SPEC-006 vaciaba los recursos con Reset; era un error de
+fidelidad, corregido en SPEC-009.)*
 
 **Gastar** recursos —para pagar caras de dado con coste, o para jugar cartas más adelante— queda
 fuera de esta primera pieza: el formato exacto en que ARH DB codifica una cara de dado *con coste*

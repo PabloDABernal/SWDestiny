@@ -96,5 +96,6 @@ formato exacto que devuelve la API de ARH DB contra esto.
   (tope 3, absorben antes que vida), generación de recursos, activar/pool, autómata. Coincide con
   este resumen salvo simplificaciones ya documentadas en GDD §5.
 - Pendientes que este resumen aclara: **split de daño indirecto**, **gastar** recursos (dos tipos
-  de coste), **focus/especial/disrupt/descarte**, **rondas reglamentarias** (hoy stand-in "Reset"),
+  de coste), **focus/especial/disrupt/descarte**, **rondas reglamentarias** (hoy stand-in "Nueva
+  ronda" / "Reset total", sin +2 automático por ronda todavía),
   **deck-out** (v3), campo de batalla y cartas (v3-v5).
