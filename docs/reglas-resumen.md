@@ -1,5 +1,8 @@
 # Resumen de reglas (referencia interna)
 
+> **Referencia completa** (todas las partes del reglamento, paráfrasis): [reglamento/](reglamento/).
+> Este archivo es el **digest corto** centrado en lo que el proyecto implementa/necesita.
+
 Resumen **con nuestras palabras** de las mecánicas de Star Wars: Destiny relevantes para este
 proyecto, con punteros al reglamento oficial (ARH CC, *Rules Reference v1.07.01*) por número de
 página. NO es una copia del reglamento: es una guía de consulta para specs. Ante cualquier duda o
