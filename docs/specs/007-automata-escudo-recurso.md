@@ -1,6 +1,6 @@
 # SPEC-007: El autómata resuelve sus propios dados de escudo y de recurso
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** §4 (tabla de prioridades del autómata), §5 (v2: escudos y recursos)
 **Depende de:** SPEC-004b (autómata + tabla de prioridades), SPEC-005 (escudos), SPEC-006 (recursos)
 
@@ -95,4 +95,6 @@ Contenida: dos ramas nuevas en `nextAutomatonAction`, dos helpers de selección,
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+2026-07-20: playtest manual OK (mazo enemigo Unduli 15040 con caras 2MD/2Sh/1R). Confirmado que el
+autómata ataca > escuda a su aliado de menor vida > activa > genera recurso > reroll > pasa, una
+acción por pulsación de "Turno enemigo". revisor-codigo: CUMPLE. Confirmado por el usuario.
