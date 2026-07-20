@@ -1,6 +1,6 @@
 # SPEC-010: Modificadores (+X) y coste de daño indirecto propio
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** §3 (símbolos, modificadores, costes, resolver dados), §5 (v2)
 **Depende de:** SPEC-008a (modo resolver por símbolo), SPEC-008b (coste de recurso), SPEC-005 (escudos)
 
@@ -127,4 +127,9 @@ daño/escudo. Decidir al empezar.
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+2026-07-20: playtest manual OK (mazo Allya 23001 elite + 2 Death Trooper 02001). Confirmado:
+modificadores +X suman a un dado base (modificador solo = aviso), coste indirecto (3Shi1) con paso
+2 atómico (objetivo del efecto → receptor del coste; escudos absorben; puede KO), recurso +
+modificador con "Resolver recursos". Tras iterar la UX: el bar del pool muestra en rojo el "Paso
+2/2: elige el aliado que recibe el coste indirecto (N)". revisor-codigo: CUMPLE. Confirmado por el
+usuario.
