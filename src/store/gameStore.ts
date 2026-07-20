@@ -8,7 +8,7 @@ import { rollCharacter, rollDie, type PooledDie } from '../game/roll';
 import {
   parseDamage,
   dieSymbol,
-  parseCostedFace,
+  parsePlayerFace,
   parseShield,
   addShields,
   resolveShieldedDamage,
@@ -171,95 +171,128 @@ function resolveShield(
   return { sides: nextSides, amount };
 }
 
-/**
- * Aplica varios dados de daño de `sourceSide` a UN personaje de `targetSide` (SPEC-008a): suma sus
- * valores, los escudos absorben del total y el resto baja la vida; consume todos los dados. Devuelve
- * null si no hay objetivo válido o ningún dado de daño en `dieIndexes`.
- */
-/** Suma cantidad y coste de recurso de los dados marcados (mismo símbolo, SPEC-008b). */
-function sumMarked(pool: PooledDie[], dieIndexes: number[]): { amount: number; cost: number } {
-  let amount = 0;
-  let cost = 0;
+// --- Motor de resolución del jugador (SPEC-008a/008b/010) ---
+
+interface MarkedSums {
+  /** Suma de valores de dados base (no modificadores). */
+  baseAmount: number;
+  /** Suma de valores de modificadores `+X`. */
+  modifierAmount: number;
+  /** Coste total de recurso. */
+  resourceCost: number;
+  /** Coste total de daño indirecto propio. */
+  indirectCost: number;
+  /** true si hay al menos un dado base marcado (un modificador solo no se resuelve). */
+  hasBase: boolean;
+}
+
+/** Suma valores y costes de los dados marcados (mismo símbolo) usando parsePlayerFace (SPEC-010). */
+function sumPlayerMarked(pool: PooledDie[], dieIndexes: number[]): MarkedSums {
+  const s: MarkedSums = {
+    baseAmount: 0,
+    modifierAmount: 0,
+    resourceCost: 0,
+    indirectCost: 0,
+    hasBase: false,
+  };
   for (const i of dieIndexes) {
     const die = pool[i];
-    const parsed = die ? parseCostedFace(die.face) : null;
-    if (parsed) {
-      amount += parsed.amount;
-      cost += parsed.resourceCost;
+    const p = die ? parsePlayerFace(die.face) : null;
+    if (!p) continue;
+    if (p.isModifier) s.modifierAmount += p.amount;
+    else {
+      s.baseAmount += p.amount;
+      s.hasBase = true;
     }
+    s.resourceCost += p.resourceCost;
+    s.indirectCost += p.indirectCost;
   }
-  return { amount, cost };
+  return s;
 }
 
-/** `'insufficient'` si el coste total supera los recursos del bando que paga. */
-function resolveDamageBatch(
-  sides: Record<Side, SideState>,
-  sourceSide: Side,
-  dieIndexes: number[],
-  targetSide: Side,
-  targetIndex: number,
-): DamageResolution | 'insufficient' | null {
-  const source = sides[sourceSide];
-  const target = sides[targetSide];
-  const character = target.characters[targetIndex];
-  if (!character) return null;
-  if (isKO(character, target.damage[targetIndex] ?? 0)) return null;
-
-  const marked = new Set(dieIndexes);
-  const { amount: total, cost } = sumMarked(source.pool, dieIndexes);
-  if (total === 0) return null;
-  if (source.resources < cost) return 'insufficient';
-
-  const { shieldsRemaining, healthDamage } = resolveShieldedDamage(
-    target.shields[targetIndex] ?? 0,
-    total,
-  );
-  const shields = target.characters.map((_, i) => target.shields[i] ?? 0);
-  shields[targetIndex] = shieldsRemaining;
-  const damage = target.characters.map((_, i) => target.damage[i] ?? 0);
-  damage[targetIndex] = Math.min(character.health, damage[targetIndex] + healthDamage);
-
-  const sourcePool = source.pool.filter((_, i) => !marked.has(i));
-  let targetPool = target.pool;
-  if (isKO(character, damage[targetIndex])) {
-    targetPool = target.pool.filter((d) => d.characterIndex !== targetIndex);
-  }
-
-  // El bando que resuelve paga el coste de recurso (SPEC-008b).
-  const nextSides: Record<Side, SideState> = {
-    ...sides,
-    [sourceSide]: { ...source, pool: sourcePool, resources: source.resources - cost },
-  };
-  // Si source === target no aplica aquí (daño va al bando contrario), así que targetSide es otro.
-  nextSides[targetSide] = { ...nextSides[targetSide], damage, shields, pool: targetPool };
-  return { sides: nextSides, outcome: computeOutcome(nextSides), amount: total };
-}
+type BatchError = 'no-base' | 'insufficient';
 
 /**
- * Aplica varios dados de escudo de `side` a UN aliado (SPEC-008a): suma sus valores (tope
- * MAX_SHIELDS) y consume todos los dados. Devuelve null si no hay objetivo válido o ningún dado de
- * escudo en `dieIndexes`.
+ * Resuelve una tanda del jugador (SPEC-010): efecto (base + modificadores) al `effectIndex`, paga el
+ * coste de recurso y aplica el coste de daño indirecto propio al `costReceiverIndex` (si lo hay).
+ * Daño → bando contrario; escudo/recurso → propio bando. `'no-base'` si solo hay modificadores;
+ * `'insufficient'` si no llega para el coste de recurso; `null` si el objetivo/receptor no valen.
  */
-function resolveShieldBatch(
+function resolvePlayerBatch(
   sides: Record<Side, SideState>,
-  side: Side,
-  dieIndexes: number[],
-  targetIndex: number,
-): Record<Side, SideState> | 'insufficient' | null {
-  const s = sides[side];
-  const character = s.characters[targetIndex];
-  if (!character) return null;
-  if (isKO(character, s.damage[targetIndex] ?? 0)) return null;
+  mode: { side: Side; symbol: DieSymbol; marked: number[] },
+  effectIndex: number | null,
+  costReceiverIndex: number | null,
+): { sides: Record<Side, SideState>; outcome: Outcome } | BatchError | null {
+  const own = sides[mode.side];
+  const sums = sumPlayerMarked(own.pool, mode.marked);
+  if (!sums.hasBase) return 'no-base';
+  if (own.resources < sums.resourceCost) return 'insufficient';
+  const effectTotal = sums.baseAmount + sums.modifierAmount;
+  const markedSet = new Set(mode.marked);
 
-  const marked = new Set(dieIndexes);
-  const { amount: total, cost } = sumMarked(s.pool, dieIndexes);
-  if (total === 0) return null;
-  if (s.resources < cost) return 'insufficient';
+  // Estado del bando propio: consume marcados, paga recurso; damage/shields por si recibe el coste.
+  let ownPool = own.pool.filter((_, i) => !markedSet.has(i));
+  const ownResources = own.resources - sums.resourceCost;
+  const ownDamage = own.characters.map((_, i) => own.damage[i] ?? 0);
+  const ownShields = own.characters.map((_, i) => own.shields[i] ?? 0);
+  const next: Record<Side, SideState> = { ...sides };
 
-  const shields = s.characters.map((_, i) => s.shields[i] ?? 0);
-  shields[targetIndex] = addShields(shields[targetIndex], total);
-  const pool = s.pool.filter((_, i) => !marked.has(i));
-  return { ...sides, [side]: { ...s, shields, pool, resources: s.resources - cost } };
+  // Efecto.
+  if (mode.symbol === 'shield') {
+    if (effectIndex === null) return null;
+    const ch = own.characters[effectIndex];
+    if (!ch || isKO(ch, ownDamage[effectIndex])) return null;
+    ownShields[effectIndex] = addShields(ownShields[effectIndex], effectTotal);
+  } else if (mode.symbol === 'resource') {
+    // sin objetivo: el efecto suma recursos (además de pagar coste).
+  } else {
+    // Daño → bando contrario.
+    if (effectIndex === null) return null;
+    const opp = opposite(mode.side);
+    const target = sides[opp];
+    const ch = target.characters[effectIndex];
+    if (!ch || isKO(ch, target.damage[effectIndex] ?? 0)) return null;
+    const { shieldsRemaining, healthDamage } = resolveShieldedDamage(
+      target.shields[effectIndex] ?? 0,
+      effectTotal,
+    );
+    const tShields = target.characters.map((_, i) => target.shields[i] ?? 0);
+    tShields[effectIndex] = shieldsRemaining;
+    const tDamage = target.characters.map((_, i) => target.damage[i] ?? 0);
+    tDamage[effectIndex] = Math.min(ch.health, tDamage[effectIndex] + healthDamage);
+    let tPool = target.pool;
+    if (isKO(ch, tDamage[effectIndex])) {
+      tPool = target.pool.filter((d) => d.characterIndex !== effectIndex);
+    }
+    next[opp] = { ...target, shields: tShields, damage: tDamage, pool: tPool };
+  }
+
+  // Coste de daño indirecto propio (escudos del receptor lo absorben, SPEC-005).
+  if (sums.indirectCost > 0) {
+    if (costReceiverIndex === null) return null;
+    const rc = own.characters[costReceiverIndex];
+    if (!rc || isKO(rc, ownDamage[costReceiverIndex])) return null;
+    const { shieldsRemaining, healthDamage } = resolveShieldedDamage(
+      ownShields[costReceiverIndex],
+      sums.indirectCost,
+    );
+    ownShields[costReceiverIndex] = shieldsRemaining;
+    ownDamage[costReceiverIndex] = Math.min(rc.health, ownDamage[costReceiverIndex] + healthDamage);
+    if (isKO(rc, ownDamage[costReceiverIndex])) {
+      ownPool = ownPool.filter((d) => d.characterIndex !== costReceiverIndex);
+    }
+  }
+
+  const ownResourcesFinal = mode.symbol === 'resource' ? ownResources + effectTotal : ownResources;
+  next[mode.side] = {
+    ...own,
+    pool: ownPool,
+    resources: ownResourcesFinal,
+    damage: ownDamage,
+    shields: ownShields,
+  };
+  return { sides: next, outcome: computeOutcome(next) };
 }
 
 interface ResourceResolution {
@@ -295,6 +328,10 @@ interface ResolveMode {
   side: Side;
   symbol: DieSymbol;
   marked: number[];
+  /** SPEC-010: si != null, el efecto ya tiene objetivo y se espera el receptor del coste indirecto.
+   * `effectIndex` es el objetivo del efecto (null para recurso, que no tiene objetivo). Mientras
+   * está activo, selectDie/activate quedan bloqueados (resolución atómica). */
+  pendingEffect?: { effectIndex: number | null } | null;
 }
 
 interface GameState {
@@ -365,6 +402,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   activate: (side: Side, index: number) =>
     set((state) => {
+      // Bloqueado mientras se espera el receptor del coste indirecto (SPEC-010, resolución atómica).
+      if (state.resolve?.pendingEffect) return state;
       const s = state.sides[side];
       const character = s.characters[index];
       if (!character || s.activated[index]) return state;
@@ -415,10 +454,12 @@ export const useGameStore = create<GameState>((set, get) => ({
   selectDie: (side: Side, poolIndex: number) =>
     set((state) => {
       if (state.outcome !== null) return state;
+      // Bloqueado mientras se espera el receptor del coste indirecto (SPEC-010).
+      if (state.resolve?.pendingEffect) return state;
       const die = state.sides[side].pool[poolIndex];
       if (!die) return state;
       const symbol = dieSymbol(die.face);
-      // Caras no seleccionables (blanco, especial, coste indirecto o modificador → 008b-2/008c).
+      // Caras no seleccionables (blanco, especial, focus, disrupt, descarte).
       if (symbol === null) return state;
 
       const cur = state.resolve;
@@ -433,48 +474,60 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { resolve: { ...cur, marked }, resolveError: null };
     }),
 
-  // Aplica TODOS los dados marcados (daño o escudo) a un mismo objetivo (SPEC-008a): no se
-  // reparten. Daño → bando contrario; escudo → propio bando. Paga el coste de recurso (008b).
+  // Aplica los dados marcados (daño/escudo) a un objetivo, sumando base + modificadores y pagando
+  // costes (SPEC-008b/010). Si hay coste indirecto, primero el objetivo del efecto y luego, en un
+  // segundo clic (sobre un aliado propio), el receptor del coste (paso atómico).
   applyDieTo: (targetSide: Side, index: number) =>
     set((state) => {
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.marked.length === 0) return state;
-      if (cur.symbol === 'resource') return state; // el recurso no tiene objetivo
 
-      if (cur.symbol === 'shield') {
+      // Paso 3: ya hay objetivo del efecto; este clic es el receptor del coste indirecto (bando propio).
+      if (cur.pendingEffect) {
         if (targetSide !== cur.side) return state;
-        const result = resolveShieldBatch(state.sides, cur.side, cur.marked, index);
-        if (result === null) return state;
-        if (result === 'insufficient') return { resolveError: 'Recursos insuficientes para pagar el coste.' };
-        return { sides: result, resolve: null, resolveError: null };
+        const res = resolvePlayerBatch(state.sides, cur, cur.pendingEffect.effectIndex, index);
+        if (res === null || res === 'no-base' || res === 'insufficient') return state; // no debería
+        return { sides: res.sides, outcome: res.outcome, resolve: null, resolveError: null };
       }
 
-      // Daño (melee/ranged/indirecto): objetivo del bando CONTRARIO.
-      if (targetSide === cur.side) return state;
-      const result = resolveDamageBatch(state.sides, cur.side, cur.marked, targetSide, index);
-      if (result === null) return state;
-      if (result === 'insufficient') return { resolveError: 'Recursos insuficientes para pagar el coste.' };
-      return { sides: result.sides, resolve: null, outcome: result.outcome, resolveError: null };
+      if (cur.symbol === 'resource') return state; // el recurso se resuelve con su botón
+
+      // Paso 2: elegir objetivo del efecto (daño → contrario; escudo → propio).
+      const wantSide = cur.symbol === 'shield' ? cur.side : opposite(cur.side);
+      if (targetSide !== wantSide) return state;
+      const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
+      if (!sums.hasBase) return { resolveError: 'Necesitas un dado base del mismo símbolo (un modificador solo no se resuelve).' };
+      if (state.sides[cur.side].resources < sums.resourceCost) {
+        return { resolveError: 'Recursos insuficientes para pagar el coste.' };
+      }
+      if (sums.indirectCost > 0) {
+        // Falta el receptor del coste indirecto: pasa a paso 3 (atómico).
+        return { resolve: { ...cur, pendingEffect: { effectIndex: index } }, resolveError: null };
+      }
+      // Sin coste indirecto: resolver ya.
+      const res = resolvePlayerBatch(state.sides, cur, index, null);
+      if (res === null || res === 'no-base' || res === 'insufficient') return state;
+      return { sides: res.sides, outcome: res.outcome, resolve: null, resolveError: null };
     }),
 
-  // Resuelve juntos todos los dados de recurso marcados (SPEC-008a/008b): cobra primero el coste de
-  // recurso de la tanda, luego suma lo producido; consume todos en una pasada. Si no se puede pagar
-  // el coste, no resuelve (aviso).
+  // Resuelve la tanda de recurso marcada (SPEC-008b/010): base + modificadores suman al contador,
+  // pagando el coste de recurso. Si hay coste indirecto, pasa al paso de receptor (atómico).
   resolveResources: () =>
     set((state) => {
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.symbol !== 'resource') return state;
-      if (cur.marked.length === 0) return state;
-      const s = state.sides[cur.side];
-      const { amount: total, cost } = sumMarked(s.pool, cur.marked);
-      if (s.resources < cost) return { resolveError: 'Recursos insuficientes para pagar el coste.' };
-      const markedSet = new Set(cur.marked);
-      const pool = s.pool.filter((_, i) => !markedSet.has(i));
-      return {
-        sides: { ...state.sides, [cur.side]: { ...s, resources: s.resources - cost + total, pool } },
-        resolve: null,
-        resolveError: null,
-      };
+      if (cur.marked.length === 0 || cur.pendingEffect) return state;
+      const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
+      if (!sums.hasBase) return { resolveError: 'Necesitas un dado base del mismo símbolo (un modificador solo no se resuelve).' };
+      if (state.sides[cur.side].resources < sums.resourceCost) {
+        return { resolveError: 'Recursos insuficientes para pagar el coste.' };
+      }
+      if (sums.indirectCost > 0) {
+        return { resolve: { ...cur, pendingEffect: { effectIndex: null } }, resolveError: null };
+      }
+      const res = resolvePlayerBatch(state.sides, cur, null, null);
+      if (res === null || res === 'no-base' || res === 'insufficient') return state;
+      return { sides: res.sides, outcome: res.outcome, resolve: null, resolveError: null };
     }),
 
   cancelResolve: () => set({ resolve: null, resolveError: null }),

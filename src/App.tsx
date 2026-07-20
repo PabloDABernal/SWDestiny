@@ -11,13 +11,15 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
   const activate = useGameStore((st) => st.activate);
   const applyDieTo = useGameStore((st) => st.applyDieTo);
 
-  // Objetivo válido: hay un dado de daño/escudo "actual" marcado. Daño → bando contrario;
-  // escudo → el propio bando. El recurso no tiene objetivo.
-  const hasTargetDie =
-    outcome === null && resolve !== null && resolve.marked.length > 0 && resolve.symbol !== 'resource';
-  const targetableSide =
-    hasTargetDie &&
-    (resolve!.symbol === 'shield' ? resolve!.side === side : opposite(resolve!.side) === side);
+  // Objetivo válido. Con pendingEffect (SPEC-010) se elige el receptor del coste indirecto: SIEMPRE
+  // el propio bando. Si no, daño → bando contrario, escudo → propio; el recurso no tiene objetivo.
+  const active = outcome === null && resolve !== null && resolve.marked.length > 0;
+  const targetableSide = active
+    ? resolve!.pendingEffect
+      ? resolve!.side === side
+      : resolve!.symbol !== 'resource' &&
+        (resolve!.symbol === 'shield' ? resolve!.side === side : opposite(resolve!.side) === side)
+    : false;
   const isPlayer = side === 'player';
 
   return (
@@ -67,11 +69,13 @@ export function App() {
   const hint =
     resolve === null || outcome !== null || resolve.marked.length === 0
       ? null
-      : resolve.symbol === 'shield'
-        ? 'Dado de escudo marcado. Pulsa un personaje de tu propio bando para aplicarlo.'
-        : resolve.symbol === 'resource'
-          ? null
-          : 'Dado de daño marcado. Pulsa un personaje enemigo para aplicarlo.';
+      : resolve.pendingEffect
+        ? 'Elige el personaje de tu bando que recibe el coste indirecto.'
+        : resolve.symbol === 'shield'
+          ? 'Dado de escudo marcado. Pulsa un personaje de tu propio bando para aplicarlo.'
+          : resolve.symbol === 'resource'
+            ? null
+            : 'Dado de daño marcado. Pulsa un personaje enemigo para aplicarlo.';
 
   return (
     <main className="app">
@@ -90,7 +94,10 @@ export function App() {
           Nueva ronda
         </button>
         <button onClick={resetAll}>Reset total</button>
-        <button onClick={enemyTurn} disabled={outcome !== null || !enemyHasDeck}>
+        <button
+          onClick={enemyTurn}
+          disabled={outcome !== null || !enemyHasDeck || resolve?.pendingEffect != null}
+        >
           Turno enemigo
         </button>
       </div>

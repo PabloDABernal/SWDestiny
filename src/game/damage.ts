@@ -54,11 +54,47 @@ export function parseCostedFace(
 }
 
 /**
- * Símbolo resoluble de una cara para el "modo resolver" del jugador (008a/008b), o null si la cara
- * no es seleccionable (blanco, especial, coste indirecto `i` o modificador `+`).
+ * Cara resoluble por el jugador, completa (SPEC-010): modificador `+`, coste de recurso `<n>` y
+ * coste de daño indirecto propio `i<n>`. Formato `[+]<valor><SÍMBOLO>[i]<coste>`.
+ * Función SEPARADA de los parsers del autómata (parseDamage/parseShield/parseResource).
+ */
+export function parsePlayerFace(face: string): {
+  symbol: DieSymbol;
+  amount: number;
+  resourceCost: number;
+  indirectCost: number;
+  isModifier: boolean;
+} | null {
+  const m = /^(\+)?(\d+)(MD|RD|ID|Sh|R)(i)?(\d+)?$/.exec(face);
+  if (!m) return null;
+  const token = m[3];
+  const symbol: DieSymbol =
+    token === 'MD'
+      ? 'melee'
+      : token === 'RD'
+        ? 'ranged'
+        : token === 'ID'
+          ? 'indirect'
+          : token === 'Sh'
+            ? 'shield'
+            : 'resource';
+  const cost = m[5] ? Number(m[5]) : 0;
+  const indirect = m[4] === 'i';
+  return {
+    symbol,
+    amount: Number(m[2]),
+    resourceCost: indirect ? 0 : cost,
+    indirectCost: indirect ? cost : 0,
+    isModifier: m[1] === '+',
+  };
+}
+
+/**
+ * Símbolo resoluble de una cara para el "modo resolver" del jugador (008a/008b/010), o null si no es
+ * seleccionable (blanco, especial, descarte, focus, disrupt).
  */
 export function dieSymbol(face: string): DieSymbol | null {
-  return parseCostedFace(face)?.symbol ?? null;
+  return parsePlayerFace(face)?.symbol ?? null;
 }
 
 /** Vida restante de la instancia en `index`, dada la tabla de daño acumulado. */

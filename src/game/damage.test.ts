@@ -3,6 +3,7 @@ import {
   parseDamage,
   parseDamageDie,
   parseCostedFace,
+  parsePlayerFace,
   dieSymbol,
   currentHealth,
   isKO,
@@ -56,21 +57,57 @@ describe('parseDamageDie (símbolo + cantidad, SPEC-008a)', () => {
   });
 });
 
-describe('dieSymbol (SPEC-008a/008b)', () => {
-  it('mapea cada cara resoluble a su símbolo (con o sin coste de recurso)', () => {
+describe('dieSymbol (SPEC-008a/008b/010)', () => {
+  it('mapea cada cara resoluble a su símbolo (con coste de recurso/indirecto y modificadores)', () => {
     expect(dieSymbol('2MD')).toBe('melee');
     expect(dieSymbol('1RD')).toBe('ranged');
     expect(dieSymbol('2ID')).toBe('indirect');
     expect(dieSymbol('2Sh')).toBe('shield');
     expect(dieSymbol('1R')).toBe('resource');
-    // Con coste de recurso ya son seleccionables (008b).
-    expect(dieSymbol('2RD1')).toBe('ranged');
+    expect(dieSymbol('2RD1')).toBe('ranged'); // coste recurso (008b)
     expect(dieSymbol('2R1')).toBe('resource');
+    expect(dieSymbol('3Shi1')).toBe('shield'); // coste indirecto (010)
+    expect(dieSymbol('+2MD')).toBe('melee'); // modificador (010)
+    expect(dieSymbol('+1R')).toBe('resource');
   });
 
-  it('null para no seleccionables (blanco, especial, coste indirecto `i`, modificador `+`)', () => {
-    for (const face of ['-', 'Sp', 'Dc', '3Shi1', '2RDi1', '+2MD', '1F']) {
+  it('null para no resolubles (blanco, especial, focus, disrupt, descarte)', () => {
+    for (const face of ['-', 'Sp', '1F', 'Dr', 'Dc']) {
       expect(dieSymbol(face)).toBeNull();
+    }
+  });
+});
+
+describe('parsePlayerFace (SPEC-010)', () => {
+  it('modificador +X', () => {
+    expect(parsePlayerFace('+2MD')).toEqual({
+      symbol: 'melee',
+      amount: 2,
+      resourceCost: 0,
+      indirectCost: 0,
+      isModifier: true,
+    });
+    expect(parsePlayerFace('+1R')).toMatchObject({ symbol: 'resource', amount: 1, isModifier: true });
+  });
+
+  it('coste indirecto propio (sufijo i)', () => {
+    expect(parsePlayerFace('3Shi1')).toEqual({
+      symbol: 'shield',
+      amount: 3,
+      resourceCost: 0,
+      indirectCost: 1,
+      isModifier: false,
+    });
+  });
+
+  it('coste de recurso (sin i) y sin coste', () => {
+    expect(parsePlayerFace('2RD1')).toMatchObject({ symbol: 'ranged', amount: 2, resourceCost: 1, indirectCost: 0 });
+    expect(parsePlayerFace('2MD')).toMatchObject({ resourceCost: 0, indirectCost: 0, isModifier: false });
+  });
+
+  it('null para no resolubles', () => {
+    for (const face of ['-', 'Sp', '1F', 'Dr', 'Dc']) {
+      expect(parsePlayerFace(face)).toBeNull();
     }
   });
 });
