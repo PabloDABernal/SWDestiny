@@ -68,15 +68,17 @@ absorbiendo primero) y, entre esos, el que ya tenga escudos (empate: más vida, 
 determinista); si ninguno tiene escudos, el de más vida entre los que sobrevivirían; si el coste
 mataría a cualquiera, el de más vida como última opción.
 
-**Multi-objetivo del autómata (SPEC-014):** repartir una tanda entre varios objetivos (SPEC-011) ya
-aplica también al autómata, tanto en **daño** como en **escudo** (el recurso no tiene objetivo). El
-autómata ordena sus objetivos posibles de menor a mayor vida restante (mismo desempate determinista
-de siempre) y va llenando cada uno con dados de la tanda (en su orden ya establecido, de mayor a
-menor valor) sin pasarse de lo necesario: en daño, sin hacer *overkill* (dejarlo justo en 0 o menos
-posible); en escudo, sin superar el tope de 3. En cuanto un dado haría que el objetivo actual se
-pasara, ese dado (y los siguientes que no quepan) van al **siguiente** objetivo más débil, y así
-sucesivamente. Si un solo dado por sí mismo ya supera lo que necesita el último objetivo disponible
-(no hay forma de evitarlo), se aplica igualmente ahí (un dado no se puede dividir, SPEC-011).
+**Multi-objetivo del autómata (SPEC-014):** repartir entre varios objetivos (SPEC-011) ya aplica
+también al autómata, tanto en **daño** como en **escudo** (el recurso no tiene objetivo) — pero,
+igual que le pasa al jugador con SPEC-011, puede llevar **varias pulsaciones de "Turno enemigo"**,
+no una sola: cada pulsación sigue resolviendo **un único objetivo** (como siempre), pero ahora, de
+entre los dados combinables de la tanda, solo incluye los que quepan en ese objetivo **sin pasarse**
+(sin *overkill* en daño, sin superar el tope de 3 en escudo); el resto se queda sin resolver en el
+pool para una pulsación futura, momento en el que —si el objetivo de esta pulsación quedó a 0 vida
+(KO) o a tope de escudo— el autómata pasa solo al siguiente objetivo más débil con hueco. Si **ningún**
+objetivo con hueco puede aceptar ni el dado más pequeño disponible sin pasarse (no hay forma de
+evitarlo), se aplica igual al objetivo más débil, aceptando el exceso (un dado no se puede dividir,
+SPEC-011).
 
 ### Asimetría / trampas (configurable por dificultad, **desde v1**)
 
