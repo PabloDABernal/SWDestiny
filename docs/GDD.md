@@ -155,6 +155,16 @@ spec posterior, una vez exista un consumidor real de recursos.
   cartas y keywords, empezando por los más simples como Ambush).
 - **v5:** el autómata juega cartas (con trampas de coste) + campo de batalla.
 
+### Mazo de robo (primera pieza de v3, SPEC-016)
+
+Al importar un mazo, además de las fichas de personaje (SPEC-001), se guarda el resto como **mazo
+de robo** por bando: las cartas cuyo tipo no sea personaje, trama ni campo de batalla (eventos,
+mejoras, desmejoras, apoyos — RR pg 17: esas tres no cuentan para el límite de 30), barajadas y
+persistidas en localStorage igual que los personajes. Esta primera pieza **no** añade mano ni
+acción de robar (specs siguientes); se muestra el recuento de cartas restantes junto a cada bando
+para poder verificarlo jugando. Si cualquier carta del mazo no se resuelve contra la API, el
+import se cancela con error, igual que ya pasa con personajes no encontrados (SPEC-001).
+
 ## 6. Fuera de alcance (explícito, hasta que se decida lo contrario)
 
 - Multijugador, alianzas, free-for-all (reglas de la Parte 9 del reglamento).
