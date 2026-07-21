@@ -177,6 +177,15 @@ import se cancela con error, igual que ya pasa con personajes no encontrados (SP
 mientras no se diga lo contrario. Elegido por cubrir personaje único/elite (2 dados) y personaje
 no-único duplicado (dados independientes por copia).
 
+### Formatos de import aceptados
+
+El textarea de importar acepta dos formatos, detectados automáticamente:
+- **JSON con `slots`** (código→cantidad) de ARH DB (SPEC-001).
+- **"Text file"** de ARH DB (el que genera el botón "Download"): listado legible tipo
+  `2x Luminara Unduli, ... (Spirit of Rebellion #36)`, convertido a `slots` internamente
+  (SPEC-017). En ambos casos las caras y el tipo de cada carta se resuelven por código contra
+  la API; el text file no aporta datos de juego, solo qué cartas y cuántas.
+
 ## 8. Preguntas de diseño abiertas
 
 - (Ninguna pendiente ahora mismo; añadir aquí cuando surjan durante la implementación, siguiendo
