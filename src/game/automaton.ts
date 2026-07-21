@@ -16,15 +16,23 @@ export interface AutomatonOpponent extends SideView {
   shields: number[];
 }
 
-/** Trampas del autómata enemigo (GDD §4), fijas hasta que exista selector de dificultad. */
-export const ENEMY_HEALTH_MULTIPLIER = 1.5;
-export const ENEMY_EXTRA_REROLLS_PER_ROUND = 1;
+/** Nivel de dificultad elegido por el jugador (SPEC-015), controla las trampas del autómata. */
+export type Difficulty = 'easy' | 'normal' | 'hard';
+
+export const DEFAULT_DIFFICULTY: Difficulty = 'normal';
+
+/** Trampas del autómata enemigo (GDD §4) por nivel de dificultad. */
+export const DIFFICULTY_SETTINGS: Record<Difficulty, { healthMultiplier: number; extraRerolls: number }> = {
+  easy: { healthMultiplier: 1, extraRerolls: 0 },
+  normal: { healthMultiplier: 1.5, extraRerolls: 1 },
+  hard: { healthMultiplier: 2, extraRerolls: 2 },
+};
 
 /** Aplica la trampa de vida multiplicada. Redondeo siempre hacia arriba (favorece al enemigo). */
-export function applyEnemyHealthMultiplier(characters: Character[]): Character[] {
+export function applyEnemyHealthMultiplier(characters: Character[], multiplier: number): Character[] {
   return characters.map((c) => ({
     ...c,
-    health: Math.ceil(c.health * ENEMY_HEALTH_MULTIPLIER),
+    health: Math.ceil(c.health * multiplier),
   }));
 }
 
@@ -240,6 +248,7 @@ export function nextAutomatonAction(
   enemy: AutomatonSide,
   player: AutomatonOpponent,
   rerollsUsed: RerollsUsed,
+  extraRerolls: number,
 ): AutomatonAction {
   const hasNonKoAlly = enemy.characters.some((c, i) => !isKO(c, enemy.damage[i] ?? 0));
 
@@ -310,7 +319,7 @@ export function nextAutomatonAction(
     if (!rerollsUsed.free) {
       return { type: 'reroll', dieIndices: blanks, kind: 'free' };
     }
-    if (rerollsUsed.extra < ENEMY_EXTRA_REROLLS_PER_ROUND) {
+    if (rerollsUsed.extra < extraRerolls) {
       return { type: 'reroll', dieIndices: blanks, kind: 'extra' };
     }
   }

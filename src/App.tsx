@@ -2,6 +2,7 @@ import { useGameStore, opposite, type Side } from './store/gameStore';
 import { ImportPanel } from './components/ImportPanel';
 import { CharacterCard } from './components/CharacterCard';
 import { DicePool } from './components/DicePool';
+import { DifficultySelector } from './components/DifficultySelector';
 import { currentHealth, isKO } from './game/damage';
 
 function BattleSide({ side, label }: { side: Side; label: string }) {
@@ -26,6 +27,7 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
     <section className={`battle-side battle-side--${side}`}>
       <div className="battle-side__head">
         <h2>{label}</h2>
+        {!isPlayer && <DifficultySelector />}
         <ImportPanel side={side} label={label} />
       </div>
       {s.characters.length === 0 ? (

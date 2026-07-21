@@ -17,8 +17,11 @@ import { computeOutcome as computeOutcomePure, type Outcome } from '../game/outc
 import {
   applyEnemyHealthMultiplier,
   nextAutomatonAction,
+  DEFAULT_DIFFICULTY,
+  DIFFICULTY_SETTINGS,
   type AutomatonOpponent,
   type AutomatonSide,
+  type Difficulty,
   type RerollsUsed,
 } from '../game/automaton';
 
@@ -42,6 +45,26 @@ function loadPersistedDeck(side: Side): Character[] {
 function persistDeck(side: Side, characters: Character[]): void {
   try {
     localStorage.setItem(DECK_KEY(side), JSON.stringify(characters));
+  } catch {
+    // best-effort
+  }
+}
+
+const DIFFICULTY_KEY = 'swd:difficulty';
+const VALID_DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard'];
+
+function loadPersistedDifficulty(): Difficulty {
+  try {
+    const raw = localStorage.getItem(DIFFICULTY_KEY);
+    return raw && (VALID_DIFFICULTIES as string[]).includes(raw) ? (raw as Difficulty) : DEFAULT_DIFFICULTY;
+  } catch {
+    return DEFAULT_DIFFICULTY;
+  }
+}
+
+function persistDifficulty(difficulty: Difficulty): void {
+  try {
+    localStorage.setItem(DIFFICULTY_KEY, difficulty);
   } catch {
     // best-effort
   }
@@ -254,6 +277,10 @@ interface GameState {
   outcome: Outcome;
   /** Feedback de la última acción del autómata (incluida "pasa"), para mostrar en la UI. */
   lastEnemyAction: string | null;
+  /** Nivel de dificultad del autómata enemigo (SPEC-015), persistido entre recargas. */
+  difficulty: Difficulty;
+  /** Solo afecta a la PRÓXIMA importación del enemigo (vida); el reroll extra aplica de inmediato. */
+  setDifficulty: (difficulty: Difficulty) => void;
   importDeck: (side: Side, raw: string) => Promise<void>;
   activate: (side: Side, index: number) => void;
   /** Solo re-tira dados: vacía pools/activaciones/rerolls de ambos bandos; conserva recursos, vida,
@@ -283,6 +310,12 @@ export const useGameStore = create<GameState>((set, get) => ({
   resolveError: null,
   outcome: null,
   lastEnemyAction: null,
+  difficulty: loadPersistedDifficulty(),
+
+  setDifficulty: (difficulty: Difficulty) => {
+    persistDifficulty(difficulty);
+    set({ difficulty });
+  },
 
   importDeck: async (side: Side, raw: string) => {
     set((state) => ({
@@ -292,8 +325,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       const slots = parseDeck(raw);
       const cards = await resolveCards(slots);
       const built = buildCharacters(slots, cards);
-      // Trampa (GDD §4): la vida del bando enemigo se multiplica al importar.
-      const characters = side === 'enemy' ? applyEnemyHealthMultiplier(built) : built;
+      // Trampa (GDD §4): la vida del bando enemigo se multiplica al importar, según la dificultad
+      // vigente en ESE momento (SPEC-015; no retroactivo si se cambia después).
+      const characters =
+        side === 'enemy'
+          ? applyEnemyHealthMultiplier(built, DIFFICULTY_SETTINGS[get().difficulty].healthMultiplier)
+          : built;
       persistDeck(side, characters);
       // Reinicia el estado de partida de ESTE bando (vida completa) y recalcula el fin.
       set((state) => {
@@ -483,7 +520,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       damage: player.damage,
       shields: player.shields,
     };
-    const action = nextAutomatonAction(automatonEnemy, automatonPlayer, enemy.rerollsUsed);
+    const extraRerolls = DIFFICULTY_SETTINGS[state.difficulty].extraRerolls;
+    const action = nextAutomatonAction(automatonEnemy, automatonPlayer, enemy.rerollsUsed, extraRerolls);
 
     const batchTotal = (dieIndices: number[]): number =>
       dieIndices.reduce((sum, i) => {

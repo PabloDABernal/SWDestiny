@@ -234,6 +234,23 @@ button:disabled {
   margin: 0;
 }
 
+.difficulty-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: #9aa0b0;
+}
+
+.difficulty-selector select {
+  background: #0f1117;
+  color: #e6e8ee;
+  border: 1px solid #2a2e3a;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.85rem;
+}
+
 .battle-side__head .import-panel {
   flex: 1 1 320px;
   max-width: 480px;
