@@ -42,17 +42,30 @@ aunque no se puede dividir el daño de un solo dado.
 Evalúa, en su turno, una tabla de prioridades de arriba abajo y ejecuta la primera acción legal
 (ver SPEC-004b y SPEC-007 para el detalle definitivo):
 
-1. Si tiene dados de daño en su pool, resuelve el de mayor daño, dirigido al personaje del jugador
-   con menos vida restante.
-2. Si tiene un dado de **escudo**, lo aplica a su aliado no-KO con menos vida restante (SPEC-007).
+1. Si tiene dados de daño en su pool, resuelve una **tanda combinada** (base + modificadores `+X`,
+   de mayor a menor valor, mientras el coste de recurso le sea pagable — SPEC-013) dirigida al
+   personaje del jugador con menos vida restante (empate al azar).
+2. Si tiene un dado de **escudo**, resuelve su tanda combinada (igual que el daño) sobre su aliado
+   no-KO con menos vida restante (SPEC-007/013).
 3. Si tiene personajes sin activar, activa el de más vida restante.
-4. Si tiene un dado de **recurso**, lo resuelve sumándolo al contador de recursos del enemigo
-   (SPEC-007).
+4. Si tiene un dado de **recurso**, resuelve su tanda combinada sumándola al contador de recursos
+   del enemigo (SPEC-007/013).
 5. Si tiene 2 o más dados mostrando blanco, los rerollea (reroll gratuito, luego el extra de la
    trampa).
 6. Pasa.
 
 La tabla crece en fases posteriores conforme se implementan cartas.
+
+**Tandas combinadas y costes (SPEC-013):** para cada símbolo (daño/escudo/recurso), el autómata
+junta todos los dados base y modificadores `+X` de ese símbolo, ordenados de mayor a menor valor, y
+los va sumando mientras el coste de recurso acumulado le sea pagable con sus propios recursos; el
+primer dado que haría el coste impagable se descarta (queda para una pasada futura) y la tanda se
+cierra con lo ya sumado. Si el coste de daño indirecto propio (`…i<n>`) forma parte de la tanda, el
+receptor se elige así: de sus personajes no-KO, prioriza los que **sobrevivirían** al coste (con
+escudos absorbiendo primero) y, entre esos, el que ya tenga escudos (empate: más vida); si ninguno
+tiene escudos, el de más vida entre los que sobrevivirían; si el coste mataría a cualquiera, el de
+más vida como última opción. El multi-objetivo (repartir una tanda entre varios enemigos, SPEC-011)
+sigue sin aplicar al autómata: cada tanda va a un único objetivo.
 
 ### Asimetría / trampas (configurable por dificultad, **desde v1**)
 
