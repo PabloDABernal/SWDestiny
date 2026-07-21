@@ -2,7 +2,9 @@
 
 **Estado:** Vivo (v1.0, v2 en curso) — decisiones confirmadas por specs jugadas (TypeScript,
 Zustand, localStorage, proxy /arh en dev, estado por bando y motor del autómata desde
-SPEC-004/004b, escudos y recursos por bando desde SPEC-005/006, despliegue a GitHub Pages)
+SPEC-004/004b, escudos y recursos por bando desde SPEC-005/006, despliegue a GitHub Pages,
+autómata combinando modificadores/pagando costes y multi-objetivo desde SPEC-013/014, selector de
+dificultad desde SPEC-015 — ver GDD hasta SPEC-015)
 
 ## Stack propuesto
 
@@ -43,14 +45,25 @@ ecosistema de componentes de tablero/dados ya hechos.)*
   su propio pool. Los mazos importados se persisten en claves separadas por bando; el estado de
   partida (pools, activaciones, daño, fin de partida) no se persiste.
 - **Escudos y recursos** (desde SPEC-005/006): `shields: number[]` por instancia (tope
-  `MAX_SHIELDS`, absorben daño antes que la vida en `resolveDamage`) y `resources: number` único
-  por bando (sin tope; **persiste entre rondas** y empieza en 2 al importar, SPEC-009; "Nueva ronda"
-  suma **+2** a cada bando como mantenimiento, SPEC-011). El
-  objetivo válido de un dado ya no es siempre "el bando contrario": depende del tipo de dado
-  (daño → bando contrario; escudo → propio bando; recurso → sin objetivo, un solo clic). El
-  autómata resuelve daño/escudo/activar/recurso/reroll/pasar (tabla ampliada en SPEC-007); el
-  escudo lo aplica a su aliado no-KO de menor vida y el recurso suma a su contador. La resolución
-  pura de recurso (`resolveResourcePure`) se comparte entre el jugador y el autómata.
+  `MAX_SHIELDS`, absorben daño antes que la vida) y `resources: number` único por bando (sin tope;
+  **persiste entre rondas** y empieza en 2 al importar, SPEC-009; "Nueva ronda" suma **+2** a cada
+  bando como mantenimiento, SPEC-011). El objetivo válido de un dado ya no es siempre "el bando
+  contrario": depende del tipo de dado (daño → bando contrario; escudo → propio bando; recurso →
+  sin objetivo, un solo clic). `resolvePlayerBatch` (SPEC-010) es el único motor de resolución de
+  tandas, compartido tal cual entre jugador y autómata desde SPEC-013 (ya no hay funciones puras
+  separadas por bando como `resolveDamage`/`resolveShield`/`resolveResourcePure`, eliminadas por
+  código muerto en esa spec).
+- **Autómata — tabla de prioridades y trampas** (SPEC-004b/007, ampliada en SPEC-013/014/015): daño
+  → escudo → activar → recurso → reroll → pasar. Cada fila combina dados base + modificadores `+X`
+  del mismo símbolo, paga su coste de recurso (greedy: incluye mientras sea pagable, salta y sigue
+  con el resto) y resuelve el coste de daño indirecto propio (`…i<n>`) con un receptor propio
+  determinista (sobrevivientes con escudo > sobrevivientes por vida > cualquiera por vida). Daño y
+  escudo reparten sin *overkill*/sin pasar de `MAX_SHIELDS` entre varios objetivos si hace falta,
+  a costa de varias pulsaciones de "Turno enemigo" (nunca resuelve más de un objetivo por
+  pulsación, igual que el multi-objetivo manual del jugador, SPEC-011). Las trampas (multiplicador
+  de vida enemiga, rerolls extra) son configurables por el jugador vía un selector de dificultad
+  (Fácil/Normal/Difícil, SPEC-015), persistido en `localStorage`; el multiplicador de vida solo se
+  aplica a la próxima importación del mazo enemigo (no retroactivo, ni con "Reset total").
 
 ## Reglas técnicas de alcance por fase (para revisor-código y revisor-specs)
 
@@ -58,7 +71,8 @@ ecosistema de componentes de tablero/dados ya hechos.)*
   (equivalente a blanco), hasta que exista el sistema de recursos (v2). **Superado en SPEC-008b**:
   con recursos ya implementados, el jugador paga costes de cara (recurso amarillo / daño indirecto
   propio rojo). Formato de coste en ARH DB: `<valor><SÍMBOLO>[i]<coste>` (`i` = coste indirecto; sin
-  `i` = coste de recurso). El autómata sigue sin pagar costes.
+  `i` = coste de recurso). **Superado también para el autómata en SPEC-013/014**: paga los mismos
+  costes (recurso e indirecto) que el jugador, en daño/escudo/recurso.
 - Cualquier símbolo, keyword o mecánica no listada como "dentro de alcance" en la spec en curso
   se considera fuera de alcance y debe ir a BACKLOG.md, no implementarse "de paso".
 

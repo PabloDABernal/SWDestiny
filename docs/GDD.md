@@ -1,7 +1,9 @@
 # GDD — Star Wars Destiny: PVE con mazos de la comunidad
 
 **Estado:** Vivo (v1.0, v2 en curso) — v1 completa; v2 en marcha (SPEC-005 escudos, SPEC-006
-recursos-generación), validado de facto por specs jugadas (SPEC-001 a SPEC-006)
+recursos-generación), validado de facto por specs jugadas (SPEC-001 a SPEC-015: incluye costes y
+multi-objetivo del jugador —SPEC-008a/008b/010/011—, paridad del autómata —SPEC-013/014— y
+selector de dificultad —SPEC-015—)
 
 ## 1. Visión
 
