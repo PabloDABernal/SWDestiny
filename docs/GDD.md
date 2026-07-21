@@ -91,6 +91,13 @@ sentido depende de qué mecánicas existen ya en cada fase:
   cartas (necesita v2/recursos y v4/cartas), robo extra por ronda (necesita v3/mano).
 - (Ampliable; cada trampa nueva se documenta aquí antes de implementarse.)
 
+**Selector de dificultad (SPEC-015):** el jugador elige entre tres niveles junto al panel de
+importar del enemigo — **Fácil** (x1 vida, 0 rerolls extra: el autómata sin trampas), **Normal**
+(x1.5 vida, 1 reroll extra: los valores fijos de v1) y **Difícil** (x2 vida, 2 rerolls extra). La
+elección se recuerda entre recargas (localStorage, igual que el mazo) y solo afecta a la **próxima**
+importación del mazo enemigo (la vida ya multiplicada de una partida en curso no se recalcula al
+cambiar el selector); el reroll extra, al consultarse en cada turno, sí aplica de inmediato.
+
 ## 5. Alcance por versión (resumen — detalle y orden en BACKLOG/specs)
 
 - **v1:** personajes + dados + daño (melee/ranged/indirecto) + blancos + autómata básico **con
