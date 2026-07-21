@@ -112,9 +112,11 @@ Verificables jugando. Formato: acción → resultado observable.
 - **Número con menos de 3 dígitos** (`#5`) → se rellena a `005`; con 3 o más se deja igual (`#167`
   → `167`).
 - **Misma carta (mismo código) en dos líneas** → defensivo: se **suman** las cantidades en el mismo
-  slot (el text file real no duplica; evita doble-conteo si lo hiciera).
-- **Espacios/tabs sobrantes** al inicio/fin de línea o dobles espacios → se toleran (trim + colapso
-  razonable) sin romper el match.
+  slot (el text file real no duplica; evita doble-conteo si lo hiciera). No es verificable jugando
+  con un export real (no ocurre); se cubre con **test unitario** de `parseTextDeck`, no con paso de
+  playtest.
+- **Espacios/tabs sobrantes** → cada línea se procesa con `trim()` y colapso de espacios internos
+  `\s+` → un solo espacio antes de aplicar el regex, para que no rompan el match.
 - **JSON inválido que sí empieza por `{`** → se intenta como JSON y falla con el error de JSON de
   siempre (no se reintenta como texto); es coherente con la detección por primer carácter.
 
@@ -129,8 +131,10 @@ Verificables jugando. Formato: acción → resultado observable.
   `^\s*(?:(\d+)x\s+)?.+\(([^)#]+?)\s*#(\d+)\)\s*$`. Grupo 1 = cantidad (opcional), grupo 2 = nombre
   de set (trim), grupo 3 = número. Una línea que **no** casa este patrón se ignora (es estructura);
   una que casa pero cuyo set no está en la tabla, o cuyo número/cantidad es inválido, **lanza
-  `ImportError('invalid-text', …)`** (nuevo `kind` o reutilizar `'invalid-json'` con mensaje de
-  texto; decidir al implementar sin cambiar el contrato de `ImportError`).
+  `ImportError('invalid-text', …)`**. **Decisión fijada:** añadir un `reason` nuevo `'invalid-text'`
+  al union `ImportErrorReason` en `src/import/errors.ts` (añadir valor, **no** reescribir uno
+  existente, para no romper `parseDeck.test.ts`/`buildCharacters.test.ts`); `parseTextDeck` usa ese
+  `reason` en todos sus casos de fallo.
 - Tabla de sets: constante `SET_CODES: Record<string, string>` en el mismo archivo, con las claves
   exactas de la columna "nombre en el text file" de arriba. Validar contra un export real al
   implementar (como SPEC-001 hizo con `type_code`); si algún nombre difiere, ajustar la constante,
