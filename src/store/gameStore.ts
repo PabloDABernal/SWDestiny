@@ -33,7 +33,9 @@ const DECK_KEY = (side: Side) => `swd:deck:${side}`;
 function loadPersistedDeck(side: Side): Character[] {
   try {
     const raw = localStorage.getItem(DECK_KEY(side));
-    return raw ? (JSON.parse(raw) as Character[]) : [];
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as Character[]) : [];
   } catch {
     return [];
   }
