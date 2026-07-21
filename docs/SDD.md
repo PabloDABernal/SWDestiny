@@ -37,9 +37,11 @@ ecosistema de componentes de tablero/dados ya hechos.)*
 - **Motor del autómata**: función pura que, dado el estado de partida, devuelve "la siguiente
   acción" evaluando la tabla de prioridades de arriba abajo (ver GDD sección 4). No conoce reglas
   fuera de esa tabla; no hay heurística de evaluación de jugadas.
-- **Importador de mazos**: capa separada que traduce el JSON de un decklist de ARH DB al modelo
-  interno de personajes/cartas del juego. `resolveCards` resuelve **todas** las cartas del export
-  contra la API (no solo personajes). `buildCharacters` sigue quedándose solo con las de
+- **Importador de mazos**: capa separada que traduce un decklist de ARH DB al modelo interno de
+  personajes/cartas del juego. La entrada se detecta por formato (SPEC-017): empieza por `{` →
+  `parseDeck` (JSON con `slots`); si no → `parseTextDeck` (el "text file" legible, con tabla fija
+  nombre-de-set→código). Ambos producen el mismo `DeckSlot[]`, así que el resto del pipeline no
+  cambia. `resolveCards` resuelve **todas** las cartas del export contra la API (no solo personajes). `buildCharacters` sigue quedándose solo con las de
   `type_code === 'character'`; desde SPEC-016, `buildDrawPile` construye además el mazo de robo
   (todo lo que no sea personaje, trama ni campo de batalla) con esas mismas cartas ya resueltas, sin
   llamadas nuevas a la API. Trama y campo de batalla, si el export las trae, no se guardan en

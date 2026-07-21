@@ -3,6 +3,7 @@
 
 export type ImportErrorReason =
   | 'invalid-json' // JSON ilegible o sin la estructura de export (sin `slots`)
+  | 'invalid-text' // "text file" de ARH DB ilegible (set desconocido, línea malformada, sin cartas)
   | 'no-characters' // el mazo no contiene ningún personaje
   | 'card-not-found' // un código de carta no existe en la API
   | 'network'; // fallo de red / CORS al resolver cartas

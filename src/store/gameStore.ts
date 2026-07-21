@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Character } from '../model/types';
 import { parseDeck } from '../import/parseDeck';
+import { parseTextDeck } from '../import/parseTextDeck';
 import { resolveCards } from '../import/resolveCards';
 import { buildCharacters } from '../import/buildCharacters';
 import { buildDrawPile, shuffle } from '../import/buildDrawPile';
@@ -348,7 +349,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       sides: { ...state.sides, [side]: { ...state.sides[side], importStatus: 'importing', importError: null } },
     }));
     try {
-      const slots = parseDeck(raw);
+      // Autodetección de formato (SPEC-017): JSON con `slots` si empieza por "{"; si no, el
+      // "text file" legible de ARH DB. Ambos producen el mismo DeckSlot[].
+      const slots = raw.trim().startsWith('{') ? parseDeck(raw) : parseTextDeck(raw);
       const cards = await resolveCards(slots);
       const built = buildCharacters(slots, cards);
       // Trampa (GDD §4): la vida del bando enemigo se multiplica al importar, según la dificultad
