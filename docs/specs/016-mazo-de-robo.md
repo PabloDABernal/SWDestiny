@@ -1,6 +1,6 @@
 # SPEC-016: Mazo de robo (primera pieza de v3)
 
-**Estado:** Pendiente
+**Estado:** Completada
 **Sección del GDD:** §5 ("Mazo de robo (primera pieza de v3, SPEC-016)")
 **Depende de:** SPEC-001 (importar mazos, modelo, caché), SPEC-012 (patrón de validación de
 localStorage)
@@ -95,4 +95,8 @@ juego nueva (robar, mano, deck-out quedan fuera).
 
 ## Resultado del playtest
 
-(pendiente)
+Completada tras playtest 2026-07-21. Importado "Unduli, clone commander" en ambos bandos (JSON
+`slots` construido a mano desde el text file de ARH DB, códigos resueltos contra
+`db.swdrenewedhope.com`): sale **"Mazo: 30"** en cada bando (10 upgrades + 2 support + 18 events);
+los 4 personajes y el battlefield (Emperor's Throne Room) quedan excluidos (no sale 35). Reimportar,
+recargar y Reset/Nueva ronda mantienen el recuento.
