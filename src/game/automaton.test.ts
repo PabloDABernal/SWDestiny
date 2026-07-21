@@ -20,12 +20,17 @@ function die(characterIndex: number, face: string, dieIndex = 0): PooledDie {
 
 const noRerollsUsed = { free: false, extra: 0 };
 
+/** Recursos generosos por defecto: los tests de coste ajustan `resources` explícitamente. */
+const AMPLE_RESOURCES = 99;
+
 function enemySide(over: Partial<AutomatonSide> = {}): AutomatonSide {
   return {
     characters: [ch('Enemigo A', 10), ch('Enemigo B', 8)],
     damage: [0, 0],
     activated: [false, false],
     pool: [],
+    shields: [0, 0],
+    resources: AMPLE_RESOURCES,
     ...over,
   };
 }
@@ -43,14 +48,35 @@ describe('nextAutomatonAction — prioridad 1: atacar', () => {
     const enemy = enemySide({ pool: [die(0, '2MD')] });
     const player = playerSide({ damage: [5, 0] }); // A: 6 vida, B: 6 vida (empate)
     const action = nextAutomatonAction(enemy, player, noRerollsUsed);
-    expect(action).toEqual({ type: 'attack', dieIndex: 0, targetIndex: 0 });
+    expect(action).toEqual({
+      type: 'attack',
+      dieIndices: [0],
+      targetIndex: 0,
+      costReceiverIndex: null,
+    });
   });
 
-  it('elige el dado de daño de MAYOR valor si hay varios', () => {
+  it('combina TODOS los dados base de daño en una sola tanda (SPEC-013)', () => {
     const enemy = enemySide({ pool: [die(0, '1MD'), die(1, '3RD'), die(0, '2ID')] });
     const player = playerSide();
     const action = nextAutomatonAction(enemy, player, noRerollsUsed);
-    expect(action).toEqual({ type: 'attack', dieIndex: 1, targetIndex: 1 });
+    expect(action).toEqual({
+      type: 'attack',
+      dieIndices: [1, 2, 0], // orden de mayor a menor valor: 3RD, 2ID, 1MD
+      targetIndex: 1,
+      costReceiverIndex: null,
+    });
+  });
+
+  it('combina un dado base con su modificador +X del mismo símbolo (SPEC-013)', () => {
+    const enemy = enemySide({ pool: [die(0, '2MD'), die(0, '+1MD')] });
+    const action = nextAutomatonAction(enemy, playerSide(), noRerollsUsed);
+    expect(action).toEqual({
+      type: 'attack',
+      dieIndices: [0, 1],
+      targetIndex: 1, // Jugador A:11, B:6 → objetivo de menos vida es B (índice 1)
+      costReceiverIndex: null,
+    });
   });
 
   it('ignora dados sin daño (blanco/recurso/focus/escudo/especial/descarte)', () => {
@@ -65,8 +91,9 @@ describe('nextAutomatonAction — prioridad 1: atacar', () => {
     const player = playerSide({ damage: [0, 5] }); // A: 11, B: 1 → gana B (menos vida)
     expect(nextAutomatonAction(enemy, player, noRerollsUsed)).toEqual({
       type: 'attack',
-      dieIndex: 0,
+      dieIndices: [0],
       targetIndex: 1,
+      costReceiverIndex: null,
     });
   });
 
@@ -75,8 +102,9 @@ describe('nextAutomatonAction — prioridad 1: atacar', () => {
     const player = playerSide({ damage: [11, 5] }); // A KO, B con 1 vida
     expect(nextAutomatonAction(enemy, player, noRerollsUsed)).toEqual({
       type: 'attack',
-      dieIndex: 0,
+      dieIndices: [0],
       targetIndex: 1,
+      costReceiverIndex: null,
     });
   });
 
@@ -91,6 +119,86 @@ describe('nextAutomatonAction — prioridad 1: atacar', () => {
     const enemy = enemySide({ pool: [die(0, '2MD')], activated: [false, false] });
     const player = playerSide();
     expect(nextAutomatonAction(enemy, player, noRerollsUsed).type).toBe('attack');
+  });
+});
+
+describe('nextAutomatonAction — coste de recurso (SPEC-013)', () => {
+  it('con recursos suficientes, resuelve un dado de daño con coste y lo incluye en la tanda', () => {
+    const enemy = enemySide({ pool: [die(0, '2MD3')], resources: 3 });
+    const action = nextAutomatonAction(enemy, playerSide(), noRerollsUsed);
+    expect(action).toMatchObject({ type: 'attack', dieIndices: [0] });
+  });
+
+  it('con recursos insuficientes para el dado más caro, lo descarta y usa otro pagable', () => {
+    const enemy = enemySide({ pool: [die(0, '2MD3'), die(1, '1MD')], resources: 1 });
+    const action = nextAutomatonAction(enemy, playerSide(), noRerollsUsed);
+    expect(action).toMatchObject({ type: 'attack', dieIndices: [1] });
+  });
+
+  it('un dado impagable intercalado se salta pero no bloquea el resto de la tanda', () => {
+    // 3MD3 (impagable con 2 recursos) queda fuera; 2MD y 1MD (pagables) sí se combinan.
+    const enemy = enemySide({ pool: [die(0, '3MD3'), die(0, '2MD'), die(1, '1MD')], resources: 2 });
+    const action = nextAutomatonAction(enemy, playerSide(), noRerollsUsed);
+    expect(action).toMatchObject({ type: 'attack', dieIndices: [1, 2] });
+  });
+
+  it('si ningún dado de daño es pagable, esa prioridad no aplica (cae a la siguiente)', () => {
+    const enemy = enemySide({ pool: [die(0, '2MD3')], resources: 0 });
+    const action = nextAutomatonAction(enemy, playerSide(), noRerollsUsed);
+    expect(action.type).not.toBe('attack');
+  });
+
+  it('solo modificadores sin dado base pagable: esa prioridad no aplica', () => {
+    const enemy = enemySide({ pool: [die(0, '+1MD')] });
+    const action = nextAutomatonAction(enemy, playerSide(), noRerollsUsed);
+    expect(action.type).not.toBe('attack');
+  });
+});
+
+describe('nextAutomatonAction — coste de daño indirecto propio (SPEC-013)', () => {
+  it('elige como receptor al aliado no-KO que sobrevive y ya tiene escudos', () => {
+    const enemy = enemySide({
+      pool: [die(0, '2IDi1')],
+      characters: [ch('A', 10), ch('B', 10)],
+      damage: [0, 0],
+      shields: [1, 0],
+    });
+    const action = nextAutomatonAction(enemy, playerSide(), noRerollsUsed);
+    expect(action).toMatchObject({ type: 'attack', dieIndices: [0], costReceiverIndex: 0 });
+  });
+
+  it('sin escudos en ningún aliado, elige al superviviente de más vida', () => {
+    const enemy = enemySide({
+      pool: [die(0, '2IDi1')],
+      characters: [ch('A', 10), ch('B', 5)],
+      damage: [0, 0],
+      shields: [0, 0],
+    });
+    const action = nextAutomatonAction(enemy, playerSide(), noRerollsUsed);
+    expect(action).toMatchObject({ type: 'attack', costReceiverIndex: 0 });
+  });
+
+  it('si el coste mataría a cualquiera, se aplica igualmente al de más vida (inevitable)', () => {
+    const enemy = enemySide({
+      pool: [die(0, '2IDi5')],
+      characters: [ch('A', 3), ch('B', 2)],
+      damage: [0, 0],
+      shields: [0, 0],
+    });
+    const action = nextAutomatonAction(enemy, playerSide(), noRerollsUsed);
+    expect(action).toMatchObject({ type: 'attack', costReceiverIndex: 0 });
+  });
+
+  it('sin ningún aliado no-KO, el dado con coste indirecto se descarta de la tanda de daño', () => {
+    const enemy = enemySide({
+      pool: [die(0, '2IDi1'), die(1, '1MD')],
+      characters: [ch('A', 10), ch('B', 10)],
+      damage: [10, 10], // ambos KO
+    });
+    // El bando enemigo entero KO no debería darse en juego normal (sería Derrota), pero la función
+    // debe seguir siendo pura y no romperse: excluye el dado con coste indirecto de la tanda.
+    const action = nextAutomatonAction(enemy, playerSide(), noRerollsUsed);
+    expect(action).toMatchObject({ type: 'attack', dieIndices: [1], costReceiverIndex: null });
   });
 });
 
@@ -129,17 +237,18 @@ describe('nextAutomatonAction — prioridad 2: activar', () => {
   });
 });
 
-describe('nextAutomatonAction — escudo (SPEC-007)', () => {
+describe('nextAutomatonAction — escudo (SPEC-007/013)', () => {
   it('con un dado de escudo y sin daño, lo aplica al aliado no-KO de menor vida', () => {
     const enemy = enemySide({ pool: [die(0, '2Sh')], damage: [0, 3] }); // A:10, B:5 → B
     const action = nextAutomatonAction(enemy, playerSide(), noRerollsUsed);
-    expect(action).toEqual({ type: 'shield', dieIndex: 0, targetIndex: 1 });
+    expect(action).toEqual({ type: 'shield', dieIndices: [0], targetIndex: 1 });
   });
 
-  it('elige el dado de escudo de MAYOR valor si hay varios', () => {
-    const enemy = enemySide({ pool: [die(0, '1Sh'), die(1, '3Sh')] });
+  it('combina varios dados de escudo (base + modificador) en una sola tanda', () => {
+    const enemy = enemySide({ pool: [die(0, '1Sh'), die(1, '3Sh'), die(0, '+1Sh')] });
     const action = nextAutomatonAction(enemy, playerSide(), noRerollsUsed);
-    expect(action).toMatchObject({ type: 'shield', dieIndex: 1 });
+    // Orden por valor desc (3,1,1); empate 1Sh/+1Sh se resuelve por orden de aparición en el pool.
+    expect(action).toMatchObject({ type: 'shield', dieIndices: [1, 0, 2] });
   });
 
   it('atacar tiene prioridad sobre escudar', () => {
@@ -157,22 +266,28 @@ describe('nextAutomatonAction — escudo (SPEC-007)', () => {
     const enemy = enemySide({ pool: [die(0, '1Sh')], damage: [10, 8], activated: [true, true] });
     expect(nextAutomatonAction(enemy, playerSide(), noRerollsUsed).type).not.toBe('shield');
   });
+
+  it('con recursos insuficientes para el coste de un dado de escudo, esa prioridad no aplica', () => {
+    const enemy = enemySide({ pool: [die(0, '2Sh3')], resources: 0, activated: [true, true] });
+    expect(nextAutomatonAction(enemy, playerSide(), noRerollsUsed).type).not.toBe('shield');
+  });
 });
 
-describe('nextAutomatonAction — recurso (SPEC-007)', () => {
+describe('nextAutomatonAction — recurso (SPEC-007/013)', () => {
   it('con un dado de recurso y nada mejor que hacer, lo resuelve', () => {
     const enemy = enemySide({ activated: [true, true], pool: [die(0, '2R')] });
     expect(nextAutomatonAction(enemy, playerSide(), noRerollsUsed)).toEqual({
       type: 'resource',
-      dieIndex: 0,
+      dieIndices: [0],
     });
   });
 
-  it('elige el dado de recurso de MAYOR valor', () => {
-    const enemy = enemySide({ activated: [true, true], pool: [die(0, '1R'), die(1, '2R')] });
+  it('combina varios dados de recurso (base + modificador) en una sola tanda', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [die(0, '1R'), die(1, '2R'), die(0, '+1R')] });
+    // Orden por valor desc (2,1,1); empate 1R/+1R se resuelve por orden de aparición en el pool.
     expect(nextAutomatonAction(enemy, playerSide(), noRerollsUsed)).toMatchObject({
       type: 'resource',
-      dieIndex: 1,
+      dieIndices: [1, 0, 2],
     });
   });
 

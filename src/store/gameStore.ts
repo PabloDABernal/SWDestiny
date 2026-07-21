@@ -6,13 +6,10 @@ import { buildCharacters } from '../import/buildCharacters';
 import { ImportError } from '../import/errors';
 import { rollCharacter, rollDie, type PooledDie } from '../game/roll';
 import {
-  parseDamage,
   dieSymbol,
   parsePlayerFace,
-  parseShield,
   addShields,
   resolveShieldedDamage,
-  parseResource,
   isKO,
   type DieSymbol,
 } from '../game/damage';
@@ -87,93 +84,7 @@ function computeOutcome(sides: Record<Side, SideState>): Outcome {
   return computeOutcomePure(sides.player, sides.enemy);
 }
 
-interface DamageResolution {
-  sides: Record<Side, SideState>;
-  outcome: Outcome;
-  amount: number;
-}
-
-/**
- * Aplica un dado de daño de `sourceSide` (por posición en su pool) a un personaje de
- * `targetSide`. Los escudos del objetivo absorben primero (SPEC-005); solo el sobrante baja la
- * vida. Devuelve `null` si el dado o el objetivo no son válidos (usado tanto por `applyDieTo`,
- * jugador vía selección, como por `enemyTurn`, autómata).
- */
-function resolveDamage(
-  sides: Record<Side, SideState>,
-  sourceSide: Side,
-  dieIndex: number,
-  targetSide: Side,
-  targetIndex: number,
-): DamageResolution | null {
-  const source = sides[sourceSide];
-  const die = source.pool[dieIndex];
-  const target = sides[targetSide];
-  const character = target.characters[targetIndex];
-  if (!die || !character) return null;
-  const amount = parseDamage(die.face);
-  if (amount === null) return null;
-  if (isKO(character, target.damage[targetIndex] ?? 0)) return null;
-
-  const { shieldsRemaining, healthDamage } = resolveShieldedDamage(
-    target.shields[targetIndex] ?? 0,
-    amount,
-  );
-  const shields = target.characters.map((_, i) => target.shields[i] ?? 0);
-  shields[targetIndex] = shieldsRemaining;
-
-  const damage = target.characters.map((_, i) => target.damage[i] ?? 0);
-  damage[targetIndex] = Math.min(character.health, damage[targetIndex] + healthDamage);
-
-  // El dado aplicado sale del pool de su dueño.
-  const sourcePool = source.pool.filter((_, i) => i !== dieIndex);
-  // Si el objetivo queda KO, retira sus dados restantes del pool del bando objetivo.
-  let targetPool = target.pool;
-  if (isKO(character, damage[targetIndex])) {
-    targetPool = target.pool.filter((d) => d.characterIndex !== targetIndex);
-  }
-
-  const nextSides: Record<Side, SideState> = {
-    ...sides,
-    [sourceSide]: { ...source, pool: sourcePool },
-  };
-  nextSides[targetSide] = { ...nextSides[targetSide], damage, shields, pool: targetPool };
-
-  return { sides: nextSides, outcome: computeOutcome(nextSides), amount };
-}
-
-interface ShieldResolution {
-  sides: Record<Side, SideState>;
-  amount: number;
-}
-
-/**
- * Aplica un dado de escudo de `side` (por posición en su pool) a un personaje del MISMO bando
- * (SPEC-005). Devuelve `null` si el dado o el objetivo no son válidos.
- */
-function resolveShield(
-  sides: Record<Side, SideState>,
-  side: Side,
-  dieIndex: number,
-  targetIndex: number,
-): ShieldResolution | null {
-  const s = sides[side];
-  const die = s.pool[dieIndex];
-  const character = s.characters[targetIndex];
-  if (!die || !character) return null;
-  const amount = parseShield(die.face);
-  if (amount === null) return null;
-  if (isKO(character, s.damage[targetIndex] ?? 0)) return null;
-
-  const shields = s.characters.map((_, i) => s.shields[i] ?? 0);
-  shields[targetIndex] = addShields(shields[targetIndex], amount);
-  const pool = s.pool.filter((_, i) => i !== dieIndex);
-
-  const nextSides: Record<Side, SideState> = { ...sides, [side]: { ...s, shields, pool } };
-  return { sides: nextSides, amount };
-}
-
-// --- Motor de resolución del jugador (SPEC-008a/008b/010) ---
+// --- Motor de resolución de tandas (SPEC-008a/008b/010, reutilizado por el autómata en SPEC-013) ---
 
 interface MarkedSums {
   /** Suma de valores de dados base (no modificadores). */
@@ -295,30 +206,6 @@ function resolvePlayerBatch(
     shields: ownShields,
   };
   return { sides: next, outcome: computeOutcome(next) };
-}
-
-interface ResourceResolution {
-  sides: Record<Side, SideState>;
-  amount: number;
-}
-
-/**
- * Resuelve un dado de recurso de `side` (por posición en su pool): suma su valor al contador del
- * bando y consume el dado. Puro, SIN el guard de `selection` (lo usan el jugador vía acción y el
- * autómata vía enemyTurn). Devuelve `null` si el dado no es de recurso.
- */
-function resolveResourcePure(
-  sides: Record<Side, SideState>,
-  side: Side,
-  dieIndex: number,
-): ResourceResolution | null {
-  const s = sides[side];
-  const die = s.pool[dieIndex];
-  if (!die) return null;
-  const amount = parseResource(die.face);
-  if (amount === null) return null;
-  const pool = s.pool.filter((_, i) => i !== dieIndex);
-  return { sides: { ...sides, [side]: { ...s, resources: s.resources + amount, pool } }, amount };
 }
 
 /**
@@ -573,7 +460,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   cancelResolve: () => set({ resolve: null, resolveError: null }),
 
   // Turno del autómata (GDD §4): evalúa la tabla de prioridades (motor puro en game/automaton)
-  // y ejecuta como máximo UNA acción por llamada, reutilizando activate/resolveDamage.
+  // y ejecuta como máximo UNA acción por llamada, reutilizando resolvePlayerBatch/activate
+  // (SPEC-013: el autómata combina modificadores y paga costes igual que el jugador).
   enemyTurn: () => {
     const state = get();
     if (state.outcome !== null) return;
@@ -586,34 +474,56 @@ export const useGameStore = create<GameState>((set, get) => ({
       damage: enemy.damage,
       activated: enemy.activated,
       pool: enemy.pool,
+      shields: enemy.shields,
+      resources: enemy.resources,
     };
     const automatonPlayer: SideView = { characters: player.characters, damage: player.damage };
     const action = nextAutomatonAction(automatonEnemy, automatonPlayer, enemy.rerollsUsed);
 
+    const batchTotal = (dieIndices: number[]): number =>
+      dieIndices.reduce((sum, i) => {
+        const p = enemy.pool[i] ? parsePlayerFace(enemy.pool[i].face) : null;
+        return p ? sum + p.amount : sum;
+      }, 0);
+    const batchLabel = (dieIndices: number[]): string =>
+      dieIndices.map((i) => enemy.pool[i]?.face).join('+');
+
     switch (action.type) {
       case 'attack': {
-        const die = enemy.pool[action.dieIndex];
         const target = player.characters[action.targetIndex];
+        const total = batchTotal(action.dieIndices);
+        const label = batchLabel(action.dieIndices);
         set((s) => {
-          const result = resolveDamage(s.sides, 'enemy', action.dieIndex, 'player', action.targetIndex);
-          if (result === null) return s;
+          const res = resolvePlayerBatch(
+            s.sides,
+            { side: 'enemy', symbol: 'melee', marked: action.dieIndices },
+            action.targetIndex,
+            action.costReceiverIndex,
+          );
+          if (res === null || res === 'no-base' || res === 'insufficient') return s;
           return {
-            sides: result.sides,
-            outcome: result.outcome,
-            lastEnemyAction: `El enemigo ataca a ${target.name} con ${die.face} (${result.amount} de daño).`,
+            sides: res.sides,
+            outcome: res.outcome,
+            lastEnemyAction: `El enemigo ataca a ${target.name} con ${label} (${total} de daño).`,
           };
         });
         return;
       }
       case 'shield': {
-        const die = enemy.pool[action.dieIndex];
         const target = enemy.characters[action.targetIndex];
+        const total = batchTotal(action.dieIndices);
+        const label = batchLabel(action.dieIndices);
         set((s) => {
-          const result = resolveShield(s.sides, 'enemy', action.dieIndex, action.targetIndex);
-          if (result === null) return s;
+          const res = resolvePlayerBatch(
+            s.sides,
+            { side: 'enemy', symbol: 'shield', marked: action.dieIndices },
+            action.targetIndex,
+            null,
+          );
+          if (res === null || res === 'no-base' || res === 'insufficient') return s;
           return {
-            sides: result.sides,
-            lastEnemyAction: `El enemigo aplica ${die.face} a ${target.name} (${result.amount} de escudo).`,
+            sides: res.sides,
+            lastEnemyAction: `El enemigo aplica ${label} a ${target.name} (${total} de escudo).`,
           };
         });
         return;
@@ -625,13 +535,19 @@ export const useGameStore = create<GameState>((set, get) => ({
         return;
       }
       case 'resource': {
-        const die = enemy.pool[action.dieIndex];
+        const total = batchTotal(action.dieIndices);
+        const label = batchLabel(action.dieIndices);
         set((s) => {
-          const result = resolveResourcePure(s.sides, 'enemy', action.dieIndex);
-          if (result === null) return s;
+          const res = resolvePlayerBatch(
+            s.sides,
+            { side: 'enemy', symbol: 'resource', marked: action.dieIndices },
+            null,
+            null,
+          );
+          if (res === null || res === 'no-base' || res === 'insufficient') return s;
           return {
-            sides: result.sides,
-            lastEnemyAction: `El enemigo resuelve ${die.face} (+${result.amount} recurso).`,
+            sides: res.sides,
+            lastEnemyAction: `El enemigo resuelve ${label} (+${total} recurso).`,
           };
         });
         return;
