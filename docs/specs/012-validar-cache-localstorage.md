@@ -15,7 +15,9 @@ nada guardado (mazo vacío), igual que hoy pasa cuando la clave no existe.
 
 ## Criterios de aceptación
 
-Verificables jugando. Formato: acción → resultado observable.
+Verificables jugando. Formato: acción → resultado observable. Los casos de caché corrupta se
+provocan editando `localStorage` a mano en DevTools antes de recargar (no son alcanzables jugando
+solo la UI).
 
 - [ ] Con `swd:deck:player` **sin definir** (como hoy) → la app arranca con el mazo del jugador
       vacío (sin cambios respecto al comportamiento actual).
@@ -35,6 +37,9 @@ Verificables jugando. Formato: acción → resultado observable.
   comportamiento que "no hay nada guardado").
 - Logging o telemetría de cuándo ocurre una caché corrupta.
 - Migración de versiones antiguas del formato guardado.
+- La caché de cartas ARH (`swd:card:{code}` en `src/import/resolveCards.ts`, función `readCache`),
+  que tiene el mismo problema de fondo (`JSON.parse(raw) as ArhCard` sin validar forma). No se toca
+  en esta spec; si se quiere corregir, va a un spec aparte.
 
 ## Casos límite
 
