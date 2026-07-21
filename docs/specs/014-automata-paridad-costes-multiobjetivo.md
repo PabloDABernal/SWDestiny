@@ -43,9 +43,13 @@ Verificables jugando. Formato: acción → resultado observable.
 - [ ] El objetivo de menos vida tiene **escudos propios** → el margen para "sin overkill" cuenta
       escudos + vida (los escudos absorben antes, SPEC-005); un dado que agote el escudo y deje la
       vida en 0 exacto NO cuenta como overkill.
-- [ ] Con un solo objetivo vivo, o con dados que en conjunto no llegan a dejarlo en 0, el
-      comportamiento es idéntico al de SPEC-013 (toda la tanda combinable a ese único objetivo, en
-      una sola pulsación).
+- [ ] Con un solo objetivo vivo, si la tanda combinable **cabe entera** sin pasarlo de 0, el
+      comportamiento es idéntico al de SPEC-013 (toda la tanda a ese único objetivo, una sola
+      pulsación). Si la tanda **completa** lo pasaría de 0, se sigue evitando el overkill igual que
+      con varios objetivos (aunque no haya a quién redirigir el sobrante): esa pulsación solo aplica
+      lo que cabe, y el resto espera a una pulsación futura (para entonces el objetivo tendrá menos
+      vida, así que el margen cambia); si no queda alternativa (ni el dado más pequeño cabe ya), se
+      aplica con overkill inevitable, como en el caso de varios objetivos.
 
 ### Multi-objetivo en escudo (varias pulsaciones)
 

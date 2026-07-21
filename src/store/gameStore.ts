@@ -13,10 +13,11 @@ import {
   isKO,
   type DieSymbol,
 } from '../game/damage';
-import { computeOutcome as computeOutcomePure, type Outcome, type SideView } from '../game/outcome';
+import { computeOutcome as computeOutcomePure, type Outcome } from '../game/outcome';
 import {
   applyEnemyHealthMultiplier,
   nextAutomatonAction,
+  type AutomatonOpponent,
   type AutomatonSide,
   type RerollsUsed,
 } from '../game/automaton';
@@ -477,7 +478,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       shields: enemy.shields,
       resources: enemy.resources,
     };
-    const automatonPlayer: SideView = { characters: player.characters, damage: player.damage };
+    const automatonPlayer: AutomatonOpponent = {
+      characters: player.characters,
+      damage: player.damage,
+      shields: player.shields,
+    };
     const action = nextAutomatonAction(automatonEnemy, automatonPlayer, enemy.rerollsUsed);
 
     const batchTotal = (dieIndices: number[]): number =>
@@ -518,7 +523,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             s.sides,
             { side: 'enemy', symbol: 'shield', marked: action.dieIndices },
             action.targetIndex,
-            null,
+            action.costReceiverIndex,
           );
           if (res === null || res === 'no-base' || res === 'insufficient') return s;
           return {
@@ -542,7 +547,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             s.sides,
             { side: 'enemy', symbol: 'resource', marked: action.dieIndices },
             null,
-            null,
+            action.costReceiverIndex,
           );
           if (res === null || res === 'no-base' || res === 'insufficient') return s;
           return {
