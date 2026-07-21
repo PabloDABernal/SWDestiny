@@ -40,10 +40,11 @@ Verificables jugando. Formato: acción → resultado observable.
       vida** entre los que sobrevivirían.
 - [ ] Receptor del coste indirecto — el coste mataría a cualquier aliado que se elija → se aplica al
       de **más vida** (inevitable, el autómata no se bloquea ni pasa el turno por esto).
-- [ ] Lo mismo (combinar + pagar coste + receptor) aplica igual a **escudo** y a **recurso**: una
-      tanda de dados de escudo con modificador `+X` se resuelve combinada sobre el aliado de menor
-      vida (regla ya existente, SPEC-007); una tanda de recurso con modificador se resuelve
-      combinada, sumando el total al contador propio.
+- [ ] Combinar + pagar coste de recurso aplica igual a **escudo** y a **recurso** (el coste
+      indirecto, en cambio, solo se resuelve en tandas de daño — ver "Fuera de alcance"): una tanda
+      de dados de escudo con modificador `+X` se resuelve combinada sobre el aliado de menor vida
+      (regla ya existente, SPEC-007); una tanda de recurso con modificador se resuelve combinada,
+      sumando el total al contador propio.
 - [ ] Si tras aplicar las reglas anteriores **ningún dado de un símbolo es pagable ni combinable**
       (p. ej. todos los dados de daño tienen coste superior a los recursos disponibles), esa
       prioridad de la tabla no aplica: el autómata pasa a evaluar la siguiente (escudo → activar →
@@ -54,8 +55,11 @@ Verificables jugando. Formato: acción → resultado observable.
 - **Multi-objetivo**: el autómata sigue mandando cada tanda a **un único objetivo** (SPEC-011 no se
   extiende al autómata). Repartir dados de una tanda entre varios enemigos queda fuera.
 - **Empates de objetivo**: cuando varios personajes del jugador (o aliados propios) empatan en vida
-  para ser el objetivo/receptor, la elección es **al azar** entre los empatados; no se implementa un
-  árbol de decisión más fino (el usuario ya ha pedido dejarlo así "de momento").
+  para ser el objetivo/receptor, el desempate es **determinista** (mismo criterio ya implementado
+  desde SPEC-007, sin azar); no se implementa un árbol de decisión más fino.
+- **Coste de daño indirecto propio en escudo/recurso**: esta spec solo resuelve el receptor de coste
+  indirecto para tandas de **daño**. Si una cara de escudo o recurso trajera ese coste (`…i<n>`), se
+  deja fuera de esta spec (se trataría en una spec aparte si llega a hacer falta).
 - **Selector de dificultad en la UI**: sigue en BACKLOG, no entra aquí.
 - **Trampa "ignorar costes"**: no se activa en esta spec (el GDD la reserva para v4/cartas); el
   autómata paga sus costes con recursos reales, como el jugador.
@@ -102,10 +106,12 @@ Verificables jugando. Formato: acción → resultado observable.
   Puede necesitar una función nueva en `src/game/automaton.ts`, distinta de
   `lowestHealthTargetIndex`.
 - `nextAutomatonAction` (`src/game/automaton.ts`) deja de devolver un solo `dieIndex`; las acciones
-  `attack`/`shield`/`resource` pasan a llevar un **array** de índices de dado (la tanda) y, para
-  `attack`/coste indirecto, el índice del receptor del coste. Ajustar el tipo `AutomatonAction` y el
-  `switch` en `enemyTurn` (`src/store/gameStore.ts`) para resolverlos todos (reutilizar
-  `resolvePlayerBatch` si encaja, o una variante equivalente para el autómata).
+  `attack`/`shield`/`resource` pasan a llevar un **array** de índices de dado (la tanda). Solo
+  `attack` puede llevar además el índice del receptor de coste indirecto (`costReceiverIndex`), ya
+  que el coste indirecto solo se resuelve en tandas de daño (ver "Fuera de alcance"); `shield` y
+  `resource` no necesitan ese campo. Ajustar el tipo `AutomatonAction` y el `switch` en `enemyTurn`
+  (`src/store/gameStore.ts`) para resolverlos todos (reutilizar `resolvePlayerBatch` si encaja, o una
+  variante equivalente para el autómata).
 - El mensaje de `lastEnemyAction` debe seguir siendo legible con varios dados (p. ej. listar caras o
   el total combinado), sin necesidad de un formato elaborado.
 
