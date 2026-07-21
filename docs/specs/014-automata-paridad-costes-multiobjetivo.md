@@ -11,9 +11,10 @@ del jugador)
 Cierra dos huecos que quedaron explícitamente fuera de SPEC-013: (1) el coste de daño indirecto
 propio (`…i<n>`) hoy solo se resuelve si aparece en una tanda de **daño**; con esta spec también se
 resuelve en tandas de **escudo** y **recurso**. (2) El autómata siempre manda su tanda de daño (o de
-escudo) a un **único** objetivo; con esta spec reparte los dados de la tanda entre varios objetivos
-cuando conviene, sin *overkill* en daño ni pasarse del tope de 3 en escudo — igual que ya puede hacer
-el jugador desde SPEC-011.
+escudo) a un **único** objetivo aunque sobren dados para más; con esta spec evita el *overkill* /
+pasarse del tope de 3 en escudo, dejando lo que no quepa para una **pulsación futura** de "Turno
+enemigo" — igual que el jugador reparte entre varios objetivos con varios clics desde SPEC-011, no
+en uno solo.
 
 ## Criterios de aceptación
 
@@ -29,77 +30,101 @@ Verificables jugando. Formato: acción → resultado observable.
 - [ ] El receptor del coste indirecto en escudo/recurso sigue la misma prioridad ya fijada en
       SPEC-013 (sobrevivientes con escudo > sobrevivientes por vida > cualquiera por vida).
 
-### Multi-objetivo en daño
+### Multi-objetivo en daño (varias pulsaciones)
 
 - [ ] El enemigo tiene dados de daño suficientes para dejar en 0 al objetivo de menos vida **y**
-      sobran dados → el sobrante se dirige al **siguiente** jugador de menos vida (no al mismo,
-      no se pierde).
-- [ ] Ningún dado se aplica de forma que dejaría al objetivo actual con vida negativa **si existe
-      una alternativa**: el reparto evita el *overkill* siempre que se pueda repartir sin dividir un
-      dado.
-- [ ] Si el dado de mayor valor de la tanda por sí solo ya supera la vida del último objetivo
-      disponible (no hay forma de evitar el *overkill*), se aplica igual ahí — un dado no se divide.
-- [ ] Con un solo objetivo vivo, el comportamiento es idéntico al de SPEC-013 (toda la tanda a ese
-      objetivo).
+      sobran dados → esa pulsación de "Turno enemigo" solo aplica los dados que caben sin pasarse
+      (overkill); los que sobran se quedan en el pool.
+- [ ] Pulsando "Turno enemigo" otra vez tras lo anterior (el objetivo anterior ya quedó KO) → el
+      autómata dirige los dados sobrantes al **siguiente** jugador de menos vida.
+- [ ] Si **ningún** objetivo vivo puede recibir ni el dado más pequeño disponible sin pasarse (todos
+      tienen menos vida que el dado más barato disponible) → se aplica igual al de menos vida,
+      aceptando el exceso (un dado no se divide).
+- [ ] Con un solo objetivo vivo, o con dados que en conjunto no llegan a dejarlo en 0, el
+      comportamiento es idéntico al de SPEC-013 (toda la tanda combinable a ese único objetivo, en
+      una sola pulsación).
 
-### Multi-objetivo en escudo
+### Multi-objetivo en escudo (varias pulsaciones)
 
-- [ ] El enemigo tiene dados de escudo suficientes para llevar a un aliado a 3 escudos **y** sobran
-      dados → el sobrante se dirige al **siguiente** aliado que más lo necesite (menos vida, mismo
-      desempate que hoy), sin superar su tope de 3.
-- [ ] Con un solo aliado vivo, o con dados que no llegan a completar el tope de ninguno, el
-      comportamiento es idéntico al de SPEC-007/013 (todo a un único aliado).
+- [ ] El enemigo tiene dados de escudo suficientes para llevar a un aliado a 3 **y** sobran dados →
+      esa pulsación solo aplica los que caben sin pasar de 3; los que sobran se quedan en el pool.
+- [ ] Pulsando otra vez (el aliado anterior ya está a tope) → el autómata dirige los dados sobrantes
+      al **siguiente** aliado que más lo necesite (menos vida, mismo desempate de siempre, entre los
+      que aún tienen hueco).
+- [ ] Si el aliado de menos vida ya está a tope de escudo, esa pulsación pasa directamente al
+      siguiente candidato con hueco (no se "pierde" la prioridad de escudo mientras quede alguien con
+      hueco y algún dado de escudo en el pool).
+- [ ] Con un solo aliado vivo, o si nadie tiene hueco (todos a tope de 3), el comportamiento es
+      idéntico al de SPEC-007/013 (todo a un único aliado, o esa prioridad no aplica si nadie tiene
+      hueco).
 
 ## Fuera de alcance (explícito)
 
+- **Resolverlo todo en una sola pulsación de "Turno enemigo"**: repartir entre varios objetivos
+  puede llevar varias pulsaciones, exactamente igual que el jugador reparte con varios clics desde
+  SPEC-011 (el modo nunca resuelve dos objetivos a la vez en un solo clic, ni para el jugador ni
+  ahora para el autómata).
 - **Selector de dificultad en la UI**: sigue en BACKLOG.
 - **Focus, especial, disrupt, descarte**: siguen sin resolverse (ni el jugador los tiene aún, v3/v4).
-- Optimizar el reparto para maximizar algo más allá de "sin overkill / sin pasar del tope": no se
-  busca la combinación óptima entre todos los repartos posibles, solo el algoritmo determinista
-  descrito en Notas técnicas (recorrer objetivos de menos a más vida, llenar y pasar al siguiente).
-- Cambiar el criterio de qué objetivo recibe la tanda en **recurso** (no tiene objetivo, no aplica
-  multi-objetivo ahí; solo puede llevar coste indirecto).
+- Optimizar qué objetivo se elige para maximizar algo más allá de "el más débil que tenga hueco": no
+  se busca la combinación óptima entre todos los repartos posibles, solo el criterio determinista
+  descrito en Notas técnicas.
+- Multi-objetivo en **recurso**: no tiene objetivo, no aplica (solo puede llevar coste indirecto,
+  como los otros dos símbolos).
 
 ## Casos límite
 
 - **Coste indirecto en escudo/recurso con todos los aliados propios KO** → igual que en daño
   (SPEC-013): el dado con ese coste se excluye de la tanda (no se resuelve esa parte), el resto de
   la tanda (si queda algo pagable/combinable) sigue su curso normal.
-- **Reparto de daño con exactamente los dados justos para dejar a todos los objetivos en 0** → se
-  reparten sin sobrante ni overkill.
-- **Todos los objetivos ya están a tope de escudo (3) antes de empezar** → esa tanda de escudo no
-  tendría a quién repartir más; se comporta como si no hubiera candidato (cae a la siguiente
-  prioridad), igual que hoy cuando no hay ningún aliado no-KO.
+- **Reparto de daño con exactamente los dados justos para dejar al objetivo en 0** → se aplican
+  todos en esa misma pulsación, sin sobrante.
+- **Todos los aliados ya están a tope de escudo (3) antes de empezar** → esa prioridad de la tabla no
+  aplica esa pulsación (se comporta como si no hubiera candidato, cae a la siguiente prioridad),
+  igual que hoy cuando no hay ningún aliado no-KO.
 - **Reroll y activar** → sin cambios.
 
 ## Notas técnicas (opcional)
 
 - `combineAutomatonBatch` (`src/game/automaton.ts`, SPEC-013) deja de recibir `allowIndirect` fijo
   por fila; ahora escudo y recurso también permiten coste indirecto (`allowIndirect` pasa a ser
-  siempre `hasNonKoAlly`, igual que en daño).
-- Nueva función de reparto (p. ej. `splitAssignments(dieIndices, pool, targets)`): dado el orden ya
-  establecido de la tanda (mayor a menor valor) y una lista de objetivos ordenada de menor a mayor
-  vida restante (mismo desempate determinista existente), recorre los dados asignándolos al objetivo
-  actual mientras no lo pase de 0 (daño) o de `MAX_SHIELDS` (escudo); en cuanto un dado no cabe sin
-  pasarse, avanza al siguiente objetivo y sigue intentando con ese dado y los restantes. Si un dado
-  no cabe en **ningún** objetivo restante sin pasarse, se aplica al último objetivo disponible
-  (overkill inevitable, no se descarta el dado).
-- `AutomatonAction` (SPEC-013) cambia `targetIndex: number` por una lista de asignaciones para
-  `attack`/`shield` (p. ej. `assignments: { targetIndex: number; dieIndices: number[] }[]`);
-  `costReceiverIndex` sigue siendo uno solo para toda la tanda (el coste indirecto no depende de a
-  cuántos objetivos se reparta el efecto). `enemyTurn` (`src/store/gameStore.ts`) pasa a llamar
-  `resolvePlayerBatch` **una vez por asignación** (cada una con su propio `marked`/`effectIndex`),
-  reutilizando la función tal cual, y solo pasa `costReceiverIndex` en la **primera** llamada (o en
-  la única tanda que lleve el coste; el coste se paga una vez, no por asignación).
-- El mensaje de `lastEnemyAction` debe reflejar varios objetivos si aplica (p. ej. listar cada
-  personaje afectado), sin necesidad de un formato elaborado.
+  siempre `hasNonKoAlly`, igual que en daño). `AutomatonAction` gana `costReceiverIndex` también en
+  `shield`/`resource` (antes solo en `attack`), con el mismo significado que ya tiene ahí.
+- **`AutomatonAction` NO cambia de forma para el reparto**: sigue siendo `dieIndices: number[]` +
+  `targetIndex: number` (+ `costReceiverIndex` donde aplique) — una sola tanda a un solo objetivo por
+  acción, como en SPEC-013. Lo que cambia es **cómo se elige `targetIndex` y qué dados entran en
+  `dieIndices`** en las filas de daño/escudo:
+  1. Construir la lista de candidatos vivos (daño: todo no-KO del jugador; escudo: todo no-KO propio
+     **con hueco**, es decir `shields[i] < MAX_SHIELDS`), ordenada de menor a mayor vida restante
+     (mismo desempate determinista existente).
+  2. Para cada candidato, en ese orden: tomar el batch ya calculado por `combineAutomatonBatch`
+     (orden de mayor a menor valor, ya filtrado por coste de recurso pagable) y quedarse con el
+     **prefijo** de esa lista que, sumado, no supere el margen del candidato (vida restante para
+     daño; `MAX_SHIELDS - shields[i]` para escudo) — recorriendo en orden e incluyendo cada dado
+     mientras siga sin pasarse (mismo patrón "saltar y seguir probando" que ya usa el coste de
+     recurso). Si el resultado tiene al menos un dado **base**, ese candidato y ese subconjunto son
+     la acción de esta pulsación; parar aquí.
+  3. Si ningún candidato acepta ni un solo dado base sin pasarse, usar el **primer candidato** de la
+     lista (el más débil/con más prioridad) con el batch **completo sin recortar** (overkill
+     aceptado, inevitable).
+  4. Si la lista de candidatos está vacía (escudo: nadie tiene hueco; daño: no debería pasar, el
+     jugador entero KO ya termina la partida), esa fila de la tabla no aplica esta pulsación.
+- El coste indirecto (`indirectCost`) y su receptor (`indirectCostReceiverIndex`, ya existente) se
+  calculan sobre el **subconjunto elegido** en el paso 2/3 (no sobre el batch completo), igual que ya
+  hace SPEC-013 con su único subconjunto.
+- Nada cambia en `resolvePlayerBatch` ni en `enemyTurn` más allá de: (a) pasar el `targetIndex`/
+  `dieIndices`/`costReceiverIndex` ya recortados que devuelva `nextAutomatonAction`, y (b) que
+  `shield`/`resource` ahora también puedan traer `costReceiverIndex` no nulo.
+- El mensaje de `lastEnemyAction` no necesita cambios de formato (sigue describiendo una tanda a un
+  objetivo, como ya hace).
 
 ## Nota de tamaño (regla 4 CLAUDE.md)
 
-Mediana: toca `src/game/automaton.ts` (nueva función de reparto, `AutomatonAction` cambia de forma
-otra vez) y `src/store/gameStore.ts` (`enemyTurn` resolviendo varias asignaciones). Sin UI nueva. Si
-al implementar se nota que el reparto de escudo complica demasiado, avisar y valorar dejarlo para un
-spec aparte (mantener solo el de daño en esta).
+Pequeña/mediana: toca solo `src/game/automaton.ts` (elegir candidato + recortar el batch existente,
+sin tocar la forma de `AutomatonAction` salvo añadir `costReceiverIndex` a escudo/recurso) y un ajuste
+mínimo en `src/store/gameStore.ts` (`enemyTurn` ya sabe pasar `costReceiverIndex` a
+`resolvePlayerBatch`, solo hace falta hacerlo también para `shield`/`resource`). Muy por debajo de
+~300 líneas.
 
 ## Resultado del playtest
 
