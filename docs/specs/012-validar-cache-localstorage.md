@@ -1,6 +1,6 @@
 # SPEC-012: Validar la forma de la caché de localStorage al cargar
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** (ninguna — fix técnico de robustez, no cambia gameplay; ver nota abajo)
 **Depende de:** SPEC-001 (persistencia del mazo)
 
@@ -63,4 +63,6 @@ Muy pequeña: un guard de `Array.isArray` en una función existente. Un solo arc
 
 ## Resultado del playtest
 
-(pendiente)
+2026-07-21: playtest manual OK. Confirmado con `localStorage.setItem` en DevTools: caché ausente,
+no-array (`{}`, `123`, `null`) y array válido se comportan como especifica la spec; `player` y
+`enemy` son independientes. revisor-codigo: CUMPLE. Confirmado por el usuario.
