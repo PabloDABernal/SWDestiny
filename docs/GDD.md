@@ -61,13 +61,22 @@ La tabla crece en fases posteriores conforme se implementan cartas.
 junta todos los dados base y modificadores `+X` de ese símbolo, ordenados de mayor a menor valor, y
 los va sumando mientras el coste de recurso acumulado le sea pagable con sus propios recursos; el
 primer dado que haría el coste impagable se descarta (queda para una pasada futura) y la tanda se
-cierra con lo ya sumado. Si el coste de daño indirecto propio (`…i<n>`) forma parte de una tanda **de
-daño** (no aplica a escudo/recurso, que no llevan este coste en el alcance de SPEC-013), el receptor
+cierra con lo ya sumado. Si el coste de daño indirecto propio (`…i<n>`) forma parte de una tanda (de
+daño, escudo o recurso — SPEC-014 amplía esto a escudo/recurso, antes limitado a daño), el receptor
 se elige así: de sus personajes no-KO, prioriza los que **sobrevivirían** al coste (con escudos
 absorbiendo primero) y, entre esos, el que ya tenga escudos (empate: más vida, desempate
 determinista); si ninguno tiene escudos, el de más vida entre los que sobrevivirían; si el coste
-mataría a cualquiera, el de más vida como última opción. El multi-objetivo (repartir una tanda entre
-varios enemigos, SPEC-011) sigue sin aplicar al autómata: cada tanda va a un único objetivo.
+mataría a cualquiera, el de más vida como última opción.
+
+**Multi-objetivo del autómata (SPEC-014):** repartir una tanda entre varios objetivos (SPEC-011) ya
+aplica también al autómata, tanto en **daño** como en **escudo** (el recurso no tiene objetivo). El
+autómata ordena sus objetivos posibles de menor a mayor vida restante (mismo desempate determinista
+de siempre) y va llenando cada uno con dados de la tanda (en su orden ya establecido, de mayor a
+menor valor) sin pasarse de lo necesario: en daño, sin hacer *overkill* (dejarlo justo en 0 o menos
+posible); en escudo, sin superar el tope de 3. En cuanto un dado haría que el objetivo actual se
+pasara, ese dado (y los siguientes que no quepan) van al **siguiente** objetivo más débil, y así
+sucesivamente. Si un solo dado por sí mismo ya supera lo que necesita el último objetivo disponible
+(no hay forma de evitarlo), se aplica igualmente ahí (un dado no se puede dividir, SPEC-011).
 
 ### Asimetría / trampas (configurable por dificultad, **desde v1**)
 
