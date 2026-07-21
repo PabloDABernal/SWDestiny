@@ -1,6 +1,6 @@
 # SPEC-015: Selector de dificultad en la UI
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** §4 ("Asimetría / trampas" — "Selector de dificultad")
 **Depende de:** SPEC-004b (trampas del autómata), SPEC-012 (patrón de validación de localStorage)
 
@@ -89,4 +89,7 @@ UI + sustituir dos constantes por valores derivados del nivel elegido. Sin lógi
 
 ## Resultado del playtest
 
-(pendiente)
+2026-07-21: playtest manual OK en Pages (main, commit d6324dc). Confirmado: selector Fácil/Normal/
+Difícil junto al panel de importar del enemigo; vida x1/x1.5/x2 según nivel al importar; cambiar el
+selector tras importar no afecta a la partida en curso ni a "Reset total"; reroll extra (0/1/2) se
+aplica de inmediato; persistencia entre recargas. revisor-codigo: CUMPLE. Confirmado por el usuario.
