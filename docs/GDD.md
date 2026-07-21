@@ -96,7 +96,9 @@ importar del enemigo — **Fácil** (x1 vida, 0 rerolls extra: el autómata sin 
 (x1.5 vida, 1 reroll extra: los valores fijos de v1) y **Difícil** (x2 vida, 2 rerolls extra). La
 elección se recuerda entre recargas (localStorage, igual que el mazo) y solo afecta a la **próxima**
 importación del mazo enemigo (la vida ya multiplicada de una partida en curso no se recalcula al
-cambiar el selector); el reroll extra, al consultarse en cada turno, sí aplica de inmediato.
+cambiar el selector, **ni siquiera con "Reset total"**, que reconstruye con la vida ya fijada en el
+último import, no con el multiplicador que esté vigente en ese momento); el reroll extra, al
+consultarse en cada turno, sí aplica de inmediato.
 
 ## 5. Alcance por versión (resumen — detalle y orden en BACKLOG/specs)
 
