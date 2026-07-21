@@ -29,6 +29,8 @@ Verificables jugando. Formato: acción → resultado observable.
       encontrados (SPEC-001); no se importa nada a medias.
 - [ ] "Reset total" y "Nueva ronda" **no** cambian el recuento del mazo de robo (nada lo consume
       todavía; solo una reimportación lo reconstruye).
+- [ ] Una carta de mazo con **2 copias** (`qty: 2` en `slots`) cuenta **dos veces** en el recuento
+      total (igual que `buildCharacters` ya respeta `qty` para personajes no-únicos).
 
 ## Fuera de alcance (explícito)
 
@@ -54,8 +56,8 @@ Verificables jugando. Formato: acción → resultado observable.
 - **Corrupción del localStorage del mazo de robo** (mismo espíritu que SPEC-012) → si el valor
   guardado no es un array, se descarta y el mazo de robo arranca vacío (recuento 0) en vez de
   romper la carga de la app.
-- **Bando sin mazo importado** → no se muestra el recuento (o se muestra "Mazo: 0"), igual que hoy
-  no se muestran fichas de personaje sin importar.
+- **Bando sin mazo importado** → no se muestra la línea "Mazo: N" (misma rama que ya oculta las
+  fichas de personaje cuando `characters.length === 0`, `src/App.tsx`), no se muestra "Mazo: 0".
 - **Reimportar tras jugar una partida en curso** → igual que hoy con personajes: se reinicia el
   bando (SPEC-001), y el mazo de robo se reconstruye y rebaraja desde cero.
 
@@ -72,11 +74,16 @@ Verificables jugando. Formato: acción → resultado observable.
   construir nada — comportamiento heredado, no hay que añadirlo.
 - Barajado: Fisher-Yates estándar sobre el array de códigos resultante. Se baraja una vez al
   construirlo (en `importDeck`), no en cada lectura.
-- Estado: nuevo campo `drawPile: string[]` en `SideState` (`src/store/gameStore.ts`), inicializado
-  vacío en `freshSide` salvo que se reconstruya desde persistencia al arrancar. Persistencia con el
-  mismo patrón que `loadPersistedDeck`/`persistDeck` (SPEC-001/012): clave `swd:drawpile:<side>`,
-  `JSON.parse` + `Array.isArray` + elementos `string`, fallback a `[]` si es inválido.
-  `resetAll`/`newRound` **no** tocan `drawPile` (no hay nada que resetear todavía: no se consume).
+- Estado: nuevo campo `drawPile: string[]` en `SideState` (`src/store/gameStore.ts`). Persistencia
+  con el mismo patrón que `loadPersistedDeck`/`persistDeck` (SPEC-001/012): clave
+  `swd:drawpile:<side>`, `JSON.parse` + `Array.isArray` + elementos `string`, fallback a `[]` si es
+  inválido. `freshSide(characters: Character[])` hoy no recibe `side` y la llaman tanto `importDeck`
+  como `resetAll`/al arrancar la app; para que "Reset total" y el arranque en frío repueblen
+  `drawPile` desde lo ya persistido (en vez de vaciarlo), `freshSide` necesita recibir también
+  `side` y leer `swd:drawpile:<side>` dentro (igual que ya hace con el mazo de personajes vía
+  `loadPersistedDeck`). Solo `importDeck` para el bando que se está (re)importando **sobrescribe**
+  `drawPile` con uno nuevo recién barajado (y lo persiste); `resetAll`/`newRound` no escriben esa
+  clave, solo la vuelven a leer tal cual está.
 - UI: un texto pequeño junto al nombre del bando o cerca del panel de importar, p. ej. `Mazo: {s
   .drawPile.length}` en `BattleSide` (`src/App.tsx`).
 
