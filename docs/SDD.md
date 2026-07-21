@@ -38,8 +38,12 @@ ecosistema de componentes de tablero/dados ya hechos.)*
   acción" evaluando la tabla de prioridades de arriba abajo (ver GDD sección 4). No conoce reglas
   fuera de esa tabla; no hay heurística de evaluación de jugadas.
 - **Importador de mazos**: capa separada que traduce el JSON de un decklist de ARH DB al modelo
-  interno de personajes/cartas del juego. En v1 solo se usan los personajes del decklist
-  importado (el resto del mazo se ignora hasta Fase 3-4).
+  interno de personajes/cartas del juego. `resolveCards` resuelve **todas** las cartas del export
+  contra la API (no solo personajes). `buildCharacters` sigue quedándose solo con las de
+  `type_code === 'character'`; desde SPEC-016, `buildDrawPile` construye además el mazo de robo
+  (todo lo que no sea personaje, trama ni campo de batalla) con esas mismas cartas ya resueltas, sin
+  llamadas nuevas a la API. Trama y campo de batalla, si el export las trae, no se guardan en
+  ningún sitio todavía (quedan para cuando haga falta jugarlas, fases posteriores).
 - **Estado de partida por bando** (desde SPEC-004): el estado mutable (personajes en juego,
   activaciones, daño, pool de dados) se organiza por bando (`player` / `enemy`); cada bando tiene
   su propio pool. Los mazos importados se persisten en claves separadas por bando; el estado de

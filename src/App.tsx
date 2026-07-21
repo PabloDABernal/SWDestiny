@@ -33,26 +33,29 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
       {s.characters.length === 0 ? (
         <p className="roster__empty">Sin mazo importado.</p>
       ) : (
-        <div className="roster__grid">
-          {s.characters.map((c, i) => {
-            const dmg = s.damage[i] ?? 0;
-            const ko = isKO(c, dmg);
-            return (
-              <CharacterCard
-                character={c}
-                activated={s.activated[i] === true}
-                health={currentHealth(c, dmg)}
-                shields={s.shields[i] ?? 0}
-                ko={ko}
-                targetable={targetableSide && !ko}
-                showActivate={isPlayer}
-                onActivate={() => activate(side, i)}
-                onTarget={() => applyDieTo(side, i)}
-                key={`${c.code}-${i}`}
-              />
-            );
-          })}
-        </div>
+        <>
+          <p className="draw-pile__count">Mazo: {s.drawPile.length}</p>
+          <div className="roster__grid">
+            {s.characters.map((c, i) => {
+              const dmg = s.damage[i] ?? 0;
+              const ko = isKO(c, dmg);
+              return (
+                <CharacterCard
+                  character={c}
+                  activated={s.activated[i] === true}
+                  health={currentHealth(c, dmg)}
+                  shields={s.shields[i] ?? 0}
+                  ko={ko}
+                  targetable={targetableSide && !ko}
+                  showActivate={isPlayer}
+                  onActivate={() => activate(side, i)}
+                  onTarget={() => applyDieTo(side, i)}
+                  key={`${c.code}-${i}`}
+                />
+              );
+            })}
+          </div>
+        </>
       )}
       <DicePool side={side} />
     </section>

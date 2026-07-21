@@ -77,6 +77,12 @@ button:disabled {
   color: #9aa0b0;
 }
 
+.draw-pile__count {
+  color: #9aa0b0;
+  font-size: 0.85rem;
+  margin: 0 0 12px;
+}
+
 .roster__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));

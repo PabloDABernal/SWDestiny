@@ -3,6 +3,7 @@ import type { Character } from '../model/types';
 import { parseDeck } from '../import/parseDeck';
 import { resolveCards } from '../import/resolveCards';
 import { buildCharacters } from '../import/buildCharacters';
+import { buildDrawPile, shuffle } from '../import/buildDrawPile';
 import { ImportError } from '../import/errors';
 import { rollCharacter, rollDie, type PooledDie } from '../game/roll';
 import {
@@ -50,6 +51,27 @@ function persistDeck(side: Side, characters: Character[]): void {
   }
 }
 
+const DRAW_PILE_KEY = (side: Side) => `swd:drawpile:${side}`;
+
+function loadPersistedDrawPile(side: Side): string[] {
+  try {
+    const raw = localStorage.getItem(DRAW_PILE_KEY(side));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.every((c) => typeof c === 'string') ? (parsed as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistDrawPile(side: Side, drawPile: string[]): void {
+  try {
+    localStorage.setItem(DRAW_PILE_KEY(side), JSON.stringify(drawPile));
+  } catch {
+    // best-effort
+  }
+}
+
 const DIFFICULTY_KEY = 'swd:difficulty';
 const VALID_DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard'];
 
@@ -70,9 +92,12 @@ function persistDifficulty(difficulty: Difficulty): void {
   }
 }
 
-/** Estado de partida de un bando (NO persistido salvo `characters`, que es el mazo importado). */
+/** Estado de partida de un bando (NO persistido salvo `characters`/`drawPile`, que son el mazo
+ * importado). */
 interface SideState {
   characters: Character[];
+  /** Mazo de robo barajado (SPEC-016): códigos de carta, sin mano ni robo todavía. */
+  drawPile: string[];
   activated: boolean[];
   damage: number[];
   /** Escudos acumulados por instancia (SPEC-005), tope MAX_SHIELDS. Ganados solo vía dado NSh. */
@@ -89,9 +114,10 @@ interface SideState {
 /** Recursos iniciales por bando al importar / Reset total (SPEC-009); 0 si el bando está vacío. */
 const STARTING_RESOURCES = 2;
 
-function freshSide(characters: Character[]): SideState {
+function freshSide(characters: Character[], drawPile: string[]): SideState {
   return {
     characters,
+    drawPile,
     activated: [],
     damage: [],
     shields: [],
@@ -303,8 +329,8 @@ interface GameState {
 export const useGameStore = create<GameState>((set, get) => ({
   // Recarga: cada mazo persiste por bando; el estado de partida no se persiste.
   sides: {
-    player: freshSide(loadPersistedDeck('player')),
-    enemy: freshSide(loadPersistedDeck('enemy')),
+    player: freshSide(loadPersistedDeck('player'), loadPersistedDrawPile('player')),
+    enemy: freshSide(loadPersistedDeck('enemy'), loadPersistedDrawPile('enemy')),
   },
   resolve: null,
   resolveError: null,
@@ -332,9 +358,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           ? applyEnemyHealthMultiplier(built, DIFFICULTY_SETTINGS[get().difficulty].healthMultiplier)
           : built;
       persistDeck(side, characters);
+      // Mazo de robo (SPEC-016): se reconstruye y rebaraja en cada (re)importación.
+      const drawPile = shuffle(buildDrawPile(slots, cards));
+      persistDrawPile(side, drawPile);
       // Reinicia el estado de partida de ESTE bando (vida completa) y recalcula el fin.
       set((state) => {
-        const sides = { ...state.sides, [side]: freshSide(characters) };
+        const sides = { ...state.sides, [side]: freshSide(characters, drawPile) };
         return { sides, resolve: null, resolveError: null, outcome: computeOutcome(sides) };
       });
     } catch (e) {
@@ -385,12 +414,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     }),
 
   // "Reset total" (SPEC-009): reconstruye ambos bandos a su estado inicial (vida completa, sin
-  // escudos/KO, recursos a 2), conservando los personajes importados. Recalcula el fin.
+  // escudos/KO, recursos a 2), conservando los personajes importados y el mazo de robo tal cual
+  // está (SPEC-016: nada lo consume todavía, no se reconstruye ni rebaraja aquí). Recalcula el fin.
   resetAll: () =>
     set((state) => {
       const sides: Record<Side, SideState> = {
-        player: freshSide(state.sides.player.characters),
-        enemy: freshSide(state.sides.enemy.characters),
+        player: freshSide(state.sides.player.characters, state.sides.player.drawPile),
+        enemy: freshSide(state.sides.enemy.characters, state.sides.enemy.drawPile),
       };
       return {
         sides,
