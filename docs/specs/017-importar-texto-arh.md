@@ -1,6 +1,6 @@
 # SPEC-017: Importar el "text file" de ARH DB (además del JSON)
 
-**Estado:** Pendiente
+**Estado:** Completada
 **Sección del GDD:** §1/§7 (mazos descargados de ARH DB) + nota de formatos de import a añadir (ver
 "Aviso GDD" abajo)
 **Depende de:** SPEC-001 (parseDeck → DeckSlot[] → resolveCards → API), SPEC-016 (mazo de robo)
@@ -151,4 +151,7 @@ SPEC-001/016). Bajo el umbral de ~300 líneas.
 
 ## Resultado del playtest
 
-(pendiente)
+Completada tras playtest 2026-07-22. Pegado el "text file" de "Unduli, clone commander" tal cual
+(sin JSON): importa 4 personajes + "Mazo: 30", igual que con el JSON. Probado además con **otro
+mazo distinto** descargado de ARH: importa correctamente. Autodetección de formato OK. Nota: el
+recuento "Mazo: N" es texto gris pequeño y cuesta localizarlo (anotado en BACKLOG para v2).
