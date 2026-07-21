@@ -1,6 +1,6 @@
 # SPEC-014: El autómata gana coste indirecto en escudo/recurso y multi-objetivo
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** §4 (El autómata enemigo — "Tandas combinadas y costes" y "Multi-objetivo del
 autómata")
 **Depende de:** SPEC-013 (autómata combina modificadores y paga costes), SPEC-011 (multi-objetivo
@@ -137,4 +137,7 @@ mínimo en `src/store/gameStore.ts` (`enemyTurn` ya sabe pasar `costReceiverInde
 
 ## Resultado del playtest
 
-(pendiente)
+2026-07-21: playtest manual OK en Pages (main, commit 81f449e). Confirmado: coste de daño indirecto
+propio resuelto en tandas de escudo/recurso; multi-objetivo en daño y escudo repartiendo sin overkill
+/ sin pasar de MAX_SHIELDS entre pulsaciones sucesivas de "Turno enemigo"; el jugador sigue jugando
+igual que antes. revisor-codigo: CUMPLE. Confirmado por el usuario.
