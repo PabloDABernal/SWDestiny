@@ -25,6 +25,9 @@ Verificables jugando. Formato: acción → resultado observable.
 - [ ] Con **Difícil** seleccionado, al importar el mazo enemigo, su vida sale multiplicada por **2**.
 - [ ] Cambiar el selector **después** de haber importado al enemigo no cambia la vida de la partida
       en curso; solo se aplica la próxima vez que se (re)importe el mazo enemigo.
+- [ ] Con el enemigo importado en Normal, cambiar el selector a Difícil y pulsar **"Reset total"** →
+      la vida enemiga sigue siendo la de Normal (x1.5), **no** pasa a x2; el multiplicador de
+      Difícil solo se aplicaría reimportando el mazo.
 - [ ] Con **Fácil**, el autómata **nunca** usa el reroll extra de la trampa (solo el gratuito de la
       tabla de prioridades, si aplica); con **Normal**, dispone de 1 reroll extra por ronda; con
       **Difícil**, de 2. Este efecto se aplica de inmediato al cambiar el selector (no depende de
@@ -50,8 +53,14 @@ Verificables jugando. Formato: acción → resultado observable.
 - **Valor corrupto o inesperado en localStorage** (mismo espíritu que SPEC-012) → se descarta y se
   usa Normal por defecto, sin romper la carga de la app.
 - **Reset total** → no cambia el nivel de dificultad elegido (es un ajuste de configuración, no de
-  partida); solo "Reset total" reconstruye el mazo enemigo con el multiplicador **vigente en ese
-  momento** en el selector (igual que una reimportación).
+  partida) y **NO reaplica** el multiplicador de vida: reconstruye el bando enemigo con la vida ya
+  fijada en el **último import** (igual que hoy), no con el multiplicador vigente en el selector en
+  ese momento. Si cambias el selector después de importar y pulsas "Reset total", la vida enemiga
+  sigue siendo la del último import; solo una nueva importación aplica el multiplicador nuevo.
+- **Cambiar de un nivel con más rerolls extra a uno con menos, a mitad de ronda** (p. ej. de Difícil
+  a Fácil tras ya usar 1 de los 2 rerolls extra de Difícil) → el contador de rerolls usados no se
+  resetea; simplemente, si ya alcanzó o superó el límite del nuevo nivel, no le quedan más rerolls
+  extra esa ronda (comparación directa contra el nuevo límite, sin lógica especial).
 
 ## Notas técnicas (opcional)
 
@@ -63,8 +72,11 @@ Verificables jugando. Formato: acción → resultado observable.
   `ENEMY_EXTRA_REROLLS_PER_ROUND` directamente (o se sigue leyendo de un valor en el estado global).
 - Persistencia: misma clave/patrón que el mazo (`swd:difficulty` en `localStorage`), validando la
   forma igual que SPEC-012 (si no es uno de los tres valores válidos, usar `'normal'`).
-- Estado: nuevo campo en el store (`difficulty: Difficulty`) con su setter; `importDeck('enemy', ...)`
-  y `resetAll` leen el valor vigente al reconstruir el bando enemigo, en vez de la constante fija.
+- Estado: nuevo campo en el store (`difficulty: Difficulty`) con su setter; solo `importDeck('enemy',
+  ...)` aplica el multiplicador vigente al reconstruir el bando enemigo. `resetAll` **NO** vuelve a
+  aplicar el multiplicador: reconstruye a partir de `characters` tal como quedaron guardados (con la
+  vida ya multiplicada del último import), igual que hace hoy — no lee `difficulty` en absoluto para
+  la vida (solo `nextAutomatonAction`/reroll la consulta, para el reroll extra).
 - UI: un `<select>` o grupo de botones junto a `ImportPanel` del enemigo (`src/components/
   ImportPanel.tsx` o al lado en `App.tsx`), sin bloquear la importación si ya hay mazo (solo
   advierte, si se quiere, que el cambio se aplicará a la próxima importación — la propia spec no
