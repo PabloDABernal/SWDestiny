@@ -193,7 +193,15 @@ button:disabled {
 }
 
 .controls {
-  margin: 12px 0 20px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  gap: 10px;
+  margin: 0 0 20px;
+  padding: 12px 0;
+  background: #14161c;
+  border-bottom: 1px solid #2a2e3a;
 }
 
 .battle-side {
