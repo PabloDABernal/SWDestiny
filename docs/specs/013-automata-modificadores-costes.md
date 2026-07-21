@@ -1,6 +1,6 @@
 # SPEC-013: El autómata combina modificadores y paga costes
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** §4 (El autómata enemigo — tabla de prioridades y "Tandas combinadas y costes")
 **Depende de:** SPEC-007 (autómata escudo/recurso), SPEC-008b (costes de recurso), SPEC-010
 (modificadores `+X` y coste indirecto)
@@ -18,34 +18,34 @@ reglas fijadas con el usuario (ver GDD §4).
 
 Verificables jugando. Formato: acción → resultado observable.
 
-- [ ] El enemigo tiene un dado `2MD` y un `+1MD` en su pool (sin coste, recursos suficientes) →
+- [x] El enemigo tiene un dado `2MD` y un `+1MD` en su pool (sin coste, recursos suficientes) →
       "Turno enemigo" resuelve **ambos en una sola tanda** (3 de daño total) contra el jugador de
       menos vida; el mensaje de "última acción del enemigo" refleja el total combinado.
-- [ ] El enemigo tiene dos dados base de daño distintos (p. ej. `2MD` y `1RD`, sin coste) → se
+- [x] El enemigo tiene dos dados base de daño distintos (p. ej. `2MD` y `1RD`, sin coste) → se
       combinan en una sola tanda (3 de daño total) al mismo objetivo (menor vida), igual que antes
       pero sumados en vez de resolver solo el mayor.
-- [ ] El enemigo tiene un dado `2MD3` (coste 3 recursos) y **recursos ≥ 3** → lo resuelve y paga el
+- [x] El enemigo tiene un dado `2MD3` (coste 3 recursos) y **recursos ≥ 3** → lo resuelve y paga el
       coste (el contador de recursos del enemigo baja en 3).
-- [ ] El enemigo tiene un dado `2MD3` y **recursos < 3**, pero también tiene un `1MD` (sin coste) →
+- [x] El enemigo tiene un dado `2MD3` y **recursos < 3**, pero también tiene un `1MD` (sin coste) →
       descarta el `2MD3` (impagable) y resuelve el `1MD` en su lugar.
-- [ ] El enemigo tiene varios dados de daño pagables y uno impagable de mayor valor → la tanda
+- [x] El enemigo tiene varios dados de daño pagables y uno impagable de mayor valor → la tanda
       incluye los pagables (ordenados de mayor a menor) y **excluye** el impagable, que queda en el
       pool para una pasada futura (no se descarta del pool, solo no entra en esta tanda).
-- [ ] El enemigo tiene un dado `2IDi1` (coste de daño indirecto propio, 1 de daño) → al resolverlo,
+- [x] El enemigo tiene un dado `2IDi1` (coste de daño indirecto propio, 1 de daño) → al resolverlo,
       **uno de sus propios personajes** recibe 1 de daño según la regla de receptor (ver más abajo);
       si ese personaje tenía escudo, se descuenta de ahí primero.
-- [ ] Receptor del coste indirecto — con dos aliados no-KO, uno con escudos y otro sin, ambos
+- [x] Receptor del coste indirecto — con dos aliados no-KO, uno con escudos y otro sin, ambos
       sobrevivirían al coste → el escudo del primero absorbe el coste (no baja su vida).
-- [ ] Receptor del coste indirecto — ningún aliado tiene escudos → recibe el coste el de **más
+- [x] Receptor del coste indirecto — ningún aliado tiene escudos → recibe el coste el de **más
       vida** entre los que sobrevivirían.
-- [ ] Receptor del coste indirecto — el coste mataría a cualquier aliado que se elija → se aplica al
+- [x] Receptor del coste indirecto — el coste mataría a cualquier aliado que se elija → se aplica al
       de **más vida** (inevitable, el autómata no se bloquea ni pasa el turno por esto).
-- [ ] Combinar + pagar coste de recurso aplica igual a **escudo** y a **recurso** (el coste
+- [x] Combinar + pagar coste de recurso aplica igual a **escudo** y a **recurso** (el coste
       indirecto, en cambio, solo se resuelve en tandas de daño — ver "Fuera de alcance"): una tanda
       de dados de escudo con modificador `+X` se resuelve combinada sobre el aliado de menor vida
       (regla ya existente, SPEC-007); una tanda de recurso con modificador se resuelve combinada,
       sumando el total al contador propio.
-- [ ] Si tras aplicar las reglas anteriores **ningún dado de un símbolo es pagable ni combinable**
+- [x] Si tras aplicar las reglas anteriores **ningún dado de un símbolo es pagable ni combinable**
       (p. ej. todos los dados de daño tienen coste superior a los recursos disponibles), esa
       prioridad de la tabla no aplica: el autómata pasa a evaluar la siguiente (escudo → activar →
       recurso → reroll → pasar), igual que hoy cuando no hay dados de un tipo.
@@ -124,4 +124,9 @@ aparte.
 
 ## Resultado del playtest
 
-(pendiente)
+2026-07-21: playtest manual OK en Pages (main). El primer intento se probó contra una build en
+caché (el deploy de esta rama estaba fallando por protección de entorno de Pages, resuelto
+fusionando a `main`); reprobado tras el fix: Death Trooper con `2RD1` y recursos suficientes ataca
+pagando el coste; combinación de varios dados de recurso ya activados en una sola tanda; validado
+también indirectamente al jugar SPEC-014/015, que construyen sobre este comportamiento sin
+problemas. revisor-codigo: CUMPLE. Confirmado por el usuario.
