@@ -40,6 +40,9 @@ Verificables jugando. Formato: acción → resultado observable.
 - [ ] Si **ningún** objetivo vivo puede recibir ni el dado más pequeño disponible sin pasarse (todos
       tienen menos vida que el dado más barato disponible) → se aplica igual al de menos vida,
       aceptando el exceso (un dado no se divide).
+- [ ] El objetivo de menos vida tiene **escudos propios** → el margen para "sin overkill" cuenta
+      escudos + vida (los escudos absorben antes, SPEC-005); un dado que agote el escudo y deje la
+      vida en 0 exacto NO cuenta como overkill.
 - [ ] Con un solo objetivo vivo, o con dados que en conjunto no llegan a dejarlo en 0, el
       comportamiento es idéntico al de SPEC-013 (toda la tanda combinable a ese único objetivo, en
       una sola pulsación).
@@ -99,11 +102,13 @@ Verificables jugando. Formato: acción → resultado observable.
      (mismo desempate determinista existente).
   2. Para cada candidato, en ese orden: tomar el batch ya calculado por `combineAutomatonBatch`
      (orden de mayor a menor valor, ya filtrado por coste de recurso pagable) y quedarse con el
-     **prefijo** de esa lista que, sumado, no supere el margen del candidato (vida restante para
-     daño; `MAX_SHIELDS - shields[i]` para escudo) — recorriendo en orden e incluyendo cada dado
-     mientras siga sin pasarse (mismo patrón "saltar y seguir probando" que ya usa el coste de
-     recurso). Si el resultado tiene al menos un dado **base**, ese candidato y ese subconjunto son
-     la acción de esta pulsación; parar aquí.
+     **prefijo** de esa lista que, sumado, no supere el margen del candidato — recorriendo en orden e
+     incluyendo cada dado mientras siga sin pasarse (mismo patrón "saltar y seguir probando" que ya
+     usa el coste de recurso). El margen es: en **daño**, `shields[objetivo] + vida restante`
+     (los escudos del objetivo absorben antes que la vida, SPEC-005 — usar solo la vida
+     infravaloraría el margen real); en **escudo**, `MAX_SHIELDS - shields[objetivo]`. Si el
+     resultado tiene al menos un dado **base**, ese candidato y ese subconjunto son la acción de esta
+     pulsación; parar aquí.
   3. Si ningún candidato acepta ni un solo dado base sin pasarse, usar el **primer candidato** de la
      lista (el más débil/con más prioridad) con el batch **completo sin recortar** (overkill
      aceptado, inevitable).
