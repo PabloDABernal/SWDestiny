@@ -48,6 +48,9 @@ cartas en esta spec; el autómata sigue sin poder hacerlo (v5, GDD).
 - Intentar jugar un apoyo sin recursos suficientes → no se resuelve, aviso de recursos
   insuficientes, la carta sigue en la mano.
 - Activar un apoyo ya activado esta ronda → botón deshabilitado, sin efecto.
+- Activar un apoyo mientras hay una resolución de coste indirecto pendiente
+  (`resolve.pendingEffect`) o mientras se está eligiendo objetivo para una mejora (`playUpgrade`):
+  bloqueado, mismos guards que ya usa `activate()` para personajes.
 - Varios apoyos en juego a la vez: cada uno se activa por separado con su propio botón; activar
   uno no afecta a los demás.
 - Jugar un apoyo mientras hay una resolución de coste indirecto pendiente
@@ -57,16 +60,23 @@ cartas en esta spec; el autómata sigue sin poder hacerlo (v5, GDD).
 - Coste de carta en 0 (o sin campo `cost`): se juega gratis, igual que con mejoras (SPEC-020).
 - "Reset total" con apoyos en juego (activados o no): todos vuelven al mazo, rebarajados; el
   estado de activación no importa, se descarta junto con el resto.
-- Recarga de página con apoyos en juego: deben persistir igual que el resto del estado de mazo
-  (`drawPile`/`hand`/mejoras), incluido si estaban activados o no esta ronda.
+- Recarga de página con apoyos en juego: **qué apoyos hay en juego** persiste igual que
+  `drawPile`/`hand`/mejoras (es estado de mazo). **Si estaban activados esta ronda o no NO
+  persiste**: es estado de partida, igual que la activación de personajes (`activated`) y de
+  mejoras, que el SDD ya deja claro que no se persiste ("pools, activaciones, daño, fin de partida
+  no se persiste"). Tras recargar, todo apoyo en juego aparece sin activar, esté o no la ronda a
+  medias — mismo comportamiento que ya tienen hoy los personajes tras un reload.
 - Caché de la lista de apoyos en juego corrupta o con forma inesperada al cargar: se descarta y
   arranca vacía, mismo patrón que ya cubren `drawPile`/`hand`/mejoras (SPEC-016/018/020).
 
 ## Notas técnicas (opcional)
 
 - Extiende el mismo patrón de "cartas en juego" que introdujo SPEC-020 (ya documentado en el SDD),
-  pero como una lista **por bando**, no paralela a `characters`: `SideState.supports:
-  { code: string; activated: boolean }[]`, persistida igual que `upgrades` (SPEC-020).
+  pero como una lista **por bando**, no paralela a `characters`. Separar el dato de mazo del dato
+  de ronda, igual que ya está separado para personajes (`characters` persiste, `activated` no):
+  `SideState.supports: string[]` (códigos, persistido igual que `upgrades`) +
+  `SideState.supportsActivated: boolean[]` (paralelo a `supports` por posición, **no** persistido,
+  se resetea a `[]`/todo-`false` en `freshSide`/`newRound`, igual que `activated` de personajes).
 - `PooledDie.characterIndex` no tiene sentido para un dado de apoyo (no hay personaje anfitrión).
   Como ningún camino de esta spec necesita filtrar el pool por apoyo al "KO" (los apoyos no se
   destruyen aquí, ver Fuera de alcance), basta con un valor centinela que nunca coincida con un
