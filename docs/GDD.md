@@ -165,6 +165,18 @@ acción de robar (specs siguientes); se muestra el recuento de cartas restantes 
 para poder verificarlo jugando. Si cualquier carta del mazo no se resuelve contra la API, el
 import se cancela con error, igual que ya pasa con personajes no encontrados (SPEC-001).
 
+### Mano y robo manual (segunda pieza de v3, SPEC-018)
+
+El jugador roba cartas de su mazo de robo a su mano pulsando un botón **"Robar"** manual, sin
+límite de tamaño de mano todavía; ve el **nombre** de cada carta en su mano. El enemigo roba como
+un paso más de su tabla de prioridades (el de menor prioridad, por debajo del reroll de blancos):
+al pulsar "Turno enemigo", si no le queda ninguna otra acción legal, roba 1 carta; de su mano solo
+se muestra el **número**, no el contenido. Es una pieza deliberadamente provisional: el momento y
+la cantidad reales de robo (previsiblemente "1 carta al pasar de ronda", RR) se definen en una spec
+posterior; aquí solo se prueba el mecanismo. Si un bando debe robar y su mazo está en 0, la partida
+termina de inmediato: **Derrota** si es el jugador, **Victoria** si es el enemigo (condición de
+victoria por deck-out).
+
 ## 6. Fuera de alcance (explícito, hasta que se decida lo contrario)
 
 - Multijugador, alianzas, free-for-all (reglas de la Parte 9 del reglamento).
