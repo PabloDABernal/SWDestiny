@@ -75,6 +75,18 @@ mantenimiento) y solo si un bando se queda **sin cartas en mano Y sin mazo a la 
   completo (drawPile + hand + mejoras + apoyos en juego, rebarajado), sin relación con el tamaño
   de mano.
 - "Nueva ronda" pulsada con la partida ya terminada (outcome no nulo): sigue siendo no-op.
+- Mazo con menos cartas de las que faltan para llegar a 5 (p. ej. mano en 2, mazo con solo 1
+  carta): roba esa única carta (mano queda en 3, por debajo de 5) y ya no roba más; no hay
+  deck-out porque la mano no está vacía.
+- **Conocido y aceptado, no un bug**: el botón manual "Robar" puede terminar la partida
+  (Derrota/Victoria) con solo el mazo vacío, **aunque la mano no lo esté** — a diferencia del
+  deck-out real que esta misma spec implementa para "Nueva ronda" (mano Y mazo a la vez). Es la
+  inconsistencia temporal ya descrita en Notas técnicas entre "Robar" (SPEC-018, sin cambios) y
+  "Nueva ronda" (regla real, esta spec); el jugador puede evitarlo simplemente no pulsando "Robar"
+  cuando le convenga conservar la partida con mano no vacía y mazo a 0.
+- `discardCard`: no-op si la partida ya terminó (`outcome !== null`), o si hay una resolución de
+  coste indirecto pendiente (`resolve.pendingEffect`) o se está eligiendo objetivo para una mejora
+  (`playUpgrade`) — mismos guards que ya bloquean otras acciones de mano/pool en esos estados.
 
 ## Notas técnicas (opcional)
 
@@ -95,6 +107,11 @@ mantenimiento) y solo si un bando se queda **sin cartas en mano Y sin mazo a la 
   código/índice, sin más efecto (no hay pila de descarte que alimentar todavía).
 - Nueva UI: un botón "Descartar" por carta en `Hand.tsx`, visible solo para el jugador (igual que
   el resto de acciones de mano).
+- El reglamento real ata el descarte al paso 4 del mantenimiento (RR: enderezar → devolver dados →
+  +2 recursos → **descartar y robar**), no a "en cualquier momento". Aquí se implementa como acción
+  suelta porque el proyecto todavía no tiene una fase de acción con turnos reglamentaria (stand-in
+  ya documentado en el GDD para "Nueva ronda"/"Turno enemigo"); no es la regla RR literal, es una
+  aproximación deliberada mientras esa fase no exista.
 
 ## Resultado del playtest
 
