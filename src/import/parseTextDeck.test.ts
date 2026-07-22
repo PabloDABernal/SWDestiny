@@ -56,6 +56,12 @@ describe('parseTextDeck', () => {
     expect(parseTextDeck('1x X (Rivals #5)')).toEqual([{ code: '06005', qty: 1 }]);
   });
 
+  it('reconoce el set Transformations (código 13, confirmado el 2026-07-22)', () => {
+    expect(parseTextDeck('1x Rescue Han Solo (Transformations #7)')).toEqual([
+      { code: '13007', qty: 1 },
+    ]);
+  });
+
   it('falla con invalid-text si el set no está en la tabla', () => {
     try {
       parseTextDeck('2x Carta rara (Foobar #12)');
