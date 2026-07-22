@@ -13,6 +13,15 @@ bases de datos comunitarias como [ARH DB](https://db.swdrenewedhope.com/) (proye
 que mantiene el juego vivo tras el fin de soporte oficial). No es un producto comercial ni
 sustituye al PVP oficial.
 
+**Principio irrenunciable:** el objetivo final es fidelidad **total** al reglamento físico de
+Star Wars Destiny — cada regla del juego real debe acabar implementada, exactamente igual, salvo
+que el usuario decida explícitamente cambiarla (una vez la base esté completa, ya se ajustará IA o
+alguna regla puntual si hace falta). Que una regla quede fuera de una spec concreta (sección 6, y
+las notas de "fuera de alcance" de cada spec) es siempre una decisión de **orden y tamaño de
+bocado** para no sobrecargar una sola sesión de implementación — nunca una decisión de recortar el
+alcance final del proyecto. Ninguna spec, revisor ni sesión futura debe interpretar un "fuera de
+alcance" como "no se va a hacer".
+
 ## 2. Modo de juego
 
 - **Un jugador humano** vs **un enemigo IA**.
