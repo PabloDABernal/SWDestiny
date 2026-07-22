@@ -64,6 +64,7 @@ export type AutomatonAction =
   | { type: 'activate'; index: number }
   | { type: 'resource'; dieIndices: number[]; costReceiverIndex: number | null }
   | { type: 'reroll'; dieIndices: number[]; kind: 'free' | 'extra' }
+  | { type: 'draw' }
   | { type: 'pass' };
 
 function isBlank(face: string): boolean {
@@ -324,5 +325,8 @@ export function nextAutomatonAction(
     }
   }
 
-  return { type: 'pass' };
+  // 6. Robar una carta (SPEC-018): se intenta siempre que no quede ninguna acción de mayor
+  // prioridad, incondicionalmente (función pura, no conoce el mazo de robo). Quien ejecuta la
+  // acción decide el efecto real: roba si el mazo tiene cartas, deck-out si está vacío.
+  return { type: 'draw' };
 }
