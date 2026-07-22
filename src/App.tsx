@@ -69,6 +69,7 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
                   targetable={(targetableSide || upgradeTargetableSide) && !ko}
                   showActivate={isPlayer}
                   upgradeNames={upgradeNames}
+                  activateDisabled={playUpgrade !== null}
                   onActivate={() => activate(side, i)}
                   onTarget={() => (upgradeTargetableSide ? playUpgradeOn(i) : applyDieTo(side, i))}
                   key={`${c.code}-${i}`}

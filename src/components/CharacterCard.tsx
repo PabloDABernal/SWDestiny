@@ -15,6 +15,9 @@ interface CharacterCardProps {
   showActivate: boolean;
   /** Nombres de las mejoras en juego ligadas a este personaje (SPEC-020). */
   upgradeNames: string[];
+  /** true mientras se elige objetivo para jugar una mejora (SPEC-020): Activar queda deshabilitado
+   * para que no parezca un clic sin efecto. */
+  activateDisabled?: boolean;
   onActivate: () => void;
   onTarget: () => void;
 }
@@ -28,6 +31,7 @@ export function CharacterCard({
   targetable,
   showActivate,
   upgradeNames,
+  activateDisabled,
   onActivate,
   onTarget,
 }: CharacterCardProps) {
@@ -92,7 +96,7 @@ export function CharacterCard({
               e.stopPropagation();
               onActivate();
             }}
-            disabled={activated || ko}
+            disabled={activated || ko || activateDisabled}
           >
             {ko ? 'KO' : activated ? 'Activado' : 'Activar'}
           </button>
