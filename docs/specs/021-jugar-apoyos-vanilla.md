@@ -1,6 +1,6 @@
 # SPEC-021: Jugar apoyos vanilla desde la mano
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** v4 — cartas jugables por capas, primera capa: "mejoras/apoyos vanilla"
 (sección 5, línea 155-156). Segunda pieza de esa capa; SPEC-020 cubrió mejoras, esta cubre
 **apoyos** (supports).
@@ -95,4 +95,14 @@ cartas en esta spec; el autómata sigue sin poder hacerlo (v5, GDD).
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+2026-07-22: playtest manual OK (usuario), con un mazo real importado desde ARH DB (incluye
+apoyos). Jugar un apoyo sin elegir objetivo, cobro correcto del coste de carta, activación
+tirando su dado y resolviéndose igual que cualquier otro, "Nueva ronda" reseteando la activación
+sin sacarlo de juego, "Reset total" devolviéndolo al mazo. Único hallazgo (no bloqueante, ya en
+BACKLOG): el botón "Activar" aparece igual en apoyos que no tienen dado propio impreso, aunque no
+tenga sentido pulsarlo.
+
+De paso, durante el proceso de importar un mazo real para esta prueba, salieron dos bugs de
+import ajenos a esta spec, ya corregidos: el set "Transformations" no estaba en la tabla de
+SPEC-017, y las cartas de tipo trama (plot, dos caras A/B) hacían fallar el import entero al
+intentar resolverlas sin necesidad (ver `docs/BACKLOG.md`).
