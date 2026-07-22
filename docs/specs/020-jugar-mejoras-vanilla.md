@@ -1,6 +1,6 @@
 # SPEC-020: Jugar mejoras vanilla desde la mano
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** v4 — cartas jugables por capas, primera capa: "mejoras/apoyos vanilla"
 (sección 5, línea 155-156). Esta spec cubre solo **mejoras** (upgrades); apoyos quedan para una
 spec posterior.
@@ -96,4 +96,8 @@ juega cartas en esta spec; el autómata sigue sin poder hacerlo (v5, GDD).
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+2026-07-22: playtest manual OK (usuario). Jugar mejoras desde la mano, cobro correcto del coste de
+carta (verificado explícitamente el riesgo señalado por revisor-código: el campo `cost` de la API
+de ARH DB descuenta bien los recursos), dados de mejora tirándose junto a los del personaje al
+activar, descarte automático de mejoras al KO, "Reset total" devolviéndolas al mazo y "Nueva ronda"
+sin tocarlas.
