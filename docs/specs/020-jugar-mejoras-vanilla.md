@@ -55,27 +55,41 @@ juega cartas en esta spec; el autómata sigue sin poder hacerlo (v5, GDD).
 - Personaje con dos o más mejoras en juego: todas se activan/tiran juntas al activar el personaje.
 - Personaje con mejora(s) en juego pasa a KO por daño del enemigo (no solo por deck-out ni por
   acción propia): las mejoras se descartan igual, en el mismo momento en que el personaje queda KO.
-- "Reset total": las mejoras en juego se descartan (vuelven a estar disponibles solo si estaban en
-  la mano o el mazo antes de jugarlas — pero SPEC-009 reconstruye personajes desde cero, así que no
-  hay "mano"/"mazo" que restaurar con el estado exacto anterior; a definir en implementación cómo
-  encaja esto con `resetAll`, ver Notas técnicas).
+- "Reset total": las mejoras en juego de cada bando **vuelven a su mazo de robo, rebarajadas**
+  junto con `drawPile`/`hand` (mismo patrón que ya usa `resetAll` para reconstruir el mazo completo
+  desde SPEC-018/019: `shuffle([...drawPile, ...hand])`, aquí ampliado a
+  `shuffle([...drawPile, ...hand, ...mejorasEnJuego])`); dejan de estar "en juego" y su estado
+  (activada o no, etc.) se limpia igual que el resto del bando.
+- "Nueva ronda": las mejoras en juego **no** se descartan ni se desligan de su personaje (solo se
+  vacían `pool`/`activated`/`rerollsUsed`, igual que con los personajes); una mejora jugada sigue
+  en juego ronda tras ronda hasta que su personaje quede KO o haya un "Reset total".
+- Jugar una mejora mientras hay una resolución de coste indirecto pendiente (`resolve.pendingEffect`,
+  SPEC-010, "elige el personaje que recibe el coste indirecto"): bloqueado, igual que ya está
+  bloqueado `activate()` en ese mismo estado — no se puede jugar una carta a mitad de resolver un
+  dado.
+- Coste de carta en 0 (o la carta no tiene coste impreso): se juega gratis, sin pedir recursos.
 - Recarga de página con una mejora en juego: debe persistir igual que el resto del estado de mazo
   (`drawPile`/`hand`), no solo el estado de partida no persistido.
 
 ## Notas técnicas (opcional)
 
 - Esto es un cambio de **arquitectura**, no solo de spec (regla de CLAUDE.md: "ningún cambio de
-  arquitectura se implementa si no está en `docs/SDD.md`"). Antes de implementar hay que decidir y
-  documentar en el SDD, como mínimo:
-  - Cómo se representa una "mejora en juego" en el estado (`SideState`): ¿un array paralelo a
-    `characters` con las mejoras ligadas a cada índice, o una estructura nueva con su propia
-    persistencia (igual que `drawPile`/`hand`, SPEC-016/018)?
-  - Cómo se extiende `PooledDie`/`rollCharacter` (`src/game/roll.ts`) para que activar un personaje
-    también tire los dados de sus mejoras — hoy `PooledDie.characterIndex` asume que todo dado
-    pertenece a un personaje del array `characters`; una mejora no es un personaje.
+  arquitectura se implementa si no está en `docs/SDD.md`"); ya reflejado en el SDD ("Cartas en
+  juego (mejoras, desde SPEC-020)"). Dirección técnica elegida: un array paralelo a `characters`
+  dentro de `SideState` (mejoras ligadas por índice de personaje), no una estructura aparte —
+  encaja con que `resolvePlayerBatch` ya filtra el pool por `characterIndex` al quedar KO
+  (`src/store/gameStore.ts`), así que asignar a los dados de mejora el mismo `characterIndex` que
+  su personaje anfitrión hace que ese filtrado funcione sin cambios adicionales.
+  - `PooledDie`/`rollCharacter` (`src/game/roll.ts`) se extienden para que activar un personaje
+    también tire los dados de sus mejoras — hoy asumen que todo dado viene de un personaje del
+    array `characters`; una mejora no lo es, pero comparte su `characterIndex`.
   - `ArhCard` (`src/model/types.ts`) no tiene campo de coste de carta hoy (solo `sides` para las
     caras de dado); hay que confirmar contra la API real el nombre del campo de coste impreso de
     una carta (probablemente `cost`) y añadirlo al modelo.
+  - Aviso para el futuro (no aplica a esta spec, el autómata no juega cartas todavía): el reroll
+    del autómata en `enemyTurn` (`src/store/gameStore.ts`) hace
+    `character.dice[d.dieIndex]` asumiendo que todo `PooledDie` viene de `characters`; cuando el
+    autómata juegue cartas (v5), ese lookup habrá que revisarlo para dados de mejora.
 - El coste de jugar una mejora es un coste **de carta** (recursos, pagado una vez al jugarla), no el
   coste de cara de dado (SPEC-008b) que ya existe — son dos mecanismos de coste distintos que
   conviven; no confundirlos en la implementación.
