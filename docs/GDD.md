@@ -55,10 +55,8 @@ Evalúa, en su turno, una tabla de prioridades de arriba abajo y ejecuta la prim
    del enemigo (SPEC-007/013).
 5. Si tiene 2 o más dados mostrando blanco, los rerollea (reroll gratuito, luego el extra de la
    trampa).
-6. Si no le queda ninguna otra acción legal, intenta robar una carta (SPEC-018): si su mazo de robo
-   tiene cartas, la roba a su mano (solo el recuento es visible, no el contenido); si está vacío, la
-   partida termina en el acto (Victoria, deck-out del enemigo — sección 5).
-7. Pasa (en la práctica, con esta tabla, solo se alcanza si el bando enemigo no tiene personajes).
+6. Pasa. *(SPEC-018 añadió aquí un paso de robo; SPEC-019 lo retira: el enemigo ahora roba en
+   "Nueva ronda", igual que el jugador — ver sección 5.)*
 
 La tabla crece en fases posteriores conforme se implementan cartas.
 
@@ -171,14 +169,20 @@ import se cancela con error, igual que ya pasa con personajes no encontrados (SP
 ### Mano y robo manual (segunda pieza de v3, SPEC-018)
 
 El jugador roba cartas de su mazo de robo a su mano pulsando un botón **"Robar"** manual, sin
-límite de tamaño de mano todavía; ve el **nombre** de cada carta en su mano. El enemigo roba como
-un paso más de su tabla de prioridades (el de menor prioridad, por debajo del reroll de blancos):
-al pulsar "Turno enemigo", si no le queda ninguna otra acción legal, roba 1 carta; de su mano solo
-se muestra el **número**, no el contenido. Es una pieza deliberadamente provisional: el momento y
-la cantidad reales de robo (previsiblemente "1 carta al pasar de ronda", RR) se definen en una spec
-posterior; aquí solo se prueba el mecanismo. Si un bando debe robar y su mazo está en 0, la partida
-termina de inmediato: **Derrota** si es el jugador, **Victoria** si es el enemigo (condición de
-victoria por deck-out).
+límite de tamaño de mano todavía; ve el **nombre** de cada carta en su mano. De la mano del enemigo
+solo se muestra el **número**, no el contenido. Si un bando debe robar y su mazo está en 0, la
+partida termina de inmediato: **Derrota** si es el jugador, **Victoria** si es el enemigo (condición
+de victoria por deck-out). *(El robo del enemigo como paso de "Turno enemigo" que describía esta
+pieza al principio era provisional; SPEC-019 lo sustituye por la regla real de robo por ronda.)*
+
+### Robo automático por ronda (SPEC-019)
+
+Al pulsar "Nueva ronda", cada bando roba 1 carta de su mazo de robo a su mano, además de la
+re-tirada de dados y el +2 de recursos ya existentes (SPEC-009/011). Es la regla real de robo que
+SPEC-018 dejó pendiente. El botón manual "Robar" del jugador (SPEC-018) se mantiene. El autómata ya
+no roba dentro de "Turno enemigo" (ese paso, añadido en SPEC-018, se retira): ahora roba en "Nueva
+ronda" igual que el jugador. Si el mazo de un bando está vacío al robar en "Nueva ronda", la partida
+termina en el acto (deck-out): Derrota si es el jugador, Victoria si es el enemigo.
 
 ## 6. Fuera de alcance (explícito, hasta que se decida lo contrario)
 
