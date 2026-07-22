@@ -34,7 +34,8 @@ async function fetchCard(code: string): Promise<ArhCard> {
   } catch {
     throw new ImportError(
       'network',
-      'No se pudo conectar con ARH DB para resolver las cartas (red o CORS).',
+      `No se pudo conectar con ARH DB para resolver la carta ${code} (red o CORS).`,
+      code,
     );
   }
 
@@ -42,7 +43,7 @@ async function fetchCard(code: string): Promise<ArhCard> {
     throw new ImportError('card-not-found', `No se encontró la carta con código ${code}.`, code);
   }
   if (!res.ok) {
-    throw new ImportError('network', `ARH DB respondió con error ${res.status} al pedir ${code}.`);
+    throw new ImportError('network', `ARH DB respondió con error ${res.status} al pedir ${code}.`, code);
   }
 
   let card: ArhCard;
