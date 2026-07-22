@@ -27,9 +27,10 @@ prioridad más baja) desaparece: ahora el enemigo roba en "Nueva ronda", igual q
   pasa." como antes de SPEC-018.
 - La primera vez que se pulsa "Nueva ronda" tras importar el mazo, ya reparte 1 carta a cada bando
   (sin tratamiento especial).
-- Si al llegar el turno de robar en "Nueva ronda" el mazo de un bando está vacío, la partida termina
-  en el acto con el mismo criterio de deck-out ya establecido en SPEC-018 (Derrota si es el
-  jugador, Victoria si es el enemigo) — ver Casos límite para el orden de comprobación.
+- Si al pulsar "Nueva ronda" el mazo de un bando está vacío, la partida termina en el acto con el
+  mismo criterio de deck-out ya establecido en SPEC-018 (Derrota si es el jugador, Victoria si es el
+  enemigo), **sin** aplicar ninguna parte del mantenimiento (ni re-tirada de dados, ni +2 recursos,
+  ni el robo del otro bando) — ver Casos límite para el orden de comprobación si ambos están vacíos.
 
 ## Fuera de alcance (explícito)
 
@@ -43,33 +44,47 @@ prioridad más baja) desaparece: ahora el enemigo roba en "Nueva ronda", igual q
 
 ## Casos límite
 
-- Mazo del jugador vacío al robar en "Nueva ronda" → Derrota inmediata; el resto de la acción
-  "Nueva ronda" (re-tirada de dados, +2 recursos, robo del enemigo) no llega a aplicarse: la partida
-  termina ahí.
-- Mazo del enemigo vacío al robar en "Nueva ronda" → Victoria inmediata, mismo criterio.
-- Ambos mazos vacíos a la vez en la misma pulsación de "Nueva ronda" (caso raro): se resuelve
-  **Victoria** (se comprueba primero el deck-out del enemigo, luego el del jugador — mismo orden
-  que ya usa `computeOutcome` en `src/game/outcome.ts`, que comprueba primero `allKO(enemy)`).
+- Solo el mazo del jugador está vacío (el del enemigo no) → Derrota inmediata; no se aplica nada
+  del mantenimiento (ni dados, ni recursos, ni el robo del enemigo).
+- Solo el mazo del enemigo está vacío → Victoria inmediata, mismo criterio (nada se aplica).
+- **Ambos mazos vacíos a la vez** en la misma pulsación de "Nueva ronda" (caso raro): se resuelve
+  **Victoria**. El orden de comprobación es fijo y se hace **antes de mutar nada**: primero se
+  comprueba si el mazo del enemigo está vacío (Victoria); solo si no lo está, se comprueba el del
+  jugador (Derrota) — mismo orden de prioridad que ya usa `computeOutcome` en
+  `src/game/outcome.ts` (comprueba `allKO(enemy)` antes que `allKO(player)`). Es una comprobación
+  previa de ambos mazos, no dos robos secuenciales con aborto tras el primero: si se implementara
+  como "robar jugador → comprobar → robar enemigo → comprobar", este caso daría Derrota en vez de
+  Victoria, contradiciendo este criterio.
 - "Nueva ronda" pulsada con la partida ya terminada (outcome no nulo): sigue siendo no-op, como ya
   pasa hoy (SPEC-009); no intenta robar.
 - El jugador pulsa "Robar" (SPEC-018) varias veces entre rondas y luego pulsa "Nueva ronda": el
   robo de ronda se suma sin más a lo ya robado a mano (no hay límite de mano en esta spec).
+- "Reset total" (SPEC-009/018) no cambia con esta spec: sigue vaciando la mano de ambos bandos y
+  reconstruyendo el mazo de robo completo (`drawPile` + `hand`, rebarajado); no interactúa de forma
+  nueva con el robo automático de ronda.
 
 ## Notas técnicas (opcional)
 
 - `newRound()` en `src/store/gameStore.ts` (SPEC-009/011) gana el robo de 1 carta por bando dentro
   de la misma actualización atómica, reutilizando la lógica de `drawCard` (o extrayendo su núcleo a
-  una función compartida) en vez de duplicar el manejo de `drawPile`/`hand`.
+  una función compartida) en vez de duplicar el manejo de `drawPile`/`hand`. **Importante:** el
+  chequeo de deck-out de ambos bandos (`drawPile.length === 0`) debe hacerse como guarda previa,
+  **antes** de mutar el `drawPile`/`hand` de ninguno de los dos, precisamente para que el caso
+  "ambos vacíos" dé Victoria (enemigo primero) de forma consistente con el caso "solo el jugador
+  vacío" (Derrota) — ver Casos límite.
 - El paso 6 del autómata (SPEC-018, `src/game/automaton.ts`) se retira: `nextAutomatonAction` vuelve
   a devolver `{ type: 'pass' }` cuando no queda ninguna acción legal tras el reroll. El tipo
-  `{ type: 'draw' }` de `AutomatonAction` y el caso `'draw'` en `enemyTurn` (store) dejan de usarse
-  desde el autómata — a decidir en implementación si se eliminan o se dejan sin alcanzar (preferible
-  eliminarlos: código muerto sin usuario deja de tener sentido, ver precedente de limpieza en
-  SPEC-013).
-- Los tests de `src/game/automaton.test.ts` que SPEC-018 cambió de `{type:'pass'}` a `{type:'draw'}`
-  (4 tests) vuelven a esperar `{type:'pass'}`, deshaciendo ese cambio.
-- El GDD sección 4 (tabla de prioridades) pierde el paso 6 de robo que SPEC-018 añadió; vuelve a
-  terminar en "Pasa" sin paso de robo.
+  `{ type: 'draw' }` de `AutomatonAction` y el caso `'draw'` en `enemyTurn` (store) se eliminan por
+  completo (código muerto sin usuario, ver precedente de limpieza en SPEC-013), no se dejan sin
+  alcanzar.
+- `src/game/automaton.test.ts`: los 4 tests que SPEC-018 modificó (cambiando `{type:'pass'}` por
+  `{type:'draw'}`, y ajustando nombres) se revierten a como estaban antes: expectativa de vuelta a
+  `{type:'pass'}`, y los nombres de test/describe de vuelta a los originales (en particular, el
+  describe `'nextAutomatonAction — robar (SPEC-018)'` vuelve a llamarse `'nextAutomatonAction —
+  pasa'`, y su test a `'pasa si no hay nada legal que hacer'`) — no es un bloque nuevo a eliminar,
+  es el mismo test que SPEC-018 renombró y hay que deshacer ese renombrado.
+- El GDD sección 4 (tabla de prioridades) pierde el paso de robo que SPEC-018 añadió; vuelve a
+  terminar en "Pasa" sin paso de robo (ya actualizado).
 
 ## Resultado del playtest
 
