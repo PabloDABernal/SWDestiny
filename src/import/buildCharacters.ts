@@ -25,7 +25,8 @@ function characterFrom(card: ArhCard, isElite: boolean): Character {
  *  - Personaje ÚNICO con cantidad Q: 1 ficha. Q>=2 ⇒ elite (2 dados); si no, 1 dado.
  *  - Personaje NO único con cantidad Q: Q fichas independientes, cada una 1 dado.
  *
- * Ignora toda carta cuyo type_code no sea "character" (el resto del mazo no entra en v1).
+ * Ignora toda carta cuyo type_code no sea "character" (desde SPEC-016 el resto del mazo lo
+ * recoge buildDrawPile como mazo de robo).
  * Lanza ImportError('no-characters') si no queda ninguna ficha.
  */
 export function buildCharacters(slots: DeckSlot[], cards: Map<string, ArhCard>): Character[] {
