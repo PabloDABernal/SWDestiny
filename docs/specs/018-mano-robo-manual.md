@@ -76,9 +76,12 @@ se define en una spec posterior; aquí se prueba el mecanismo con un botón manu
   contra la caché de `resolveCards`/`ArhCard` (sin llamadas nuevas a la API, la carta ya se resolvió
   al importar).
 - La tabla de prioridades del autómata (`src/game/automaton.ts`, GDD sección 4) gana un nuevo
-  último paso, **por debajo** del reroll de blancos y **por encima** de "Pasa": robar si el mazo no
-  está vacío. `AutomatonSide` necesita conocer el mazo de robo y `AutomatonAction` gana un tipo
-  `'draw'`; el GDD sección 4 se actualiza con este paso 7 (ver más abajo).
+  último paso, **por debajo** del reroll de blancos y **por encima** de "Pasa": `nextAutomatonAction`
+  devuelve un nuevo tipo `{ type: 'draw' }` de forma **incondicional** cuando no queda ninguna otra
+  acción legal (no comprueba el tamaño del mazo: es una función pura sobre la tabla de prioridades,
+  no conoce el mazo de robo). Quien ejecuta la acción (`enemyTurn` en el store) es quien decide el
+  efecto real: si el mazo tiene cartas, las roba; si está vacío, dispara el deck-out. Con esto,
+  "Pasa" queda inalcanzable en la práctica salvo el caso ya existente de bando sin personajes.
 - Los 4 tests actuales de `src/game/automaton.test.ts` que hoy esperan `{type:'pass'}` cuando no
   hay ninguna otra acción legal van a devolver `{type:'draw'}` en cuanto `AutomatonSide` incluya el
   mazo de robo (si no está vacío). Esto es el comportamiento nuevo esperado, **no** una regresión:

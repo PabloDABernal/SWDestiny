@@ -55,9 +55,10 @@ Evalúa, en su turno, una tabla de prioridades de arriba abajo y ejecuta la prim
    del enemigo (SPEC-007/013).
 5. Si tiene 2 o más dados mostrando blanco, los rerollea (reroll gratuito, luego el extra de la
    trampa).
-6. Si su mazo de robo no está vacío, roba una carta a su mano (SPEC-018; solo el recuento es
-   visible, no el contenido).
-7. Pasa.
+6. Si no le queda ninguna otra acción legal, intenta robar una carta (SPEC-018): si su mazo de robo
+   tiene cartas, la roba a su mano (solo el recuento es visible, no el contenido); si está vacío, la
+   partida termina en el acto (Victoria, deck-out del enemigo — sección 5).
+7. Pasa (en la práctica, con esta tabla, solo se alcanza si el bando enemigo no tiene personajes).
 
 La tabla crece en fases posteriores conforme se implementan cartas.
 
