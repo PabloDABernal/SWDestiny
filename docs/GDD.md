@@ -179,19 +179,35 @@ import se cancela con error, igual que ya pasa con personajes no encontrados (SP
 
 El jugador roba cartas de su mazo de robo a su mano pulsando un botón **"Robar"** manual, sin
 límite de tamaño de mano todavía; ve el **nombre** de cada carta en su mano. De la mano del enemigo
-solo se muestra el **número**, no el contenido. Si un bando debe robar y su mazo está en 0, la
-partida termina de inmediato: **Derrota** si es el jugador, **Victoria** si es el enemigo (condición
-de victoria por deck-out). *(El robo del enemigo como paso de "Turno enemigo" que describía esta
-pieza al principio era provisional; SPEC-019 lo sustituye por la regla real de robo por ronda.)*
+solo se muestra el **número**, no el contenido. *(El robo del enemigo como paso de "Turno enemigo"
+que describía esta pieza al principio era provisional; SPEC-019 lo sustituye por la regla real de
+robo por ronda. La condición de deck-out que describía esta pieza también era provisional; SPEC-022
+la sustituye por la regla real — ver más abajo.)*
 
-### Robo automático por ronda (SPEC-019)
+### Robo automático por ronda (SPEC-019, corregido en SPEC-022)
 
-Al pulsar "Nueva ronda", cada bando roba 1 carta de su mazo de robo a su mano, además de la
-re-tirada de dados y el +2 de recursos ya existentes (SPEC-009/011). Es la regla real de robo que
-SPEC-018 dejó pendiente. El botón manual "Robar" del jugador (SPEC-018) se mantiene. El autómata ya
-no roba dentro de "Turno enemigo" (ese paso, añadido en SPEC-018, se retira): ahora roba en "Nueva
-ronda" igual que el jugador. Si el mazo de un bando está vacío al robar en "Nueva ronda", la partida
-termina en el acto (deck-out): Derrota si es el jugador, Victoria si es el enemigo.
+Al pulsar "Nueva ronda", cada bando roba de su mazo de robo, además de la re-tirada de dados y el
++2 de recursos ya existentes (SPEC-009/011). El autómata ya no roba dentro de "Turno enemigo" (ese
+paso, añadido en SPEC-018, se retira): ahora roba en "Nueva ronda" igual que el jugador. *(La
+cantidad robada, "+1 por ronda", y la condición de deck-out de esta pieza eran provisionales;
+SPEC-022 las sustituye por la regla real — ver más abajo.)*
+
+### Robo real y deck-out real (SPEC-022)
+
+La regla real de robo (RR pg 25): al pulsar "Nueva ronda", cada bando roba de su mazo hasta llegar
+a su **tamaño de mano** (5 por defecto), no "+1" como en la pieza provisional de SPEC-019; si ya
+tiene 5 o más, no roba nada. El jugador puede **descartar** cartas de su mano libremente, en
+cualquier momento (botón por carta, sin pila de descarte visible todavía); el autómata nunca
+descarta (no juega ni evalúa cartas hasta v5). El **deck-out** (RR pg 22) deja de dispararse al
+intentar robar con el mazo vacío (regla real: "si no puedes robar, no pasa nada"): ahora se
+comprueba solo al **final** de "Nueva ronda", y solo si un bando se queda **sin cartas en mano y
+sin mazo a la vez** — Derrota si es el jugador, Victoria si es el enemigo. El botón manual "Robar"
+(SPEC-018) sigue funcionando igual (puede superar el tamaño de mano, regla real) y sigue
+disparando deck-out directamente al robar con el mazo vacío (inconsistencia temporal frente a
+"Nueva ronda", documentada en la spec, pendiente de unificar más adelante). Doble deck-out
+simultáneo de ambos bandos (regla real: lo desempata quien controle el campo de batalla, no
+implementado): se resuelve Victoria por convención (se comprueba primero el enemigo), simplificación
+temporal hasta que exista campo de batalla.
 
 ### Mejoras vanilla (primera pieza de v4, SPEC-020)
 
