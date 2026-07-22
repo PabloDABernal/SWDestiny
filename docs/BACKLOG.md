@@ -4,6 +4,8 @@ Ideas que surgen durante la implementación. Una línea por idea. NO se implemen
 
 - Visibilidad del recuento "Mazo: N": hoy es texto gris pequeño (`.draw-pile__count`, `src/App.tsx`/`src/styles.css`) y el usuario no lo encuentra a simple vista (le pasó en el playtest de SPEC-016 y SPEC-017). Darle más contraste/tamaño o ponerlo junto al nombre del bando. (Detectado en SPEC-017, 2026-07-22.)
 
+- El centinela `characterIndex: -1` que usan los dados de mejora/apoyo sin personaje anfitrión o sin filtrado por KO (`rollUpgradeDie`, SPEC-020/021) colisionaría el día que exista reroll manual del jugador indexando por `characterIndex`, o un ataque/coste dirigido con `effectIndex === -1`. No es un bug hoy (nada del código actual llega a ese caso), pero hay que revisarlo explícitamente antes de implementar cualquiera de esas dos cosas. (Detectado en SPEC-021, 2026-07-22.)
+
 - ~~CORS en producción~~ — **Resuelto (2026-07-19)**: ARH DB sí permite CORS abierto desde el navegador. En producción se llama directo a la API (`src/import/resolveCards.ts`), sin pasar por el proxy `/arh` (solo dev). Confirmado jugando en GitHub Pages durante el playtest de SPEC-005. (Detectado en SPEC-001.)
 - ~~Validar la forma de la caché al cargar de localStorage~~ — **Resuelto en SPEC-012** (2026-07-21):
   `loadPersistedDeck` comprueba `Array.isArray` antes de tratar el JSON parseado como `Character[]`;
