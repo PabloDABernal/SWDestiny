@@ -2,7 +2,8 @@
 
 **Estado:** Pendiente
 **Sección del GDD:** v3 — mano, mazo, robo, condición de victoria por deck-out (sección 5, línea
-153); primera pieza tras el mazo de robo de SPEC-016.
+153); "Mano y robo manual (segunda pieza de v3, SPEC-018)", justo después de "Mazo de robo (primera
+pieza de v3, SPEC-016)".
 **Depende de:** SPEC-016 (mazo de robo), SPEC-017 (import de texto ARH)
 
 ## Qué es (2-4 líneas)
@@ -61,6 +62,10 @@ se define en una spec posterior; aquí se prueba el mecanismo con un botón manu
 - Ambos mazos de robo vacíos a la vez (caso raro: el jugador se fuerza el deck-out con el botón
   mientras el autómata también estaba a 0): se resuelve la acción que dispara el chequeo primero
   (quien pulsó); no hay empate simultáneo posible porque cada robo es una acción explícita distinta.
+- Caché de `hand` en localStorage corrupta o con forma inesperada al cargar (recarga de página con
+  datos manipulados a mano, mismo caso que ya cubre SPEC-016 para `drawPile`): si el valor guardado
+  no es un array de strings, se descarta y la mano arranca vacía, sin romper la carga del resto del
+  estado.
 
 ## Notas técnicas (opcional)
 
@@ -72,10 +77,24 @@ se define en una spec posterior; aquí se prueba el mecanismo con un botón manu
   al importar).
 - La tabla de prioridades del autómata (`src/game/automaton.ts`, GDD sección 4) gana un nuevo
   último paso, **por debajo** del reroll de blancos y **por encima** de "Pasa": robar si el mazo no
-  está vacío.
-- `computeOutcome` (`src/game/outcome.ts`) necesita una vía para señalar deck-out además de
-  `allKO`; puede ser un nuevo motivo de derrota/victoria o un flag aparte, a decidir en
-  implementación siguiendo el estilo ya existente.
+  está vacío. `AutomatonSide` necesita conocer el mazo de robo y `AutomatonAction` gana un tipo
+  `'draw'`; el GDD sección 4 se actualiza con este paso 7 (ver más abajo).
+- Los 4 tests actuales de `src/game/automaton.test.ts` que hoy esperan `{type:'pass'}` cuando no
+  hay ninguna otra acción legal van a devolver `{type:'draw'}` en cuanto `AutomatonSide` incluya el
+  mazo de robo (si no está vacío). Esto es el comportamiento nuevo esperado, **no** una regresión:
+  esos tests hay que actualizarlos (pasarles `drawPile: []` donde se quiera seguir comprobando
+  `'pass'`) y añadir un test nuevo que cubra `'draw'`.
+- `computeOutcome` (`src/game/outcome.ts`) hoy solo mira `characters`/`damage` (`allKO`) y es
+  recalculable en cualquier momento a partir del estado. El deck-out **no** encaja en ese mismo
+  patrón: es un evento puntual que solo se dispara en el instante de la propia acción de robar con
+  mazo en 0 (no algo que se pueda derivar después releyendo `drawPile`/`hand`, que en 0 cartas es un
+  estado válido si nadie ha intentado robar). Se resuelve como parte de la acción de robar (jugador
+  o autómata), no forzándolo dentro de la firma actual de `computeOutcome(player, enemy)`.
+- El nombre de una carta en mano requiere una forma de leerla por código de vuelta desde la caché
+  tras el import (hoy `readCache`/`writeCache` en `src/import/resolveCards.ts` no están exportadas
+  y el `Map<string, ArhCard>` que arma `importDeck` se descarta al terminar el import). Hay que
+  exportar una lectura síncrona por código, o guardar el resultado del import en el store, para que
+  la mano pueda mostrar nombres sin llamadas nuevas a la API.
 
 ## Resultado del playtest
 

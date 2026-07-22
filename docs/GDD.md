@@ -55,7 +55,9 @@ Evalúa, en su turno, una tabla de prioridades de arriba abajo y ejecuta la prim
    del enemigo (SPEC-007/013).
 5. Si tiene 2 o más dados mostrando blanco, los rerollea (reroll gratuito, luego el extra de la
    trampa).
-6. Pasa.
+6. Si su mazo de robo no está vacío, roba una carta a su mano (SPEC-018; solo el recuento es
+   visible, no el contenido).
+7. Pasa.
 
 La tabla crece en fases posteriores conforme se implementan cartas.
 
