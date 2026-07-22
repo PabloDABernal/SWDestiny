@@ -1,6 +1,6 @@
 # SPEC-019: Robo automático al pasar de ronda
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** v3 — mano, mazo, robo, condición de victoria por deck-out (sección 5, línea
 153); sustituye la pieza "provisional" de SPEC-018 por la regla real de robo.
 **Depende de:** SPEC-016 (mazo de robo), SPEC-018 (mano de cartas y robo manual)
@@ -88,4 +88,7 @@ prioridad más baja) desaparece: ahora el enemigo roba en "Nueva ronda", igual q
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+2026-07-22: playtest manual OK (usuario). Robo automático de 1 carta por bando en "Nueva ronda"
+confirmado, botón "Robar" manual sigue funcionando, "Turno enemigo" ya no roba (pasa cuando no hay
+otra acción legal), deck-out simple y deck-out simultáneo de ambos bandos resuelven correctamente
+(Victoria cuando coinciden), "Reset total" y recursos sin regresión.
