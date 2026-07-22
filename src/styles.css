@@ -115,7 +115,8 @@ button:disabled {
   border-color: #5c8a9a;
 }
 
-.hand__play-button {
+.hand__play-button,
+.hand__discard-button {
   font-size: 0.8rem;
   padding: 1px 8px;
 }

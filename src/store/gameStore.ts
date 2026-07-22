@@ -209,6 +209,9 @@ interface SideState {
 /** Recursos iniciales por bando al importar / Reset total (SPEC-009); 0 si el bando está vacío. */
 const STARTING_RESOURCES = 2;
 
+/** Tamaño de mano por defecto (RR pg 25, SPEC-022): "Nueva ronda" roba hasta llegar aquí. */
+const HAND_SIZE = 5;
+
 function freshSide(
   characters: Character[],
   drawPile: string[],
@@ -458,6 +461,9 @@ interface GameState {
   /** Roba 1 carta del mazo de robo a la mano de `side` (SPEC-018). Si el mazo está vacío, termina
    * la partida en el acto (deck-out): Derrota si es el jugador, Victoria si es el enemigo. */
   drawCard: (side: Side) => void;
+  /** Descarta la carta `code` de la mano de `side`, en cualquier momento (SPEC-022, aproximación
+   * al paso de descarte del mantenimiento real). No-op si `code` no está en la mano. */
+  discardCard: (side: Side, code: string) => void;
   enemyTurn: () => void;
 }
 
@@ -558,18 +564,19 @@ export const useGameStore = create<GameState>((set, get) => ({
   // "Nueva ronda" (SPEC-009/011): mantenimiento. Re-tira dados (vacía pools/activaciones/rerolls),
   // suma +2 recursos a cada bando (persisten, SPEC-009) y roba 1 carta por bando (SPEC-019).
   // CONSERVA vida, escudos y KO. No-op si la partida ya terminó (solo "Reset total" reinicia
-  // entonces). Deck-out (SPEC-018/019): antes de mutar nada se comprueba si algún mazo está vacío
-  // (enemigo primero, mismo orden que computeOutcome) y, si es así, la partida termina en el acto
-  // sin aplicar ningún otro efecto del mantenimiento.
+  // entonces). Robo real (SPEC-022, RR pg 25): roba hasta HAND_SIZE, no +1; si el mazo no llega,
+  // roba lo que haya. Deck-out (SPEC-022, RR pg 22): se comprueba DESPUÉS de robar (no como guarda
+  // previa, a diferencia de SPEC-019), solo si un bando queda sin mano Y sin mazo a la vez —
+  // primero el enemigo (Victoria), luego el jugador (Derrota), mismo orden que computeOutcome.
   newRound: () =>
     set((state) => {
       if (state.outcome !== null) return state;
-      if (state.sides.enemy.drawPile.length === 0) return { outcome: 'victory' };
-      if (state.sides.player.drawPile.length === 0) return { outcome: 'defeat' };
 
       const maintain = (side: Side, s: SideState): SideState => {
-        const [code, ...drawPile] = s.drawPile;
-        const hand = [...s.hand, code];
+        const toDraw = Math.max(0, HAND_SIZE - s.hand.length);
+        const drawn = s.drawPile.slice(0, toDraw);
+        const drawPile = s.drawPile.slice(toDraw);
+        const hand = [...s.hand, ...drawn];
         persistDrawPile(side, drawPile);
         persistHand(side, hand);
         return {
@@ -585,11 +592,18 @@ export const useGameStore = create<GameState>((set, get) => ({
           hand,
         };
       };
+      const sides: Record<Side, SideState> = {
+        player: maintain('player', state.sides.player),
+        enemy: maintain('enemy', state.sides.enemy),
+      };
+      const deckedOut = (s: SideState) => s.drawPile.length === 0 && s.hand.length === 0;
+      const outcome: Outcome = deckedOut(sides.enemy) ? 'victory' : deckedOut(sides.player) ? 'defeat' : null;
       return {
-        sides: { player: maintain('player', state.sides.player), enemy: maintain('enemy', state.sides.enemy) },
+        sides,
         resolve: null,
         resolveError: null,
         lastEnemyAction: null,
+        ...(outcome !== null ? { outcome } : {}),
       };
     }),
 
@@ -817,6 +831,20 @@ export const useGameStore = create<GameState>((set, get) => ({
       persistDrawPile(side, drawPile);
       persistHand(side, hand);
       return { sides: { ...state.sides, [side]: { ...s, drawPile, hand } } };
+    }),
+
+  discardCard: (side: Side, code: string) =>
+    set((state) => {
+      if (state.outcome !== null) return state;
+      if (state.resolve?.pendingEffect) return state;
+      if (state.playUpgrade !== null) return state;
+      const s = state.sides[side];
+      const index = s.hand.indexOf(code);
+      if (index === -1) return state;
+      const hand = s.hand.slice();
+      hand.splice(index, 1);
+      persistHand(side, hand);
+      return { sides: { ...state.sides, [side]: { ...s, hand } } };
     }),
 
   // Turno del autómata (GDD §4): evalúa la tabla de prioridades (motor puro en game/automaton)
