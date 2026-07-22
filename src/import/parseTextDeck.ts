@@ -2,7 +2,9 @@ import { ImportError } from './errors';
 import type { DeckSlot } from './parseDeck';
 
 // Tabla nombre-de-set (tal cual aparece en el "text file" de ARH DB) → 2 dígitos de set.
-// Validada contra db.swdrenewedhope.com/api/public/card/<código> el 2026-07-21 (SPEC-017).
+// Validada contra db.swdrenewedhope.com/api/public/card/<código> el 2026-07-21 (SPEC-017);
+// "Transformations" añadido el 2026-07-22 (código real confirmado por el usuario:
+// db.swdrenewedhope.com/card/13007A → prefijo 13).
 // Un set fuera de esta tabla es un error; ampliar aquí cuando ARH publique sets nuevos.
 const SET_CODES: Record<string, string> = {
   Awakenings: '01',
@@ -17,6 +19,7 @@ const SET_CODES: Record<string, string> = {
   'Allies of Necessity': '10',
   'Spark of Hope': '11',
   'Covert Missions': '12',
+  Transformations: '13',
 };
 
 // Línea de carta: nombre (puede llevar comas y paréntesis) + último paréntesis "(<Set> #<n>)".
