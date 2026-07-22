@@ -191,7 +191,16 @@ pagando su coste de carta impreso (recursos); la mejora pasa a estar "en juego" 
 personaje, y sus dados se activan/tiran junto con los suyos a partir de ahí (mismo botón
 "Activar"). Es vanilla: sin texto ni keywords (esa es la siguiente capa de v4). Si el personaje
 queda KO, sus mejoras se descartan con él. Solo el jugador juega cartas; el autómata sigue sin
-poder hacerlo hasta v5. Apoyos (supports) quedan para una spec posterior.
+poder hacerlo hasta v5. Apoyos (supports): ver siguiente pieza.
+
+### Apoyos vanilla (segunda pieza de v4, SPEC-021)
+
+El jugador juega una carta de apoyo (support) desde su mano pagando su coste de carta impreso; a
+diferencia de una mejora, un apoyo no va ligado a ningún personaje: entra en juego como entidad
+propia del bando, con su propio botón "Activar" que tira su dado. También vanilla, sin texto ni
+keywords. No hay forma de destruir/dañar un apoyo en esta spec: se queda en juego hasta "Reset
+total", que lo devuelve al mazo de robo rebarajado (igual que las mejoras, SPEC-020). Solo el
+jugador juega cartas; el autómata sigue sin poder hacerlo hasta v5.
 
 ## 6. Fuera de alcance (explícito, hasta que se decida lo contrario)
 

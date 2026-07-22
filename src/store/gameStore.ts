@@ -132,6 +132,31 @@ function emptyUpgrades(characterCount: number): string[][] {
   return Array.from({ length: characterCount }, () => []);
 }
 
+const SUPPORTS_KEY = (side: Side) => `swd:supports:${side}`;
+
+/** Apoyos en juego por bando (SPEC-021): lista de códigos, NO ligada a ningún personaje (a
+ * diferencia de las mejoras). Solo persiste qué apoyos hay en juego; el estado de activación
+ * (`SideState.supportsActivated`) es estado de ronda y no se persiste, igual que `activated` de
+ * personajes (ver SDD: "pools, activaciones, daño, fin de partida no se persiste"). */
+function loadPersistedSupports(side: Side): string[] {
+  try {
+    const raw = localStorage.getItem(SUPPORTS_KEY(side));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.every((c) => typeof c === 'string') ? (parsed as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistSupports(side: Side, supports: string[]): void {
+  try {
+    localStorage.setItem(SUPPORTS_KEY(side), JSON.stringify(supports));
+  } catch {
+    // best-effort
+  }
+}
+
 const DIFFICULTY_KEY = 'swd:difficulty';
 const VALID_DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard'];
 
@@ -163,6 +188,11 @@ interface SideState {
   /** Mejoras en juego (SPEC-020): array paralelo a `characters`, códigos de carta ligados a cada
    * índice. Sin límite de cuántas puede tener un mismo personaje. */
   upgrades: string[][];
+  /** Apoyos en juego (SPEC-021): lista de códigos, no ligada a ningún personaje. Persistida. */
+  supports: string[];
+  /** Activación de cada apoyo esta ronda (paralelo a `supports` por posición). Estado de ronda,
+   * NO persistido, igual que `activated` de personajes. */
+  supportsActivated: boolean[];
   activated: boolean[];
   damage: number[];
   /** Escudos acumulados por instancia (SPEC-005), tope MAX_SHIELDS. Ganados solo vía dado NSh. */
@@ -184,12 +214,15 @@ function freshSide(
   drawPile: string[],
   hand: string[] = [],
   upgrades: string[][] = emptyUpgrades(characters.length),
+  supports: string[] = [],
 ): SideState {
   return {
     characters,
     drawPile,
     hand,
     upgrades,
+    supports,
+    supportsActivated: supports.map(() => false),
     activated: [],
     damage: [],
     shields: [],
@@ -414,6 +447,14 @@ interface GameState {
   playUpgradeOn: (characterIndex: number) => void;
   /** Cancela la selección de mejora a jugar sin jugar nada. */
   cancelPlayUpgrade: () => void;
+  /** Juega una carta de apoyo de la mano de `side`, pagando su coste de carta. A diferencia de una
+   * mejora, no requiere elegir objetivo: entra en juego de inmediato (SPEC-021). No-op si `code`
+   * no es una carta de tipo apoyo o no está en la mano. Si no hay recursos suficientes, dispara
+   * `resolveError` sin jugar la carta. */
+  playSupport: (side: Side, code: string) => void;
+  /** Activa el apoyo en juego `index` de `side`: tira su dado y lo añade al pool del bando
+   * (SPEC-021). No-op si ya está activado esta ronda. */
+  activateSupport: (side: Side, index: number) => void;
   /** Roba 1 carta del mazo de robo a la mano de `side` (SPEC-018). Si el mazo está vacío, termina
    * la partida en el acto (deck-out): Derrota si es el jugador, Victoria si es el enemigo. */
   drawCard: (side: Side) => void;
@@ -427,6 +468,7 @@ function initialSide(side: Side): SideState {
     loadPersistedDrawPile(side),
     loadPersistedHand(side),
     loadPersistedUpgrades(side, characters.length),
+    loadPersistedSupports(side),
   );
 }
 
@@ -472,6 +514,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       persistHand(side, []);
       // Mejoras en juego vacías en cada (re)importación (SPEC-020).
       persistUpgrades(side, emptyUpgrades(characters.length));
+      // Apoyos en juego vacíos en cada (re)importación (SPEC-021).
+      persistSupports(side, []);
       // Reinicia el estado de partida de ESTE bando (vida completa) y recalcula el fin.
       set((state) => {
         const sides = { ...state.sides, [side]: freshSide(characters, drawPile) };
@@ -532,6 +576,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...s,
           pool: [],
           activated: [],
+          // Resetea la activación de los apoyos en juego (SPEC-021), igual que la de personajes;
+          // los apoyos en sí (`supports`) no se tocan, siguen en juego.
+          supportsActivated: s.supports.map(() => false),
           rerollsUsed: { free: false, extra: 0 },
           resources: s.resources + 2,
           drawPile,
@@ -548,15 +595,16 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // "Reset total" (SPEC-009): reconstruye ambos bandos a su estado inicial (vida completa, sin
   // escudos/KO, recursos a 2), conservando los personajes importados. El mazo de robo vuelve a su
-  // composición completa original (drawPile + hand + mejoras en juego, rebarajado, SPEC-020) y la
-  // mano y las mejoras en juego quedan vacías.
+  // composición completa original (drawPile + hand + mejoras + apoyos en juego, rebarajado,
+  // SPEC-020/021) y la mano, mejoras y apoyos en juego quedan vacíos.
   resetAll: () =>
     set((state) => {
       const rebuild = (side: Side, s: SideState): SideState => {
-        const drawPile = shuffle([...s.drawPile, ...s.hand, ...s.upgrades.flat()]);
+        const drawPile = shuffle([...s.drawPile, ...s.hand, ...s.upgrades.flat(), ...s.supports]);
         persistDrawPile(side, drawPile);
         persistHand(side, []);
         persistUpgrades(side, emptyUpgrades(s.characters.length));
+        persistSupports(side, []);
         return freshSide(s.characters, drawPile);
       };
       const sides: Record<Side, SideState> = {
@@ -710,6 +758,50 @@ export const useGameStore = create<GameState>((set, get) => ({
     }),
 
   cancelPlayUpgrade: () => set({ playUpgrade: null, resolveError: null }),
+
+  playSupport: (side: Side, code: string) =>
+    set((state) => {
+      if (state.outcome !== null) return state;
+      // Mismos guards de exclusión mutua que jugar una mejora (SPEC-020/021).
+      if (state.resolve?.pendingEffect) return state;
+      if (state.playUpgrade !== null) return state;
+      const s = state.sides[side];
+      if (!s.hand.includes(code)) return state;
+      const card = readCache(code);
+      if (!card || card.type_code !== 'support') return state;
+      const cost = card.cost ?? 0;
+      if (s.resources < cost) {
+        return { resolveError: 'Recursos insuficientes para jugar esta carta.' };
+      }
+      const handIndex = s.hand.indexOf(code);
+      const hand = s.hand.slice();
+      hand.splice(handIndex, 1);
+      const supports = [...s.supports, code];
+      const supportsActivated = [...s.supportsActivated, false];
+      persistHand(side, hand);
+      persistSupports(side, supports);
+      return {
+        sides: { ...state.sides, [side]: { ...s, hand, supports, supportsActivated, resources: s.resources - cost } },
+        resolveError: null,
+      };
+    }),
+
+  activateSupport: (side: Side, index: number) =>
+    set((state) => {
+      // Mismos guards de exclusión mutua que activar un personaje (SPEC-020/021).
+      if (state.resolve?.pendingEffect) return state;
+      if (state.playUpgrade !== null) return state;
+      const s = state.sides[side];
+      const code = s.supports[index];
+      if (!code || s.supportsActivated[index]) return state;
+      const card = readCache(code);
+      if (!card) return state;
+      const supportsActivated = s.supportsActivated.slice();
+      supportsActivated[index] = true;
+      const die = rollUpgradeDie({ sides: [...card.sides] }, card.code, card.name, -1);
+      const pool = [...s.pool, die];
+      return { sides: { ...state.sides, [side]: { ...s, supportsActivated, pool } } };
+    }),
 
   drawCard: (side: Side) =>
     set((state) => {

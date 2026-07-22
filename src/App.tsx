@@ -5,6 +5,7 @@ import { CharacterCard } from './components/CharacterCard';
 import { DicePool } from './components/DicePool';
 import { DifficultySelector } from './components/DifficultySelector';
 import { Hand } from './components/Hand';
+import { SupportList } from './components/SupportList';
 import { currentHealth, isKO } from './game/damage';
 
 function BattleSide({ side, label }: { side: Side; label: string }) {
@@ -15,6 +16,7 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
   const activate = useGameStore((st) => st.activate);
   const applyDieTo = useGameStore((st) => st.applyDieTo);
   const playUpgradeOn = useGameStore((st) => st.playUpgradeOn);
+  const activateSupport = useGameStore((st) => st.activateSupport);
   const drawCard = useGameStore((st) => st.drawCard);
 
   // Objetivo válido. Con pendingEffect (SPEC-010) se elige el receptor del coste indirecto: SIEMPRE
@@ -77,6 +79,11 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
               );
             })}
           </div>
+          <SupportList
+            codes={s.supports}
+            activated={s.supportsActivated}
+            onActivate={(i) => activateSupport(side, i)}
+          />
         </>
       )}
       <DicePool side={side} />
