@@ -1,3 +1,4 @@
+import { readCache } from './import/resolveCards';
 import { useGameStore, opposite, type Side } from './store/gameStore';
 import { ImportPanel } from './components/ImportPanel';
 import { CharacterCard } from './components/CharacterCard';
@@ -9,9 +10,11 @@ import { currentHealth, isKO } from './game/damage';
 function BattleSide({ side, label }: { side: Side; label: string }) {
   const s = useGameStore((st) => st.sides[side]);
   const resolve = useGameStore((st) => st.resolve);
+  const playUpgrade = useGameStore((st) => st.playUpgrade);
   const outcome = useGameStore((st) => st.outcome);
   const activate = useGameStore((st) => st.activate);
   const applyDieTo = useGameStore((st) => st.applyDieTo);
+  const playUpgradeOn = useGameStore((st) => st.playUpgradeOn);
   const drawCard = useGameStore((st) => st.drawCard);
 
   // Objetivo válido. Con pendingEffect (SPEC-010) se elige el receptor del coste indirecto: SIEMPRE
@@ -23,6 +26,8 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
       : resolve!.symbol !== 'resource' &&
         (resolve!.symbol === 'shield' ? resolve!.side === side : opposite(resolve!.side) === side)
     : false;
+  // Eligiendo objetivo para una mejora (SPEC-020): siempre el propio bando de quien la juega.
+  const upgradeTargetableSide = outcome === null && playUpgrade !== null && playUpgrade.side === side;
   const isPlayer = side === 'player';
 
   return (
@@ -48,11 +53,12 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
               </button>
             )}
           </p>
-          {isPlayer && <Hand codes={s.hand} />}
+          {isPlayer && <Hand side={side} codes={s.hand} />}
           <div className="roster__grid">
             {s.characters.map((c, i) => {
               const dmg = s.damage[i] ?? 0;
               const ko = isKO(c, dmg);
+              const upgradeNames = (s.upgrades[i] ?? []).map((code) => readCache(code)?.name ?? code);
               return (
                 <CharacterCard
                   character={c}
@@ -60,10 +66,11 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
                   health={currentHealth(c, dmg)}
                   shields={s.shields[i] ?? 0}
                   ko={ko}
-                  targetable={targetableSide && !ko}
+                  targetable={(targetableSide || upgradeTargetableSide) && !ko}
                   showActivate={isPlayer}
+                  upgradeNames={upgradeNames}
                   onActivate={() => activate(side, i)}
-                  onTarget={() => applyDieTo(side, i)}
+                  onTarget={() => (upgradeTargetableSide ? playUpgradeOn(i) : applyDieTo(side, i))}
                   key={`${c.code}-${i}`}
                 />
               );
@@ -79,6 +86,8 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
 export function App() {
   const outcome = useGameStore((s) => s.outcome);
   const resolve = useGameStore((s) => s.resolve);
+  const playUpgrade = useGameStore((s) => s.playUpgrade);
+  const cancelPlayUpgrade = useGameStore((s) => s.cancelPlayUpgrade);
   const newRound = useGameStore((s) => s.newRound);
   const resetAll = useGameStore((s) => s.resetAll);
   const enemyTurn = useGameStore((s) => s.enemyTurn);
@@ -106,6 +115,12 @@ export function App() {
         </div>
       )}
       {hint && <p className="app__hint">{hint}</p>}
+      {playUpgrade && outcome === null && (
+        <p className="app__hint">
+          Mejora seleccionada. Pulsa uno de tus personajes para jugarla sobre él.{' '}
+          <button onClick={cancelPlayUpgrade}>Cancelar</button>
+        </p>
+      )}
       {lastEnemyAction && <p className="app__hint">{lastEnemyAction}</p>}
 
       <div className="controls">
@@ -115,7 +130,7 @@ export function App() {
         <button onClick={resetAll}>Reset total</button>
         <button
           onClick={enemyTurn}
-          disabled={outcome !== null || !enemyHasDeck || resolve?.pendingEffect != null}
+          disabled={outcome !== null || !enemyHasDeck || resolve?.pendingEffect != null || playUpgrade !== null}
         >
           Turno enemigo
         </button>
