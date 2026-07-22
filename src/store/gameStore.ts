@@ -424,21 +424,35 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { sides: { ...state.sides, [side]: { ...s, activated, pool } } };
     }),
 
-  // "Nueva ronda" (SPEC-009/011): mantenimiento. Re-tira dados (vacía pools/activaciones/rerolls) y
-  // suma +2 recursos a cada bando (persisten, SPEC-009). CONSERVA vida, escudos y KO. No-op si la
-  // partida ya terminó (solo "Reset total" reinicia entonces).
+  // "Nueva ronda" (SPEC-009/011): mantenimiento. Re-tira dados (vacía pools/activaciones/rerolls),
+  // suma +2 recursos a cada bando (persisten, SPEC-009) y roba 1 carta por bando (SPEC-019).
+  // CONSERVA vida, escudos y KO. No-op si la partida ya terminó (solo "Reset total" reinicia
+  // entonces). Deck-out (SPEC-018/019): antes de mutar nada se comprueba si algún mazo está vacío
+  // (enemigo primero, mismo orden que computeOutcome) y, si es así, la partida termina en el acto
+  // sin aplicar ningún otro efecto del mantenimiento.
   newRound: () =>
     set((state) => {
       if (state.outcome !== null) return state;
-      const clearDice = (s: SideState): SideState => ({
-        ...s,
-        pool: [],
-        activated: [],
-        rerollsUsed: { free: false, extra: 0 },
-        resources: s.resources + 2,
-      });
+      if (state.sides.enemy.drawPile.length === 0) return { outcome: 'victory' };
+      if (state.sides.player.drawPile.length === 0) return { outcome: 'defeat' };
+
+      const maintain = (side: Side, s: SideState): SideState => {
+        const [code, ...drawPile] = s.drawPile;
+        const hand = [...s.hand, code];
+        persistDrawPile(side, drawPile);
+        persistHand(side, hand);
+        return {
+          ...s,
+          pool: [],
+          activated: [],
+          rerollsUsed: { free: false, extra: 0 },
+          resources: s.resources + 2,
+          drawPile,
+          hand,
+        };
+      };
       return {
-        sides: { player: clearDice(state.sides.player), enemy: clearDice(state.sides.enemy) },
+        sides: { player: maintain('player', state.sides.player), enemy: maintain('enemy', state.sides.enemy) },
         resolve: null,
         resolveError: null,
         lastEnemyAction: null,
@@ -698,16 +712,6 @@ export const useGameStore = create<GameState>((set, get) => ({
             sides: { ...s.sides, enemy: { ...e, pool, rerollsUsed } },
             lastEnemyAction: `El enemigo rerollea ${action.dieIndices.length} dado(s) en blanco (${kindLabel}).`,
           };
-        });
-        return;
-      }
-      case 'draw': {
-        const hadCards = enemy.drawPile.length > 0;
-        get().drawCard('enemy');
-        set({
-          lastEnemyAction: hadCards
-            ? 'El enemigo roba una carta.'
-            : 'El enemigo no tiene cartas para robar: deck-out.',
         });
         return;
       }

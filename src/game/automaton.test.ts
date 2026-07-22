@@ -441,9 +441,9 @@ describe('nextAutomatonAction — prioridad 3/4: reroll gratuito y extra', () =>
     expect(action).toEqual({ type: 'reroll', dieIndices: [0, 1], kind: 'free' });
   });
 
-  it('con menos de 2 blancos no rerollea: roba una carta (SPEC-018)', () => {
+  it('con menos de 2 blancos no rerollea: pasa', () => {
     const enemy = enemySide({ activated: [true, true], pool: [die(0, '-')] });
-    expect(next(enemy, playerSide(), noRerollsUsed)).toEqual({ type: 'draw' });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toEqual({ type: 'pass' });
   });
 
   it('con el reroll gratuito ya gastado, usa el reroll extra de la trampa', () => {
@@ -452,13 +452,13 @@ describe('nextAutomatonAction — prioridad 3/4: reroll gratuito y extra', () =>
     expect(action).toEqual({ type: 'reroll', dieIndices: [0, 1], kind: 'extra' });
   });
 
-  it('con gratuito y extra ya agotados, roba una carta aunque queden 2+ blancos (SPEC-018)', () => {
+  it('con gratuito y extra ya agotados, pasa aunque queden 2+ blancos', () => {
     const enemy = enemySide({ activated: [true, true], pool: [die(0, '-'), die(1, '-')] });
     const action = next(enemy, playerSide(), {
       free: true,
       extra: NORMAL_EXTRA_REROLLS,
     });
-    expect(action).toEqual({ type: 'draw' });
+    expect(action).toEqual({ type: 'pass' });
   });
 
   it('reroll no se dispara si hay dados de daño o personajes por activar', () => {
@@ -473,10 +473,10 @@ describe('nextAutomatonAction — prioridad 3/4: reroll gratuito y extra', () =>
   });
 });
 
-describe('nextAutomatonAction — robar (SPEC-018)', () => {
-  it('roba una carta si no hay nada más legal que hacer', () => {
+describe('nextAutomatonAction — pasa', () => {
+  it('pasa si no hay nada legal que hacer', () => {
     const enemy = enemySide({ activated: [true, true], pool: [] });
-    expect(next(enemy, playerSide(), noRerollsUsed)).toEqual({ type: 'draw' });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toEqual({ type: 'pass' });
   });
 });
 
@@ -512,10 +512,10 @@ describe('applyEnemyHealthMultiplier', () => {
 });
 
 describe('DIFFICULTY_SETTINGS — reroll extra por nivel', () => {
-  it('Fácil (0 rerolls extra): con el gratuito ya gastado, no rerollea más y roba una carta', () => {
+  it('Fácil (0 rerolls extra): con el gratuito ya gastado, no rerollea más', () => {
     const enemy = enemySide({ activated: [true, true], pool: [die(0, '-'), die(1, '-')] });
     const action = next(enemy, playerSide(), { free: true, extra: 0 }, DIFFICULTY_SETTINGS.easy.extraRerolls);
-    expect(action).toEqual({ type: 'draw' });
+    expect(action).toEqual({ type: 'pass' });
   });
 
   it('Difícil (2 rerolls extra): permite un segundo reroll extra tras el primero', () => {
