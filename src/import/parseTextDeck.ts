@@ -31,18 +31,37 @@ const CARD_LINE = /^(?:(\d+)x\s+)?.+\(([^)#]+?)\s*#(\d+)\)$/;
  * Parsea el "text file" de ARH DB (el listado legible del botón "Download") y devuelve los mismos
  * `DeckSlot[]` que `parseDeck`, para reutilizar todo el pipeline (resolveCards/buildCharacters/
  * buildDrawPile). Las líneas de estructura (título, cabeceras de sección, guiones, blancos) se
- * ignoran; una línea de carta con set desconocido o malformada cancela el import (SPEC-017).
+ * ignoran; una línea de carta con set desconocido o malformada cancela el import (SPEC-017). Las
+ * cartas de la sección PLOT se ignoran sin resolverlas: no se usan en el juego (SPEC-001/016) y su
+ * código real de dos caras (A/B) no es deducible del número de coleccionista del text file (p. ej.
+ * "Rescue Han Solo (Transformations #15)" es en realidad el código `13015A`, no `13015`) —
+ * intentar resolverlas hace fallar el import entero por un dato que nunca se usa.
  */
 export function parseTextDeck(raw: string): DeckSlot[] {
   const byCode = new Map<string, number>();
+  // Detecta la sección actual por la línea de guiones bajo el título (p. ej. "PLOT\n----\n"),
+  // igual de frágil/estable que el resto del formato de este "text file" (SPEC-017).
+  let currentSection = '';
+  let previousLine = '';
 
   for (const rawLine of raw.split(/\r?\n/)) {
     const line = rawLine.trim().replace(/\s+/g, ' ');
-    if (line === '') continue;
+    if (line === '') {
+      previousLine = '';
+      continue;
+    }
+    if (/^-+$/.test(line)) {
+      currentSection = previousLine.toUpperCase();
+      previousLine = line;
+      continue;
+    }
+    previousLine = line;
 
     const m = CARD_LINE.exec(line);
     // Sin "(Set #n)" al final → línea de estructura (cabecera, guiones, "Sets: …"): se ignora.
     if (!m) continue;
+
+    if (currentSection === 'PLOT') continue;
 
     const [, qtyRaw, setName, numRaw] = m;
     const setCode = SET_CODES[setName];

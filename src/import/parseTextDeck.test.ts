@@ -30,7 +30,11 @@ EVENT
 -----
 1x Rearm (Awakenings #109)
 2x Hidden Motive (Rivals #5)
-1x Emulate (Rivals #11)`;
+1x Emulate (Rivals #11)
+
+PLOT
+----
+Rescue Han Solo (Transformations #15)`;
 
 describe('parseTextDeck', () => {
   it('convierte el text file de ARH DB a DeckSlot[] con códigos NN+nnn', () => {
@@ -60,6 +64,20 @@ describe('parseTextDeck', () => {
     expect(parseTextDeck('1x Rescue Han Solo (Transformations #7)')).toEqual([
       { code: '13007', qty: 1 },
     ]);
+  });
+
+  it('ignora las cartas de la sección PLOT sin intentar resolverlas (dos caras A/B, SPEC-017)', () => {
+    const slots = parseTextDeck(
+      'CHARACTER\n---------\n2x Clone Trooper (Legacies #38)\n\nPLOT\n----\nRescue Han Solo (Transformations #15)\n',
+    );
+    expect(slots).toEqual([{ code: '05038', qty: 2 }]);
+  });
+
+  it('un mazo con solo una carta PLOT (set desconocido incluido) no lanza por el plot', () => {
+    const slots = parseTextDeck(
+      'CHARACTER\n---------\n1x Clone Trooper (Legacies #38)\n\nPLOT\n----\nAlguna trama (SetRarísimo #1)\n',
+    );
+    expect(slots).toEqual([{ code: '05038', qty: 1 }]);
   });
 
   it('falla con invalid-text si el set no está en la tabla', () => {
