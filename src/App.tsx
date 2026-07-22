@@ -3,6 +3,7 @@ import { ImportPanel } from './components/ImportPanel';
 import { CharacterCard } from './components/CharacterCard';
 import { DicePool } from './components/DicePool';
 import { DifficultySelector } from './components/DifficultySelector';
+import { Hand } from './components/Hand';
 import { currentHealth, isKO } from './game/damage';
 
 function BattleSide({ side, label }: { side: Side; label: string }) {
@@ -11,6 +12,7 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
   const outcome = useGameStore((st) => st.outcome);
   const activate = useGameStore((st) => st.activate);
   const applyDieTo = useGameStore((st) => st.applyDieTo);
+  const drawCard = useGameStore((st) => st.drawCard);
 
   // Objetivo válido. Con pendingEffect (SPEC-010) se elige el receptor del coste indirecto: SIEMPRE
   // el propio bando. Si no, daño → bando contrario, escudo → propio; el recurso no tiene objetivo.
@@ -34,7 +36,19 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
         <p className="roster__empty">Sin mazo importado.</p>
       ) : (
         <>
-          <p className="draw-pile__count">Mazo: {s.drawPile.length}</p>
+          <p className="draw-pile__count">
+            Mazo: {s.drawPile.length} · Mano: {s.hand.length}
+            {isPlayer && (
+              <button
+                className="hand__draw-button"
+                onClick={() => drawCard(side)}
+                disabled={outcome !== null}
+              >
+                Robar
+              </button>
+            )}
+          </p>
+          {isPlayer && <Hand codes={s.hand} />}
           <div className="roster__grid">
             {s.characters.map((c, i) => {
               const dmg = s.damage[i] ?? 0;

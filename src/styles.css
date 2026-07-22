@@ -81,6 +81,31 @@ button:disabled {
   color: #9aa0b0;
   font-size: 0.85rem;
   margin: 0 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hand__draw-button {
+  font-size: 0.85rem;
+  padding: 2px 10px;
+}
+
+.hand {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.hand__card {
+  background: #1c1f28;
+  border: 1px solid #2a2e3a;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.85rem;
 }
 
 .roster__grid {

@@ -9,7 +9,8 @@ const CARD_KEY = (code: string) => `swd:card:${code}`;
 const ARH_API_BASE = import.meta.env.DEV ? '/arh' : 'https://db.swdrenewedhope.com';
 const CARD_URL = (code: string) => `${ARH_API_BASE}/api/public/card/${code}`;
 
-function readCache(code: string): ArhCard | null {
+/** Lectura síncrona de la caché de una carta ya resuelta (SPEC-018: nombres en la mano). */
+export function readCache(code: string): ArhCard | null {
   try {
     const raw = localStorage.getItem(CARD_KEY(code));
     return raw ? (JSON.parse(raw) as ArhCard) : null;

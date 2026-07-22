@@ -73,6 +73,27 @@ function persistDrawPile(side: Side, drawPile: string[]): void {
   }
 }
 
+const HAND_KEY = (side: Side) => `swd:hand:${side}`;
+
+function loadPersistedHand(side: Side): string[] {
+  try {
+    const raw = localStorage.getItem(HAND_KEY(side));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.every((c) => typeof c === 'string') ? (parsed as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistHand(side: Side, hand: string[]): void {
+  try {
+    localStorage.setItem(HAND_KEY(side), JSON.stringify(hand));
+  } catch {
+    // best-effort
+  }
+}
+
 const DIFFICULTY_KEY = 'swd:difficulty';
 const VALID_DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard'];
 
@@ -97,8 +118,10 @@ function persistDifficulty(difficulty: Difficulty): void {
  * importado). */
 interface SideState {
   characters: Character[];
-  /** Mazo de robo barajado (SPEC-016): códigos de carta, sin mano ni robo todavía. */
+  /** Mazo de robo barajado (SPEC-016): códigos de carta. */
   drawPile: string[];
+  /** Mano de cartas robadas (SPEC-018): códigos de carta, orden de robo. */
+  hand: string[];
   activated: boolean[];
   damage: number[];
   /** Escudos acumulados por instancia (SPEC-005), tope MAX_SHIELDS. Ganados solo vía dado NSh. */
@@ -115,10 +138,11 @@ interface SideState {
 /** Recursos iniciales por bando al importar / Reset total (SPEC-009); 0 si el bando está vacío. */
 const STARTING_RESOURCES = 2;
 
-function freshSide(characters: Character[], drawPile: string[]): SideState {
+function freshSide(characters: Character[], drawPile: string[], hand: string[] = []): SideState {
   return {
     characters,
     drawPile,
+    hand,
     activated: [],
     damage: [],
     shields: [],
@@ -324,14 +348,17 @@ interface GameState {
   resolveResources: () => void;
   /** Cancela el modo resolver sin resolver nada. */
   cancelResolve: () => void;
+  /** Roba 1 carta del mazo de robo a la mano de `side` (SPEC-018). Si el mazo está vacío, termina
+   * la partida en el acto (deck-out): Derrota si es el jugador, Victoria si es el enemigo. */
+  drawCard: (side: Side) => void;
   enemyTurn: () => void;
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
   // Recarga: cada mazo persiste por bando; el estado de partida no se persiste.
   sides: {
-    player: freshSide(loadPersistedDeck('player'), loadPersistedDrawPile('player')),
-    enemy: freshSide(loadPersistedDeck('enemy'), loadPersistedDrawPile('enemy')),
+    player: freshSide(loadPersistedDeck('player'), loadPersistedDrawPile('player'), loadPersistedHand('player')),
+    enemy: freshSide(loadPersistedDeck('enemy'), loadPersistedDrawPile('enemy'), loadPersistedHand('enemy')),
   },
   resolve: null,
   resolveError: null,
@@ -364,6 +391,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Mazo de robo (SPEC-016): se reconstruye y rebaraja en cada (re)importación.
       const drawPile = shuffle(buildDrawPile(slots, cards));
       persistDrawPile(side, drawPile);
+      // Mano vacía en cada (re)importación (SPEC-018: fuera de alcance robar mano inicial aquí).
+      persistHand(side, []);
       // Reinicia el estado de partida de ESTE bando (vida completa) y recalcula el fin.
       set((state) => {
         const sides = { ...state.sides, [side]: freshSide(characters, drawPile) };
@@ -417,13 +446,20 @@ export const useGameStore = create<GameState>((set, get) => ({
     }),
 
   // "Reset total" (SPEC-009): reconstruye ambos bandos a su estado inicial (vida completa, sin
-  // escudos/KO, recursos a 2), conservando los personajes importados y el mazo de robo tal cual
-  // está (SPEC-016: nada lo consume todavía, no se reconstruye ni rebaraja aquí). Recalcula el fin.
+  // escudos/KO, recursos a 2), conservando los personajes importados. El mazo de robo vuelve a su
+  // composición completa original (drawPile + hand, rebarajado) y la mano queda vacía (SPEC-018:
+  // nada sale del "pool" drawPile+hand en esta pieza, así que la unión es siempre el original).
   resetAll: () =>
     set((state) => {
+      const rebuild = (side: Side, s: SideState): SideState => {
+        const drawPile = shuffle([...s.drawPile, ...s.hand]);
+        persistDrawPile(side, drawPile);
+        persistHand(side, []);
+        return freshSide(s.characters, drawPile);
+      };
       const sides: Record<Side, SideState> = {
-        player: freshSide(state.sides.player.characters, state.sides.player.drawPile),
-        enemy: freshSide(state.sides.enemy.characters, state.sides.enemy.drawPile),
+        player: rebuild('player', state.sides.player),
+        enemy: rebuild('enemy', state.sides.enemy),
       };
       return {
         sides,
@@ -529,6 +565,22 @@ export const useGameStore = create<GameState>((set, get) => ({
     }),
 
   cancelResolve: () => set({ resolve: null, resolveError: null }),
+
+  drawCard: (side: Side) =>
+    set((state) => {
+      if (state.outcome !== null) return state;
+      const s = state.sides[side];
+      if (s.drawPile.length === 0) {
+        // Deck-out (SPEC-018): evento puntual disparado por el propio intento de robar, no
+        // derivable de computeOutcome (0 cartas sin haber robado es un estado válido).
+        return { outcome: side === 'player' ? 'defeat' : 'victory' };
+      }
+      const [code, ...drawPile] = s.drawPile;
+      const hand = [...s.hand, code];
+      persistDrawPile(side, drawPile);
+      persistHand(side, hand);
+      return { sides: { ...state.sides, [side]: { ...s, drawPile, hand } } };
+    }),
 
   // Turno del autómata (GDD §4): evalúa la tabla de prioridades (motor puro en game/automaton)
   // y ejecuta como máximo UNA acción por llamada, reutilizando resolvePlayerBatch/activate
@@ -646,6 +698,16 @@ export const useGameStore = create<GameState>((set, get) => ({
             sides: { ...s.sides, enemy: { ...e, pool, rerollsUsed } },
             lastEnemyAction: `El enemigo rerollea ${action.dieIndices.length} dado(s) en blanco (${kindLabel}).`,
           };
+        });
+        return;
+      }
+      case 'draw': {
+        const hadCards = enemy.drawPile.length > 0;
+        get().drawCard('enemy');
+        set({
+          lastEnemyAction: hadCards
+            ? 'El enemigo roba una carta.'
+            : 'El enemigo no tiene cartas para robar: deck-out.',
         });
         return;
       }
