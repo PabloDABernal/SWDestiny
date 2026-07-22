@@ -1,6 +1,6 @@
 # SPEC-018: Mano de cartas y robo manual
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** v3 — mano, mazo, robo, condición de victoria por deck-out (sección 5, línea
 153); "Mano y robo manual (segunda pieza de v3, SPEC-018)", justo después de "Mazo de robo (primera
 pieza de v3, SPEC-016)".
@@ -101,4 +101,7 @@ se define en una spec posterior; aquí se prueba el mecanismo con un botón manu
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+2026-07-22: playtest manual OK (usuario). Todos los pasos del guion QA pasaron: botón "Robar" del
+jugador, mano visible con nombres, contador de mano del enemigo sin contenido, robo automático del
+autómata como último paso de prioridad, deck-out de ambos bandos (Derrota/Victoria inmediatas),
+"Reset total" reconstruyendo mazo+mano, y regresión de "Nueva ronda" sin tocar mano/mazo.
