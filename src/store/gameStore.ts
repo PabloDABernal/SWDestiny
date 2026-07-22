@@ -6,7 +6,8 @@ import { resolveCards } from '../import/resolveCards';
 import { buildCharacters } from '../import/buildCharacters';
 import { buildDrawPile, shuffle } from '../import/buildDrawPile';
 import { ImportError } from '../import/errors';
-import { rollCharacter, rollDie, type PooledDie } from '../game/roll';
+import { rollCharacter, rollDie, rollUpgradeDie, type PooledDie } from '../game/roll';
+import { readCache } from '../import/resolveCards';
 import {
   dieSymbol,
   parsePlayerFace,
@@ -94,6 +95,43 @@ function persistHand(side: Side, hand: string[]): void {
   }
 }
 
+const UPGRADES_KEY = (side: Side) => `swd:upgrades:${side}`;
+
+/** Forma esperada: un array de arrays de códigos de carta, uno por índice de `characters`. */
+function isUpgradesShape(value: unknown): value is string[][] {
+  return (
+    Array.isArray(value) &&
+    value.every((arr) => Array.isArray(arr) && arr.every((c) => typeof c === 'string'))
+  );
+}
+
+/** Mejoras en juego por bando (SPEC-020): array paralelo a `characters`, cada entrada es la lista
+ * de códigos de mejora ligados a ese personaje. Se reajusta al tamaño de `characters` por si la
+ * caché queda desincronizada (p. ej. tras un reimport con menos personajes). */
+function loadPersistedUpgrades(side: Side, characterCount: number): string[][] {
+  try {
+    const raw = localStorage.getItem(UPGRADES_KEY(side));
+    if (!raw) return emptyUpgrades(characterCount);
+    const parsed = JSON.parse(raw);
+    if (!isUpgradesShape(parsed)) return emptyUpgrades(characterCount);
+    return Array.from({ length: characterCount }, (_, i) => parsed[i] ?? []);
+  } catch {
+    return emptyUpgrades(characterCount);
+  }
+}
+
+function persistUpgrades(side: Side, upgrades: string[][]): void {
+  try {
+    localStorage.setItem(UPGRADES_KEY(side), JSON.stringify(upgrades));
+  } catch {
+    // best-effort
+  }
+}
+
+function emptyUpgrades(characterCount: number): string[][] {
+  return Array.from({ length: characterCount }, () => []);
+}
+
 const DIFFICULTY_KEY = 'swd:difficulty';
 const VALID_DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard'];
 
@@ -122,6 +160,9 @@ interface SideState {
   drawPile: string[];
   /** Mano de cartas robadas (SPEC-018): códigos de carta, orden de robo. */
   hand: string[];
+  /** Mejoras en juego (SPEC-020): array paralelo a `characters`, códigos de carta ligados a cada
+   * índice. Sin límite de cuántas puede tener un mismo personaje. */
+  upgrades: string[][];
   activated: boolean[];
   damage: number[];
   /** Escudos acumulados por instancia (SPEC-005), tope MAX_SHIELDS. Ganados solo vía dado NSh. */
@@ -138,11 +179,17 @@ interface SideState {
 /** Recursos iniciales por bando al importar / Reset total (SPEC-009); 0 si el bando está vacío. */
 const STARTING_RESOURCES = 2;
 
-function freshSide(characters: Character[], drawPile: string[], hand: string[] = []): SideState {
+function freshSide(
+  characters: Character[],
+  drawPile: string[],
+  hand: string[] = [],
+  upgrades: string[][] = emptyUpgrades(characters.length),
+): SideState {
   return {
     characters,
     drawPile,
     hand,
+    upgrades,
     activated: [],
     damage: [],
     shields: [],
@@ -221,6 +268,7 @@ function resolvePlayerBatch(
 
   // Estado del bando propio: consume marcados, paga recurso; damage/shields por si recibe el coste.
   let ownPool = own.pool.filter((_, i) => !markedSet.has(i));
+  let ownUpgrades = own.upgrades;
   const ownResources = own.resources - sums.resourceCost;
   const ownDamage = own.characters.map((_, i) => own.damage[i] ?? 0);
   const ownShields = own.characters.map((_, i) => own.shields[i] ?? 0);
@@ -250,10 +298,14 @@ function resolvePlayerBatch(
     const tDamage = target.characters.map((_, i) => target.damage[i] ?? 0);
     tDamage[effectIndex] = Math.min(ch.health, tDamage[effectIndex] + healthDamage);
     let tPool = target.pool;
+    let tUpgrades = target.upgrades;
     if (isKO(ch, tDamage[effectIndex])) {
       tPool = target.pool.filter((d) => d.characterIndex !== effectIndex);
+      // Las mejoras ligadas a un personaje KO se descartan con él (SPEC-020).
+      tUpgrades = target.upgrades.map((codes, i) => (i === effectIndex ? [] : codes));
+      persistUpgrades(opp, tUpgrades);
     }
-    next[opp] = { ...target, shields: tShields, damage: tDamage, pool: tPool };
+    next[opp] = { ...target, shields: tShields, damage: tDamage, pool: tPool, upgrades: tUpgrades };
   }
 
   // Coste de daño indirecto propio (escudos del receptor lo absorben, SPEC-005).
@@ -269,6 +321,8 @@ function resolvePlayerBatch(
     ownDamage[costReceiverIndex] = Math.min(rc.health, ownDamage[costReceiverIndex] + healthDamage);
     if (isKO(rc, ownDamage[costReceiverIndex])) {
       ownPool = ownPool.filter((d) => d.characterIndex !== costReceiverIndex);
+      ownUpgrades = ownUpgrades.map((codes, i) => (i === costReceiverIndex ? [] : codes));
+      persistUpgrades(mode.side, ownUpgrades);
     }
   }
 
@@ -276,6 +330,7 @@ function resolvePlayerBatch(
   next[mode.side] = {
     ...own,
     pool: ownPool,
+    upgrades: ownUpgrades,
     resources: ownResourcesFinal,
     damage: ownDamage,
     shields: ownShields,
@@ -325,6 +380,8 @@ interface GameState {
   resolve: ResolveMode | null;
   /** Aviso transitorio de resolución (p. ej. "recursos insuficientes", SPEC-008b). */
   resolveError: string | null;
+  /** Mejora seleccionada en la mano a la espera de un personaje objetivo (SPEC-020). */
+  playUpgrade: { side: Side; code: string } | null;
   outcome: Outcome;
   /** Feedback de la última acción del autómata (incluida "pasa"), para mostrar en la UI. */
   lastEnemyAction: string | null;
@@ -348,20 +405,40 @@ interface GameState {
   resolveResources: () => void;
   /** Cancela el modo resolver sin resolver nada. */
   cancelResolve: () => void;
+  /** Selecciona una mejora de la mano para jugar, a la espera de elegir personaje objetivo
+   * (SPEC-020). No-op si `code` no es una carta de tipo mejora. */
+  selectUpgradeCard: (side: Side, code: string) => void;
+  /** Juega la mejora seleccionada (`playUpgrade`) sobre el personaje `characterIndex` del mismo
+   * bando, pagando su coste de carta. Si no hay recursos suficientes, dispara `resolveError` y
+   * mantiene el modo abierto (SPEC-020). */
+  playUpgradeOn: (characterIndex: number) => void;
+  /** Cancela la selección de mejora a jugar sin jugar nada. */
+  cancelPlayUpgrade: () => void;
   /** Roba 1 carta del mazo de robo a la mano de `side` (SPEC-018). Si el mazo está vacío, termina
    * la partida en el acto (deck-out): Derrota si es el jugador, Victoria si es el enemigo. */
   drawCard: (side: Side) => void;
   enemyTurn: () => void;
 }
 
+function initialSide(side: Side): SideState {
+  const characters = loadPersistedDeck(side);
+  return freshSide(
+    characters,
+    loadPersistedDrawPile(side),
+    loadPersistedHand(side),
+    loadPersistedUpgrades(side, characters.length),
+  );
+}
+
 export const useGameStore = create<GameState>((set, get) => ({
   // Recarga: cada mazo persiste por bando; el estado de partida no se persiste.
   sides: {
-    player: freshSide(loadPersistedDeck('player'), loadPersistedDrawPile('player'), loadPersistedHand('player')),
-    enemy: freshSide(loadPersistedDeck('enemy'), loadPersistedDrawPile('enemy'), loadPersistedHand('enemy')),
+    player: initialSide('player'),
+    enemy: initialSide('enemy'),
   },
   resolve: null,
   resolveError: null,
+  playUpgrade: null,
   outcome: null,
   lastEnemyAction: null,
   difficulty: loadPersistedDifficulty(),
@@ -393,6 +470,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       persistDrawPile(side, drawPile);
       // Mano vacía en cada (re)importación (SPEC-018: fuera de alcance robar mano inicial aquí).
       persistHand(side, []);
+      // Mejoras en juego vacías en cada (re)importación (SPEC-020).
+      persistUpgrades(side, emptyUpgrades(characters.length));
       // Reinicia el estado de partida de ESTE bando (vida completa) y recalcula el fin.
       set((state) => {
         const sides = { ...state.sides, [side]: freshSide(characters, drawPile) };
@@ -414,13 +493,21 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((state) => {
       // Bloqueado mientras se espera el receptor del coste indirecto (SPEC-010, resolución atómica).
       if (state.resolve?.pendingEffect) return state;
+      // Bloqueado mientras se elige objetivo para jugar una mejora (SPEC-020).
+      if (state.playUpgrade !== null) return state;
       const s = state.sides[side];
       const character = s.characters[index];
       if (!character || s.activated[index]) return state;
       if (isKO(character, s.damage[index] ?? 0)) return state;
       const activated = s.activated.slice();
       activated[index] = true;
-      const pool = [...s.pool, ...rollCharacter(character, index)];
+      // Las mejoras ligadas a este personaje (SPEC-020) tiran su dado junto con los suyos.
+      const upgradeDice = (s.upgrades[index] ?? []).flatMap((code) => {
+        const card = readCache(code);
+        if (!card) return [];
+        return [rollUpgradeDie({ sides: [...card.sides] }, card.code, card.name, index)];
+      });
+      const pool = [...s.pool, ...rollCharacter(character, index), ...upgradeDice];
       return { sides: { ...state.sides, [side]: { ...s, activated, pool } } };
     }),
 
@@ -461,14 +548,15 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // "Reset total" (SPEC-009): reconstruye ambos bandos a su estado inicial (vida completa, sin
   // escudos/KO, recursos a 2), conservando los personajes importados. El mazo de robo vuelve a su
-  // composición completa original (drawPile + hand, rebarajado) y la mano queda vacía (SPEC-018:
-  // nada sale del "pool" drawPile+hand en esta pieza, así que la unión es siempre el original).
+  // composición completa original (drawPile + hand + mejoras en juego, rebarajado, SPEC-020) y la
+  // mano y las mejoras en juego quedan vacías.
   resetAll: () =>
     set((state) => {
       const rebuild = (side: Side, s: SideState): SideState => {
-        const drawPile = shuffle([...s.drawPile, ...s.hand]);
+        const drawPile = shuffle([...s.drawPile, ...s.hand, ...s.upgrades.flat()]);
         persistDrawPile(side, drawPile);
         persistHand(side, []);
+        persistUpgrades(side, emptyUpgrades(s.characters.length));
         return freshSide(s.characters, drawPile);
       };
       const sides: Record<Side, SideState> = {
@@ -479,6 +567,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         sides,
         resolve: null,
         resolveError: null,
+        playUpgrade: null,
         lastEnemyAction: null,
         outcome: computeOutcome(sides),
       };
@@ -489,6 +578,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.outcome !== null) return state;
       // Bloqueado mientras se espera el receptor del coste indirecto (SPEC-010).
       if (state.resolve?.pendingEffect) return state;
+      // Bloqueado mientras se elige objetivo para jugar una mejora (SPEC-020).
+      if (state.playUpgrade !== null) return state;
       const die = state.sides[side].pool[poolIndex];
       if (!die) return state;
       const symbol = dieSymbol(die.face);
@@ -579,6 +670,46 @@ export const useGameStore = create<GameState>((set, get) => ({
     }),
 
   cancelResolve: () => set({ resolve: null, resolveError: null }),
+
+  selectUpgradeCard: (side: Side, code: string) =>
+    set((state) => {
+      if (state.outcome !== null) return state;
+      // Bloqueado mientras se espera el receptor del coste indirecto (SPEC-010).
+      if (state.resolve?.pendingEffect) return state;
+      if (!state.sides[side].hand.includes(code)) return state;
+      const card = readCache(code);
+      if (!card || card.type_code !== 'upgrade') return state;
+      return { playUpgrade: { side, code }, resolve: null, resolveError: null };
+    }),
+
+  playUpgradeOn: (characterIndex: number) =>
+    set((state) => {
+      const mode = state.playUpgrade;
+      if (state.outcome !== null || mode === null) return state;
+      const s = state.sides[mode.side];
+      const target = s.characters[characterIndex];
+      if (!target || isKO(target, s.damage[characterIndex] ?? 0)) return state;
+      const card = readCache(mode.code);
+      if (!card) return state;
+      const cost = card.cost ?? 0;
+      if (s.resources < cost) {
+        return { resolveError: 'Recursos insuficientes para jugar esta carta.' };
+      }
+      const handIndex = s.hand.indexOf(mode.code);
+      if (handIndex === -1) return { playUpgrade: null };
+      const hand = s.hand.slice();
+      hand.splice(handIndex, 1);
+      const upgrades = s.upgrades.map((codes, i) => (i === characterIndex ? [...codes, mode.code] : codes));
+      persistHand(mode.side, hand);
+      persistUpgrades(mode.side, upgrades);
+      return {
+        sides: { ...state.sides, [mode.side]: { ...s, hand, upgrades, resources: s.resources - cost } },
+        playUpgrade: null,
+        resolveError: null,
+      };
+    }),
+
+  cancelPlayUpgrade: () => set({ playUpgrade: null, resolveError: null }),
 
   drawCard: (side: Side) =>
     set((state) => {

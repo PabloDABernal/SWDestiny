@@ -25,4 +25,6 @@ export interface ArhCard {
   health: number;
   is_unique: boolean;
   sides: string[];
+  /** Coste de recursos para jugar la carta (mejoras/apoyos, SPEC-020). Ausente en personajes. */
+  cost?: number;
 }

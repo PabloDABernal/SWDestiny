@@ -38,3 +38,16 @@ export function rollCharacter(
     face: rollDie(die, rng),
   }));
 }
+
+/** Tira el dado de una mejora en juego (SPEC-020), ligado al `characterIndex` de su personaje
+ * anfitrión (mismo campo que usa el filtrado por KO del pool, sin cambios adicionales). Cada
+ * mejora tiene un único dado. */
+export function rollUpgradeDie(
+  die: Die,
+  code: string,
+  name: string,
+  characterIndex: number,
+  rng: Rng = Math.random,
+): PooledDie {
+  return { characterIndex, code, name, dieIndex: 0, face: rollDie(die, rng) };
+}

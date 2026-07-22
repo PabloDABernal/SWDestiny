@@ -70,6 +70,11 @@ ecosistema de componentes de tablero/dados ya hechos.)*
   de vida enemiga, rerolls extra) son configurables por el jugador vía un selector de dificultad
   (Fácil/Normal/Difícil, SPEC-015), persistido en `localStorage`; el multiplicador de vida solo se
   aplica a la próxima importación del mazo enemigo (no retroactivo, ni con "Reset total").
+- **Cartas en juego (mejoras, desde SPEC-020)**: una mejora jugada queda ligada al índice de un
+  personaje de `characters` dentro de `SideState`, persistida igual que `drawPile`/`hand`
+  (SPEC-016/018). Al activar un personaje, sus mejoras ligadas también tiran dados y se añaden al
+  pool junto con los suyos — `PooledDie` deja de asumir que todo dado viene de un personaje del
+  array `characters`. Si el personaje queda KO, sus mejoras ligadas se descartan con él.
 
 ## Reglas técnicas de alcance por fase (para revisor-código y revisor-specs)
 

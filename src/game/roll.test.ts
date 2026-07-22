@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rollDie, rollCharacter, type Rng } from './roll';
+import { rollDie, rollCharacter, rollUpgradeDie, type Rng } from './roll';
 import type { Character, Die } from '../model/types';
 
 const die: Die = { sides: ['2MD', '2Sh', '1R', 'Sp', 'Sp', '-'] };
@@ -41,5 +41,12 @@ describe('rollCharacter', () => {
     expect(pooled).toHaveLength(2);
     expect(pooled[0]).toMatchObject({ characterIndex: 0, dieIndex: 0, name: 'Luminara Unduli', face: '2MD' });
     expect(pooled[1]).toMatchObject({ characterIndex: 0, dieIndex: 1, face: '-' });
+  });
+});
+
+describe('rollUpgradeDie (SPEC-020)', () => {
+  it('tira el dado de la mejora ligado al characterIndex de su personaje anfitrión', () => {
+    const pooled = rollUpgradeDie(die, 'up1', 'Sable de luz', 0, () => 0);
+    expect(pooled).toEqual({ characterIndex: 0, code: 'up1', name: 'Sable de luz', dieIndex: 0, face: '2MD' });
   });
 });

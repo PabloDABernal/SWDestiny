@@ -13,6 +13,11 @@ interface CharacterCardProps {
   targetable: boolean;
   /** El enemigo es pasivo en v1: no muestra botón Activar. */
   showActivate: boolean;
+  /** Nombres de las mejoras en juego ligadas a este personaje (SPEC-020). */
+  upgradeNames: string[];
+  /** true mientras se elige objetivo para jugar una mejora (SPEC-020): Activar queda deshabilitado
+   * para que no parezca un clic sin efecto. */
+  activateDisabled?: boolean;
   onActivate: () => void;
   onTarget: () => void;
 }
@@ -25,6 +30,8 @@ export function CharacterCard({
   ko,
   targetable,
   showActivate,
+  upgradeNames,
+  activateDisabled,
   onActivate,
   onTarget,
 }: CharacterCardProps) {
@@ -61,6 +68,13 @@ export function CharacterCard({
         {character.isElite ? ' · Elite' : ''}
         {` · ${character.dice.length} dado${character.dice.length > 1 ? 's' : ''}`}
       </div>
+      {upgradeNames.length > 0 && (
+        <ul className="character-card__upgrades" title="Mejoras en juego">
+          {upgradeNames.map((name, i) => (
+            <li key={i}>⚙ {name}</li>
+          ))}
+        </ul>
+      )}
       <div className="dice">
         {character.dice.map((die, i) => (
           <div className="die" key={i}>
@@ -82,7 +96,7 @@ export function CharacterCard({
               e.stopPropagation();
               onActivate();
             }}
-            disabled={activated || ko}
+            disabled={activated || ko || activateDisabled}
           >
             {ko ? 'KO' : activated ? 'Activado' : 'Activar'}
           </button>
