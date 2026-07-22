@@ -70,11 +70,17 @@ ecosistema de componentes de tablero/dados ya hechos.)*
   de vida enemiga, rerolls extra) son configurables por el jugador vía un selector de dificultad
   (Fácil/Normal/Difícil, SPEC-015), persistido en `localStorage`; el multiplicador de vida solo se
   aplica a la próxima importación del mazo enemigo (no retroactivo, ni con "Reset total").
-- **Cartas en juego (mejoras, desde SPEC-020)**: una mejora jugada queda ligada al índice de un
-  personaje de `characters` dentro de `SideState`, persistida igual que `drawPile`/`hand`
-  (SPEC-016/018). Al activar un personaje, sus mejoras ligadas también tiran dados y se añaden al
-  pool junto con los suyos — `PooledDie` deja de asumir que todo dado viene de un personaje del
-  array `characters`. Si el personaje queda KO, sus mejoras ligadas se descartan con él.
+- **Cartas en juego (mejoras, desde SPEC-020; apoyos, desde SPEC-021)**: una mejora jugada queda
+  ligada al índice de un personaje de `characters` dentro de `SideState`, persistida igual que
+  `drawPile`/`hand` (SPEC-016/018). Al activar un personaje, sus mejoras ligadas también tiran
+  dados y se añaden al pool junto con los suyos — `PooledDie` deja de asumir que todo dado viene de
+  un personaje del array `characters` (se reutiliza `characterIndex` con un centinela `-1` para
+  dados sin personaje anfitrión, SPEC-021). Si el personaje queda KO, sus mejoras ligadas se
+  descartan con él. Un apoyo, en cambio, no va ligado a ningún personaje: es una lista aparte por
+  bando (`SideState.supports`), cada uno con su propio estado de activación (se resetea en "Nueva
+  ronda" igual que los personajes) y su propio botón "Activar" en la UI. Ninguna de las dos
+  (mejoras/apoyos) sale de juego salvo por KO del personaje anfitrión (mejoras) o "Reset total"
+  (ambas): no hay destrucción por texto de carta todavía.
 
 ## Reglas técnicas de alcance por fase (para revisor-código y revisor-specs)
 
