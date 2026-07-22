@@ -184,6 +184,15 @@ no roba dentro de "Turno enemigo" (ese paso, añadido en SPEC-018, se retira): a
 ronda" igual que el jugador. Si el mazo de un bando está vacío al robar en "Nueva ronda", la partida
 termina en el acto (deck-out): Derrota si es el jugador, Victoria si es el enemigo.
 
+### Mejoras vanilla (primera pieza de v4, SPEC-020)
+
+El jugador juega una carta de mejora (upgrade) desde su mano sobre uno de sus personajes no-KO,
+pagando su coste de carta impreso (recursos); la mejora pasa a estar "en juego" ligada a ese
+personaje, y sus dados se activan/tiran junto con los suyos a partir de ahí (mismo botón
+"Activar"). Es vanilla: sin texto ni keywords (esa es la siguiente capa de v4). Si el personaje
+queda KO, sus mejoras se descartan con él. Solo el jugador juega cartas; el autómata sigue sin
+poder hacerlo hasta v5. Apoyos (supports) quedan para una spec posterior.
+
 ## 6. Fuera de alcance (explícito, hasta que se decida lo contrario)
 
 - Multijugador, alianzas, free-for-all (reglas de la Parte 9 del reglamento).
