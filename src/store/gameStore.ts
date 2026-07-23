@@ -318,6 +318,8 @@ function resolvePlayerBatch(
     ownShields[effectIndex] = addShields(ownShields[effectIndex], effectTotal);
   } else if (mode.symbol === 'resource') {
     // sin objetivo: el efecto suma recursos (además de pagar coste).
+  } else if (mode.symbol === 'special') {
+    // Especial (SPEC-023): placeholder sin efecto real; solo se consume y paga su coste, si tiene.
   } else {
     // Daño → bando contrario.
     if (effectIndex === null) return null;
@@ -374,6 +376,145 @@ function resolvePlayerBatch(
   return { sides: next, outcome: computeOutcome(next) };
 }
 
+// --- Focus, reroll de dado y especial (SPEC-023): el objetivo es un DADO (posición en un `pool`),
+// no un personaje/bando, así que no encajan en `resolvePlayerBatch`. Comparten con él el pago del
+// coste de daño indirecto propio (mismo receptor determinista propio, SPEC-005/010). ---
+
+/** Aplica el coste de daño indirecto propio a `costReceiverIndex` del bando `side`, si lo hay.
+ * Compartido por `applyFocus`/`applyRerollDice` (SPEC-023) y análogo al de `resolvePlayerBatch`. */
+function applyOwnIndirectCost(
+  own: SideState,
+  side: Side,
+  costReceiverIndex: number | null,
+  indirectCost: number,
+  damage: number[],
+  shields: number[],
+  upgrades: string[][],
+  pool: PooledDie[],
+): { damage: number[]; shields: number[]; upgrades: string[][]; pool: PooledDie[] } | null {
+  if (indirectCost <= 0) return { damage, shields, upgrades, pool };
+  if (costReceiverIndex === null) return null;
+  const rc = own.characters[costReceiverIndex];
+  if (!rc || isKO(rc, damage[costReceiverIndex] ?? 0)) return null;
+  const { shieldsRemaining, healthDamage } = resolveShieldedDamage(shields[costReceiverIndex] ?? 0, indirectCost);
+  const nextShields = shields.slice();
+  const nextDamage = damage.slice();
+  nextShields[costReceiverIndex] = shieldsRemaining;
+  nextDamage[costReceiverIndex] = Math.min(rc.health, (damage[costReceiverIndex] ?? 0) + healthDamage);
+  let nextPool = pool;
+  let nextUpgrades = upgrades;
+  if (isKO(rc, nextDamage[costReceiverIndex])) {
+    nextPool = pool.filter((d) => d.characterIndex !== costReceiverIndex);
+    nextUpgrades = upgrades.map((codes, i) => (i === costReceiverIndex ? [] : codes));
+    persistUpgrades(side, nextUpgrades);
+  }
+  return { damage: nextDamage, shields: nextShields, upgrades: nextUpgrades, pool: nextPool };
+}
+
+/** Definición de las 6 caras de un dado ya en el pool, vía la caché de su carta (SPEC-023). Mismo
+ * patrón que `activate`/`activateSupport`; null si la carta no está en caché. */
+function poolDieSides(die: PooledDie): string[] | null {
+  return readCache(die.code)?.sides ?? null;
+}
+
+/**
+ * Gira, dentro de la resolución de Focus del bando `side` (SPEC-023): consume los dados marcados
+ * (fuente), paga su coste, y cambia la cara de cada dado de `picks` sin sacarlo del pool ni
+ * resolverlo. `'no-base'`/`'insufficient'` como `resolvePlayerBatch`; `null` si el receptor del
+ * coste indirecto no vale.
+ */
+function applyFocus(
+  sides: Record<Side, SideState>,
+  side: Side,
+  marked: number[],
+  picks: { poolIndex: number; face: string }[],
+  costReceiverIndex: number | null,
+): { sides: Record<Side, SideState>; outcome: Outcome } | BatchError | null {
+  const own = sides[side];
+  const sums = sumPlayerMarked(own.pool, marked);
+  if (!sums.hasBase) return 'no-base';
+  if (own.resources < sums.resourceCost) return 'insufficient';
+  const markedSet = new Set(marked);
+  const pickMap = new Map(picks.map((p) => [p.poolIndex, p.face]));
+
+  const damage = own.characters.map((_, i) => own.damage[i] ?? 0);
+  const shields = own.characters.map((_, i) => own.shields[i] ?? 0);
+  const pool = own.pool
+    .map((d, i) => (pickMap.has(i) ? { ...d, face: pickMap.get(i)! } : d))
+    .filter((_, i) => !markedSet.has(i));
+
+  const withCost = applyOwnIndirectCost(own, side, costReceiverIndex, sums.indirectCost, damage, shields, own.upgrades, pool);
+  if (withCost === null) return null;
+
+  const next: Record<Side, SideState> = {
+    ...sides,
+    [side]: {
+      ...own,
+      pool: withCost.pool,
+      upgrades: withCost.upgrades,
+      resources: own.resources - sums.resourceCost,
+      damage: withCost.damage,
+      shields: withCost.shields,
+    },
+  };
+  return { sides: next, outcome: computeOutcome(next) };
+}
+
+/**
+ * Re-tira, dentro de la resolución de Reroll de dado del bando `side` (SPEC-023): consume los
+ * dados marcados (fuente), paga su coste, y re-tira cada dado de `targets` (de cualquier pool,
+ * propio o rival) con su propia definición de dado.
+ */
+function applyRerollDice(
+  sides: Record<Side, SideState>,
+  side: Side,
+  marked: number[],
+  targets: { side: Side; poolIndex: number }[],
+  costReceiverIndex: number | null,
+): { sides: Record<Side, SideState>; outcome: Outcome } | BatchError | null {
+  const own = sides[side];
+  const sums = sumPlayerMarked(own.pool, marked);
+  if (!sums.hasBase) return 'no-base';
+  if (own.resources < sums.resourceCost) return 'insufficient';
+  const markedSet = new Set(marked);
+
+  const reroll = (d: PooledDie): PooledDie => {
+    const dieSides = poolDieSides(d);
+    return dieSides ? { ...d, face: rollDie({ sides: [...dieSides] }) } : d;
+  };
+
+  const ownTargets = new Set(targets.filter((t) => t.side === side).map((t) => t.poolIndex));
+  const damage = own.characters.map((_, i) => own.damage[i] ?? 0);
+  const shields = own.characters.map((_, i) => own.shields[i] ?? 0);
+  const pool = own.pool
+    .map((d, i) => (ownTargets.has(i) ? reroll(d) : d))
+    .filter((_, i) => !markedSet.has(i));
+
+  const withCost = applyOwnIndirectCost(own, side, costReceiverIndex, sums.indirectCost, damage, shields, own.upgrades, pool);
+  if (withCost === null) return null;
+
+  const next: Record<Side, SideState> = {
+    ...sides,
+    [side]: {
+      ...own,
+      pool: withCost.pool,
+      upgrades: withCost.upgrades,
+      resources: own.resources - sums.resourceCost,
+      damage: withCost.damage,
+      shields: withCost.shields,
+    },
+  };
+
+  const opp = opposite(side);
+  const oppTargets = new Set(targets.filter((t) => t.side === opp).map((t) => t.poolIndex));
+  if (oppTargets.size > 0) {
+    const oppSide = sides[opp];
+    next[opp] = { ...oppSide, pool: oppSide.pool.map((d, i) => (oppTargets.has(i) ? reroll(d) : d)) };
+  }
+
+  return { sides: next, outcome: computeOutcome(next) };
+}
+
 /**
  * "Modo resolver" del jugador (SPEC-008a): tras elegir un dado, solo se resuelven dados del MISMO
  * bando y símbolo. Para daño/escudo, `marked` es el dado "actual" (0 o 1); para recurso, el conjunto
@@ -387,6 +528,15 @@ interface ResolveMode {
    * `effectIndex` es el objetivo del efecto (null para recurso, que no tiene objetivo). Mientras
    * está activo, selectDie/activate quedan bloqueados (resolución atómica). */
   pendingEffect?: { effectIndex: number | null } | null;
+  /** SPEC-023 (symbol === 'focus'): dados propios ya girados en esta resolución (poolIndex del
+   * dado objetivo + cara elegida), acumulados hasta `confirmFocus`. */
+  focusPicks?: { poolIndex: number; face: string }[];
+  /** SPEC-023 (symbol === 'focus'): dado propio a la espera de que el jugador elija su nueva cara
+   * (poolIndex). Mientras está activo, selectDie/activate quedan bloqueados. */
+  focusFaceChoice?: number | null;
+  /** SPEC-023 (symbol === 'reroll'): dados (de cualquier pool, propio o rival) ya elegidos como
+   * objetivo de esta resolución de Reroll de dado, acumulados hasta `confirmReroll`. */
+  rerollTargets?: { side: Side; poolIndex: number }[];
 }
 
 /**
@@ -441,6 +591,25 @@ interface GameState {
   resolveResources: () => void;
   /** Cancela el modo resolver sin resolver nada. */
   cancelResolve: () => void;
+  /** SPEC-023: elige `poolIndex` (dado propio sin resolver, distinto de los marcados) como próximo
+   * objetivo de la resolución de Focus en curso; abre la elección de cara. No-op si no queda
+   * presupuesto (suma de valores de los dados marcados) o el índice no es válido. */
+  pickFocusTarget: (poolIndex: number) => void;
+  /** SPEC-023: fija `face` (debe ser una de las 6 caras reales del dado) como la nueva cara del
+   * dado elegido en `pickFocusTarget`, y cierra la elección de cara. */
+  chooseFocusFace: (face: string) => void;
+  /** SPEC-023: aplica la resolución de Focus en curso (paga el coste, gira cada dado elegido a su
+   * cara, consume los dados de Focus marcados). No-op si no se ha elegido ningún dado objetivo. */
+  confirmFocus: () => void;
+  /** SPEC-023: marca/desmarca `poolIndex` de `targetSide` (cualquier pool, propio o rival) como
+   * objetivo de la resolución de Reroll de dado en curso. No-op si no queda presupuesto. */
+  pickRerollTarget: (targetSide: Side, poolIndex: number) => void;
+  /** SPEC-023: aplica la resolución de Reroll de dado en curso (paga el coste, re-tira cada dado
+   * elegido, consume los dados de Reroll marcados). No-op si no se ha elegido ningún objetivo. */
+  confirmReroll: () => void;
+  /** SPEC-023: resuelve los dados de Especial marcados (paga su coste si tiene, los consume) y deja
+   * un aviso genérico en `resolveError` — placeholder sin efecto real de juego. */
+  resolveSpecial: () => void;
   /** Selecciona una mejora de la mano para jugar, a la espera de elegir personaje objetivo
    * (SPEC-020). No-op si `code` no es una carta de tipo mejora. */
   selectUpgradeCard: (side: Side, code: string) => void;
@@ -541,8 +710,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   activate: (side: Side, index: number) =>
     set((state) => {
-      // Bloqueado mientras se espera el receptor del coste indirecto (SPEC-010, resolución atómica).
-      if (state.resolve?.pendingEffect) return state;
+      // Bloqueado mientras se espera el receptor del coste indirecto (SPEC-010, resolución atómica)
+      // o se elige la cara de un dado en una resolución de Focus en curso (SPEC-023, ídem).
+      if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
       // Bloqueado mientras se elige objetivo para jugar una mejora (SPEC-020).
       if (state.playUpgrade !== null) return state;
       const s = state.sides[side];
@@ -638,8 +808,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   selectDie: (side: Side, poolIndex: number) =>
     set((state) => {
       if (state.outcome !== null) return state;
-      // Bloqueado mientras se espera el receptor del coste indirecto (SPEC-010).
-      if (state.resolve?.pendingEffect) return state;
+      // Bloqueado mientras se espera el receptor del coste indirecto (SPEC-010) o se elige la cara
+      // de un dado en una resolución de Focus en curso (SPEC-023).
+      if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
       // Bloqueado mientras se elige objetivo para jugar una mejora (SPEC-020).
       if (state.playUpgrade !== null) return state;
       const die = state.sides[side].pool[poolIndex];
@@ -671,7 +842,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Paso 3: ya hay objetivo del efecto; este clic es el receptor del coste indirecto (bando propio).
       if (cur.pendingEffect) {
         if (targetSide !== cur.side) return state;
-        const res = resolvePlayerBatch(state.sides, cur, cur.pendingEffect.effectIndex, index);
+        const res =
+          cur.symbol === 'focus'
+            ? applyFocus(state.sides, cur.side, cur.marked, cur.focusPicks ?? [], index)
+            : cur.symbol === 'reroll'
+              ? applyRerollDice(state.sides, cur.side, cur.marked, cur.rerollTargets ?? [], index)
+              : resolvePlayerBatch(state.sides, cur, cur.pendingEffect.effectIndex, index);
         if (res === null || res === 'no-base' || res === 'insufficient') return state; // no debería
         return {
           sides: res.sides,
@@ -681,7 +857,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         };
       }
 
-      if (cur.symbol === 'resource') return state; // el recurso se resuelve con su botón
+      // Recurso/especial se resuelven con su propio botón; focus/reroll con sus propias acciones
+      // de elegir dado objetivo (SPEC-023) — ninguno de los cuatro usa el clic sobre un personaje.
+      if (
+        cur.symbol === 'resource' ||
+        cur.symbol === 'special' ||
+        cur.symbol === 'focus' ||
+        cur.symbol === 'reroll'
+      ) {
+        return state;
+      }
 
       // Paso 2: elegir objetivo del efecto (daño → contrario; escudo → propio).
       const wantSide = cur.symbol === 'shield' ? cur.side : opposite(cur.side);
@@ -733,11 +918,143 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   cancelResolve: () => set({ resolve: null, resolveError: null }),
 
+  // Focus (SPEC-023): elegir dado objetivo (paso repetible hasta el presupuesto = suma de valores
+  // de los dados de Focus marcados) → elegir su nueva cara → confirmar (paga coste, gira todos los
+  // elegidos, consume los dados de Focus).
+  pickFocusTarget: (poolIndex: number) =>
+    set((state) => {
+      const cur = state.resolve;
+      if (state.outcome !== null || cur === null || cur.symbol !== 'focus') return state;
+      if (cur.pendingEffect || cur.focusFaceChoice != null) return state;
+      if (cur.marked.length === 0 || cur.marked.includes(poolIndex)) return state;
+      const picks = cur.focusPicks ?? [];
+      if (picks.some((p) => p.poolIndex === poolIndex)) return state;
+      const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
+      if (picks.length >= sums.baseAmount + sums.modifierAmount) return state;
+      if (!state.sides[cur.side].pool[poolIndex]) return state;
+      return { resolve: { ...cur, focusFaceChoice: poolIndex }, resolveError: null };
+    }),
+
+  chooseFocusFace: (face: string) =>
+    set((state) => {
+      const cur = state.resolve;
+      if (state.outcome !== null || cur === null || cur.symbol !== 'focus') return state;
+      const poolIndex = cur.focusFaceChoice;
+      if (poolIndex == null) return state;
+      const die = state.sides[cur.side].pool[poolIndex];
+      const sides = die ? poolDieSides(die) : null;
+      if (!sides || !sides.includes(face)) return state;
+      const focusPicks = [...(cur.focusPicks ?? []), { poolIndex, face }];
+      return { resolve: { ...cur, focusPicks, focusFaceChoice: null }, resolveError: null };
+    }),
+
+  confirmFocus: () =>
+    set((state) => {
+      const cur = state.resolve;
+      if (state.outcome !== null || cur === null || cur.symbol !== 'focus') return state;
+      if (cur.pendingEffect || cur.focusFaceChoice != null) return state;
+      const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
+      // Recorta a la suma de valores ACTUAL de los marcados (defensivo: si se desmarcó algún dado
+      // de Focus fuente después de elegir objetivos, el presupuesto pudo haber bajado).
+      const picks = (cur.focusPicks ?? []).slice(0, sums.baseAmount + sums.modifierAmount);
+      if (picks.length === 0) return state;
+      if (state.sides[cur.side].resources < sums.resourceCost) {
+        return { resolveError: 'Recursos insuficientes para pagar el coste.' };
+      }
+      if (sums.indirectCost > 0) {
+        return {
+          resolve: { ...cur, focusPicks: picks, pendingEffect: { effectIndex: null } },
+          resolveError: null,
+        };
+      }
+      const res = applyFocus(state.sides, cur.side, cur.marked, picks, null);
+      if (res === null || res === 'no-base' || res === 'insufficient') return state;
+      return {
+        sides: res.sides,
+        outcome: res.outcome,
+        resolve: nextResolveAfterApply(res.sides, cur, res.outcome),
+        resolveError: null,
+      };
+    }),
+
+  // Reroll de dado (SPEC-023): elegir dados objetivo de cualquier pool (hasta el presupuesto =
+  // suma de valores de los dados de Reroll marcados) → confirmar (paga coste, re-tira todos los
+  // elegidos, consume los dados de Reroll).
+  pickRerollTarget: (targetSide: Side, poolIndex: number) =>
+    set((state) => {
+      const cur = state.resolve;
+      if (state.outcome !== null || cur === null || cur.symbol !== 'reroll') return state;
+      if (cur.pendingEffect) return state;
+      if (targetSide === cur.side && cur.marked.includes(poolIndex)) return state;
+      if (!state.sides[targetSide].pool[poolIndex]) return state;
+      const targets = cur.rerollTargets ?? [];
+      const already = targets.findIndex((t) => t.side === targetSide && t.poolIndex === poolIndex);
+      if (already !== -1) {
+        return { resolve: { ...cur, rerollTargets: targets.filter((_, i) => i !== already) }, resolveError: null };
+      }
+      const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
+      if (targets.length >= sums.baseAmount + sums.modifierAmount) return state;
+      return { resolve: { ...cur, rerollTargets: [...targets, { side: targetSide, poolIndex }] }, resolveError: null };
+    }),
+
+  confirmReroll: () =>
+    set((state) => {
+      const cur = state.resolve;
+      if (state.outcome !== null || cur === null || cur.symbol !== 'reroll') return state;
+      if (cur.pendingEffect) return state;
+      const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
+      // Recorta a la suma de valores ACTUAL de los marcados (mismo defensivo que confirmFocus).
+      const targets = (cur.rerollTargets ?? []).slice(0, sums.baseAmount + sums.modifierAmount);
+      if (targets.length === 0) return state;
+      if (state.sides[cur.side].resources < sums.resourceCost) {
+        return { resolveError: 'Recursos insuficientes para pagar el coste.' };
+      }
+      if (sums.indirectCost > 0) {
+        return {
+          resolve: { ...cur, rerollTargets: targets, pendingEffect: { effectIndex: null } },
+          resolveError: null,
+        };
+      }
+      const res = applyRerollDice(state.sides, cur.side, cur.marked, targets, null);
+      if (res === null || res === 'no-base' || res === 'insufficient') return state;
+      return {
+        sides: res.sides,
+        outcome: res.outcome,
+        resolve: nextResolveAfterApply(res.sides, cur, res.outcome),
+        resolveError: null,
+      };
+    }),
+
+  // Especial (SPEC-023): placeholder sin efecto real; paga coste si tiene, consume el/los dado(s)
+  // marcados y deja un aviso genérico (reutiliza `resolveError`, no es un error real).
+  resolveSpecial: () =>
+    set((state) => {
+      const cur = state.resolve;
+      if (state.outcome !== null || cur === null || cur.symbol !== 'special') return state;
+      if (cur.marked.length === 0 || cur.pendingEffect) return state;
+      const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
+      if (state.sides[cur.side].resources < sums.resourceCost) {
+        return { resolveError: 'Recursos insuficientes para pagar el coste.' };
+      }
+      if (sums.indirectCost > 0) {
+        return { resolve: { ...cur, pendingEffect: { effectIndex: null } }, resolveError: null };
+      }
+      const res = resolvePlayerBatch(state.sides, cur, null, null);
+      if (res === null || res === 'no-base' || res === 'insufficient') return state;
+      return {
+        sides: res.sides,
+        outcome: res.outcome,
+        resolve: nextResolveAfterApply(res.sides, cur, res.outcome),
+        resolveError: 'Habilidad especial de la carta (pendiente de implementar).',
+      };
+    }),
+
   selectUpgradeCard: (side: Side, code: string) =>
     set((state) => {
       if (state.outcome !== null) return state;
-      // Bloqueado mientras se espera el receptor del coste indirecto (SPEC-010).
-      if (state.resolve?.pendingEffect) return state;
+      // Bloqueado mientras se espera el receptor del coste indirecto (SPEC-010) o se elige la cara
+      // de un dado en una resolución de Focus en curso (SPEC-023).
+      if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
       if (!state.sides[side].hand.includes(code)) return state;
       const card = readCache(code);
       if (!card || card.type_code !== 'upgrade') return state;
@@ -776,8 +1093,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   playSupport: (side: Side, code: string) =>
     set((state) => {
       if (state.outcome !== null) return state;
-      // Mismos guards de exclusión mutua que jugar una mejora (SPEC-020/021).
-      if (state.resolve?.pendingEffect) return state;
+      // Mismos guards de exclusión mutua que jugar una mejora (SPEC-020/021/023).
+      if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
       if (state.playUpgrade !== null) return state;
       const s = state.sides[side];
       if (!s.hand.includes(code)) return state;
@@ -802,8 +1119,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   activateSupport: (side: Side, index: number) =>
     set((state) => {
-      // Mismos guards de exclusión mutua que activar un personaje (SPEC-020/021).
-      if (state.resolve?.pendingEffect) return state;
+      // Mismos guards de exclusión mutua que activar un personaje (SPEC-020/021/023).
+      if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
       if (state.playUpgrade !== null) return state;
       const s = state.sides[side];
       const code = s.supports[index];
@@ -836,7 +1153,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   discardCard: (side: Side, code: string) =>
     set((state) => {
       if (state.outcome !== null) return state;
-      if (state.resolve?.pendingEffect) return state;
+      if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
       if (state.playUpgrade !== null) return state;
       const s = state.sides[side];
       const index = s.hand.indexOf(code);
@@ -869,9 +1186,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       characters: player.characters,
       damage: player.damage,
       shields: player.shields,
+      pool: player.pool,
     };
     const extraRerolls = DIFFICULTY_SETTINGS[state.difficulty].extraRerolls;
-    const action = nextAutomatonAction(automatonEnemy, automatonPlayer, enemy.rerollsUsed, extraRerolls);
+    const action = nextAutomatonAction(
+      automatonEnemy,
+      automatonPlayer,
+      enemy.rerollsUsed,
+      extraRerolls,
+      poolDieSides,
+    );
 
     const batchTotal = (dieIndices: number[]): number =>
       dieIndices.reduce((sum, i) => {
@@ -945,14 +1269,60 @@ export const useGameStore = create<GameState>((set, get) => ({
         });
         return;
       }
+      case 'focus': {
+        const label = batchLabel(action.dieIndices);
+        set((s) => {
+          const res = applyFocus(s.sides, 'enemy', action.dieIndices, action.targets, action.costReceiverIndex);
+          if (res === null || res === 'no-base' || res === 'insufficient') return s;
+          return {
+            sides: res.sides,
+            outcome: res.outcome,
+            lastEnemyAction: `El enemigo usa focus (${label}) y gira ${action.targets.length} dado(s) propio(s).`,
+          };
+        });
+        return;
+      }
+      case 'rerollDice': {
+        const label = batchLabel(action.dieIndices);
+        set((s) => {
+          const res = applyRerollDice(s.sides, 'enemy', action.dieIndices, action.targets, action.costReceiverIndex);
+          if (res === null || res === 'no-base' || res === 'insufficient') return s;
+          return {
+            sides: res.sides,
+            outcome: res.outcome,
+            lastEnemyAction: `El enemigo usa reroll de dado (${label}) sobre ${action.targets.length} dado(s) del jugador.`,
+          };
+        });
+        return;
+      }
+      case 'special': {
+        const label = batchLabel(action.dieIndices);
+        set((s) => {
+          const res = resolvePlayerBatch(
+            s.sides,
+            { side: 'enemy', symbol: 'special', marked: action.dieIndices },
+            null,
+            action.costReceiverIndex,
+          );
+          if (res === null || res === 'no-base' || res === 'insufficient') return s;
+          return {
+            sides: res.sides,
+            outcome: res.outcome,
+            lastEnemyAction: `El enemigo resuelve ${label} (habilidad especial, pendiente de implementar).`,
+          };
+        });
+        return;
+      }
       case 'reroll': {
         set((s) => {
           const e = s.sides.enemy;
+          // Busca la definición del dado por `code` vía caché (SPEC-023), no por characterIndex:
+          // los dados de mejora/apoyo (characterIndex -1 o compartido con su anfitrión) rompían
+          // aquí antes (bug detectado por revisor-specs al revisar SPEC-023).
           const pool = e.pool.map((d, i) => {
             if (!action.dieIndices.includes(i)) return d;
-            const character = e.characters[d.characterIndex];
-            const dieDef = character.dice[d.dieIndex];
-            return { ...d, face: rollDie(dieDef) };
+            const sides = poolDieSides(d);
+            return sides ? { ...d, face: rollDie({ sides: [...sides] }) } : d;
           });
           const rerollsUsed: RerollsUsed =
             action.kind === 'free'

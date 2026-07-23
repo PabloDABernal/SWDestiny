@@ -14,8 +14,9 @@ export function parseDamage(face: string): number | null {
 /** Tipo de daño de una cara. Melee, ranged e indirecto son símbolos distintos (SPEC-008a). */
 export type DamageKind = 'melee' | 'ranged' | 'indirect';
 
-/** Símbolo resoluble de una cara sin coste ni modificador (SPEC-008a). */
-export type DieSymbol = DamageKind | 'shield' | 'resource';
+/** Símbolo resoluble de una cara sin coste ni modificador (SPEC-008a; focus/reroll/especial desde
+ * SPEC-023). */
+export type DieSymbol = DamageKind | 'shield' | 'resource' | 'focus' | 'reroll' | 'special';
 
 /** Distingue el símbolo de daño y su cantidad, o null si no es cara de daño (sin coste). */
 export function parseDamageDie(face: string): { kind: DamageKind; amount: number } | null {
@@ -57,6 +58,12 @@ export function parseCostedFace(
  * Cara resoluble por el jugador, completa (SPEC-010): modificador `+`, coste de recurso `<n>` y
  * coste de daño indirecto propio `i<n>`. Formato `[+]<valor><SÍMBOLO>[i]<coste>`.
  * Función SEPARADA de los parsers del autómata (parseDamage/parseShield/parseResource).
+ *
+ * Focus (`Fo`) y reroll de dado (`Rr`) siguen el mismo formato con valor (SPEC-023, RR pg 12).
+ * Especial (`Sp`) tiene valor fijo 0 (no modificable) y se reconoce aparte: formato `Sp[coste]`,
+ * sin modificador ni coste indirecto. El código exacto de estas tres caras en ARH DB no se ha
+ * podido confirmar contra datos reales (sin acceso de red al importar esta spec); revisar contra
+ * un mazo real y ajustar el regex si no coincide (ver docs/SDD.md).
  */
 export function parsePlayerFace(face: string): {
   symbol: DieSymbol;
@@ -65,7 +72,17 @@ export function parsePlayerFace(face: string): {
   indirectCost: number;
   isModifier: boolean;
 } | null {
-  const m = /^(\+)?(\d+)(MD|RD|ID|Sh|R)(i)?(\d+)?$/.exec(face);
+  const special = /^Sp(\d+)?$/.exec(face);
+  if (special) {
+    return {
+      symbol: 'special',
+      amount: 0,
+      resourceCost: special[1] ? Number(special[1]) : 0,
+      indirectCost: 0,
+      isModifier: false,
+    };
+  }
+  const m = /^(\+)?(\d+)(MD|RD|ID|Sh|Rr|R|Fo)(i)?(\d+)?$/.exec(face);
   if (!m) return null;
   const token = m[3];
   const symbol: DieSymbol =
@@ -77,7 +94,11 @@ export function parsePlayerFace(face: string): {
           ? 'indirect'
           : token === 'Sh'
             ? 'shield'
-            : 'resource';
+            : token === 'R'
+              ? 'resource'
+              : token === 'Fo'
+                ? 'focus'
+                : 'reroll';
   const cost = m[5] ? Number(m[5]) : 0;
   const indirect = m[4] === 'i';
   return {
@@ -90,8 +111,8 @@ export function parsePlayerFace(face: string): {
 }
 
 /**
- * Símbolo resoluble de una cara para el "modo resolver" del jugador (008a/008b/010), o null si no es
- * seleccionable (blanco, especial, descarte, focus, disrupt).
+ * Símbolo resoluble de una cara para el "modo resolver" del jugador (008a/008b/010, ampliado con
+ * focus/reroll/especial en SPEC-023), o null si no es seleccionable (blanco, disrupt, descarte).
  */
 export function dieSymbol(face: string): DieSymbol | null {
   return parsePlayerFace(face)?.symbol ?? null;

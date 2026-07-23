@@ -52,6 +52,7 @@ function playerSide(over: Partial<AutomatonOpponent> = {}): AutomatonOpponent {
     characters: [ch('Jugador A', 11), ch('Jugador B', 6)],
     damage: [0, 0],
     shields: [0, 0],
+    pool: [],
     ...over,
   };
 }
@@ -431,6 +432,92 @@ describe('nextAutomatonAction — recurso', () => {
     expect(next(enemy, playerSide(), noRerollsUsed).type).toBe('resource');
     const enemyRD = enemySide({ pool: [die(0, '1RD')] });
     expect(next(enemyRD, playerSide(), noRerollsUsed).type).toBe('attack');
+  });
+});
+
+describe('nextAutomatonAction — focus, reroll de dado y especial (SPEC-023)', () => {
+  it('focus gira el mejor dado propio disponible a su mejor cara (daño > escudo > recurso)', () => {
+    const enemy = enemySide({
+      activated: [true, true],
+      pool: [die(0, '2Fo'), die(1, '-')],
+    });
+    const dieSidesOf = (d: PooledDie) => (d.code === 'c1' ? ['3MD', '1R', 'Sp', '-', '-', '-'] : null);
+    const action = nextAutomatonAction(enemy, playerSide(), noRerollsUsed, NORMAL_EXTRA_REROLLS, dieSidesOf);
+    expect(action).toEqual({
+      type: 'focus',
+      dieIndices: [0],
+      targets: [{ poolIndex: 1, face: '3MD' }],
+      costReceiverIndex: null,
+    });
+  });
+
+  it('focus sin ningún dado propio que mejore no es acción legal (pasa a la siguiente fila)', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [die(0, '1Fo')] });
+    const action = nextAutomatonAction(enemy, playerSide(), noRerollsUsed, NORMAL_EXTRA_REROLLS, () => null);
+    expect(action.type).toBe('pass');
+  });
+
+  it('reroll de dado apunta al dado de daño sin resolver del jugador con más cantidad', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [die(0, '1Rr')] });
+    const player = playerSide({ pool: [die(0, '1MD'), die(1, '3MD')] });
+    const action = next(enemy, player, noRerollsUsed);
+    expect(action).toEqual({
+      type: 'rerollDice',
+      dieIndices: [0],
+      targets: [{ side: 'player', poolIndex: 1 }],
+      costReceiverIndex: null,
+    });
+  });
+
+  it('reroll de dado sin ningún dado de daño del jugador no es acción legal', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [die(0, '1Rr')] });
+    const action = next(enemy, playerSide({ pool: [die(0, '1R')] }), noRerollsUsed);
+    expect(action.type).toBe('pass');
+  });
+
+  it('especial se resuelve (mismo placeholder) si no queda ninguna acción mejor', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [die(0, 'Sp')] });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toEqual({
+      type: 'special',
+      dieIndices: [0],
+      costReceiverIndex: null,
+    });
+  });
+
+  it('recurso tiene prioridad sobre focus/reroll de dado/especial', () => {
+    const enemy = enemySide({
+      activated: [true, true],
+      pool: [die(0, '1R'), die(0, '1Fo'), die(0, '1Rr'), die(0, 'Sp')],
+    });
+    expect(next(enemy, playerSide(), noRerollsUsed).type).toBe('resource');
+  });
+
+  it('focus > reroll de dado > especial > reroll de blancos, en ese orden', () => {
+    const withFocusTarget = enemySide({
+      activated: [true, true],
+      pool: [die(0, '1Fo'), die(1, '-'), die(0, '1Rr'), die(0, 'Sp'), die(0, '-'), die(1, '-')],
+    });
+    const dieSidesOf = (d: PooledDie) => (d.code === 'c1' && d.dieIndex === 0 ? ['3MD', '-', '-', '-', '-', '-'] : null);
+    expect(
+      nextAutomatonAction(withFocusTarget, playerSide(), noRerollsUsed, NORMAL_EXTRA_REROLLS, dieSidesOf).type,
+    ).toBe('focus');
+
+    const withRerollDieTarget = enemySide({
+      activated: [true, true],
+      pool: [die(0, '1Rr'), die(0, 'Sp'), die(0, '-'), die(1, '-')],
+    });
+    expect(next(withRerollDieTarget, playerSide({ pool: [die(0, '2MD')] }), noRerollsUsed).type).toBe(
+      'rerollDice',
+    );
+
+    const withOnlySpecial = enemySide({
+      activated: [true, true],
+      pool: [die(0, 'Sp'), die(0, '-'), die(1, '-')],
+    });
+    expect(next(withOnlySpecial, playerSide(), noRerollsUsed).type).toBe('special');
+
+    const onlyBlanks = enemySide({ activated: [true, true], pool: [die(0, '-'), die(1, '-')] });
+    expect(next(onlyBlanks, playerSide(), noRerollsUsed).type).toBe('reroll');
   });
 });
 

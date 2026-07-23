@@ -14,6 +14,9 @@ import {
  * sus escudos absorben antes que la vida, así que el margen real es escudos + vida restante. */
 export interface AutomatonOpponent extends SideView {
   shields: number[];
+  /** Pool del rival (SPEC-023): permite al autómata elegir qué dado del jugador anular con Reroll
+   * de dado. Solo se lee para candidatos de daño sin resolver; no se muta desde aquí. */
+  pool: PooledDie[];
 }
 
 /** Nivel de dificultad elegido por el jugador (SPEC-015), controla las trampas del autómata. */
@@ -52,6 +55,18 @@ export interface RerollsUsed {
   extra: number;
 }
 
+/** Un dado propio girado por Focus a la cara elegida (SPEC-023). */
+export interface FocusTarget {
+  poolIndex: number;
+  face: string;
+}
+
+/** Un dado (de cualquier pool) elegido como objetivo de Reroll de dado (SPEC-023). */
+export interface RerollDieTarget {
+  side: 'enemy' | 'player';
+  poolIndex: number;
+}
+
 export type AutomatonAction =
   | {
       type: 'attack';
@@ -63,6 +78,9 @@ export type AutomatonAction =
   | { type: 'shield'; dieIndices: number[]; targetIndex: number; costReceiverIndex: number | null }
   | { type: 'activate'; index: number }
   | { type: 'resource'; dieIndices: number[]; costReceiverIndex: number | null }
+  | { type: 'focus'; dieIndices: number[]; targets: FocusTarget[]; costReceiverIndex: number | null }
+  | { type: 'rerollDice'; dieIndices: number[]; targets: RerollDieTarget[]; costReceiverIndex: number | null }
+  | { type: 'special'; dieIndices: number[]; costReceiverIndex: number | null }
   | { type: 'reroll'; dieIndices: number[]; kind: 'free' | 'extra' }
   | { type: 'pass' };
 
@@ -180,6 +198,29 @@ function indirectCostReceiverIndex(side: AutomatonSide, cost: number): number {
 const isDamageSymbol = (s: DieSymbol) => s === 'melee' || s === 'ranged' || s === 'indirect';
 const isShieldSymbol = (s: DieSymbol) => s === 'shield';
 const isResourceSymbol = (s: DieSymbol) => s === 'resource';
+const isFocusSymbol = (s: DieSymbol) => s === 'focus';
+const isRerollDieSymbol = (s: DieSymbol) => s === 'reroll';
+const isSpecialSymbol = (s: DieSymbol) => s === 'special';
+
+/** Mejor cara disponible de un dado candidato para Focus (SPEC-023): sigue la misma prioridad que
+ * el resto de la tabla (daño > escudo > recurso). null si ninguna de sus 6 caras mejora nada. */
+function bestFocusFace(sides: string[]): string | null {
+  let bestDamage: { face: string; amount: number } | null = null;
+  let bestShield: { face: string; amount: number } | null = null;
+  let bestResource: { face: string; amount: number } | null = null;
+  for (const face of sides) {
+    const p = parsePlayerFace(face);
+    if (!p || p.isModifier) continue;
+    if (isDamageSymbol(p.symbol) && (!bestDamage || p.amount > bestDamage.amount)) {
+      bestDamage = { face, amount: p.amount };
+    } else if (isShieldSymbol(p.symbol) && (!bestShield || p.amount > bestShield.amount)) {
+      bestShield = { face, amount: p.amount };
+    } else if (isResourceSymbol(p.symbol) && (!bestResource || p.amount > bestResource.amount)) {
+      bestResource = { face, amount: p.amount };
+    }
+  }
+  return (bestDamage ?? bestShield ?? bestResource)?.face ?? null;
+}
 
 /** Índices de personajes no-KO que cumplen `filter`, ordenados de menor a mayor vida restante
  * (desempate determinista: mismo índice de partida gana por ser el primero, `sort` es estable). */
@@ -218,6 +259,44 @@ function batchIndirectCost(pool: PooledDie[], dieIndices: number[]): number {
   return dieIndices.reduce((sum, i) => sum + (parsePlayerFace(pool[i].face)?.indirectCost ?? 0), 0);
 }
 
+/** Suma de valores ("cuántos dados puedo girar/rerollear") de una tanda ya combinada (SPEC-023). */
+function batchAmountTotal(pool: PooledDie[], dieIndices: number[]): number {
+  return dieIndices.reduce((sum, i) => sum + (parsePlayerFace(pool[i].face)?.amount ?? 0), 0);
+}
+
+/** Dados propios sin resolver (excluidos los de la propia tanda de Focus) que Focus puede mejorar,
+ * ordenados por mayor mejora primero y desempate por posición en el pool (SPEC-023). */
+function focusCandidates(
+  pool: PooledDie[],
+  excludeIndices: Set<number>,
+  dieSidesOf: (die: PooledDie) => string[] | null,
+): FocusTarget[] {
+  const out: (FocusTarget & { amount: number })[] = [];
+  pool.forEach((d, i) => {
+    if (excludeIndices.has(i)) return;
+    const sides = dieSidesOf(d);
+    if (!sides) return;
+    const face = bestFocusFace(sides);
+    if (!face) return;
+    out.push({ poolIndex: i, face, amount: parsePlayerFace(face)?.amount ?? 0 });
+  });
+  out.sort((a, b) => b.amount - a.amount || a.poolIndex - b.poolIndex);
+  return out.map(({ poolIndex, face }) => ({ poolIndex, face }));
+}
+
+/** Dados de daño del jugador sin resolver, de mayor a menor cantidad (desempate por posición en el
+ * pool), candidatos a que el autómata los anule con Reroll de dado (SPEC-023). */
+function playerDamageDieCandidates(pool: PooledDie[]): number[] {
+  return pool
+    .map((d, i) => ({ i, face: parsePlayerFace(d.face) }))
+    .filter(
+      (c): c is { i: number; face: NonNullable<ReturnType<typeof parsePlayerFace>> } =>
+        c.face !== null && isDamageSymbol(c.face.symbol),
+    )
+    .sort((a, b) => b.face.amount - a.face.amount || a.i - b.i)
+    .map((c) => c.i);
+}
+
 /**
  * Elige el objetivo y el subconjunto de `dieIndices` para esta pulsación (SPEC-014): recorre
  * `candidates` (orden de mayor prioridad primero) y se queda con el primero que acepte al menos un
@@ -249,6 +328,10 @@ export function nextAutomatonAction(
   player: AutomatonOpponent,
   rerollsUsed: RerollsUsed,
   extraRerolls: number,
+  /** Las 6 caras del dado (para elegir la mejor cara al girar con Focus, SPEC-023), o null si no se
+   * encuentra su definición. Inyectado para mantener esta función pura y testeable sin depender de
+   * la caché de cartas (`readCache`) del store. */
+  dieSidesOf: (die: PooledDie) => string[] | null = () => null,
 ): AutomatonAction {
   const hasNonKoAlly = enemy.characters.some((c, i) => !isKO(c, enemy.damage[i] ?? 0));
 
@@ -312,6 +395,45 @@ export function nextAutomatonAction(
     const costReceiverIndex =
       resourceBatch.indirectCost > 0 ? indirectCostReceiverIndex(enemy, resourceBatch.indirectCost) : null;
     return { type: 'resource', dieIndices: resourceBatch.dieIndices, costReceiverIndex };
+  }
+
+  // 5. Focus combinado (SPEC-023): gira, hasta el valor combinado disponible, sus propios dados sin
+  // resolver a su mejor cara (misma prioridad daño > escudo > recurso). Si ningún dado propio mejora
+  // girándolo, no es una acción legal (se prueba la siguiente fila).
+  const focusBatch = combineAutomatonBatch(enemy.pool, isFocusSymbol, enemy.resources, hasNonKoAlly);
+  if (focusBatch !== null) {
+    const budget = batchAmountTotal(enemy.pool, focusBatch.dieIndices);
+    const targets = focusCandidates(enemy.pool, new Set(focusBatch.dieIndices), dieSidesOf).slice(0, budget);
+    if (targets.length > 0) {
+      const costReceiverIndex =
+        focusBatch.indirectCost > 0 ? indirectCostReceiverIndex(enemy, focusBatch.indirectCost) : null;
+      return { type: 'focus', dieIndices: focusBatch.dieIndices, targets, costReceiverIndex };
+    }
+  }
+
+  // 6. Reroll de dado combinado (SPEC-023): re-tira, hasta el valor combinado disponible, los dados
+  // de daño sin resolver del jugador que más le convenga anular (mayor cantidad primero). Si el
+  // jugador no tiene ningún dado de daño pendiente, no es acción legal (se prueba la siguiente fila).
+  const rerollDieBatch = combineAutomatonBatch(enemy.pool, isRerollDieSymbol, enemy.resources, hasNonKoAlly);
+  if (rerollDieBatch !== null) {
+    const budget = batchAmountTotal(enemy.pool, rerollDieBatch.dieIndices);
+    const targets: RerollDieTarget[] = playerDamageDieCandidates(player.pool)
+      .slice(0, budget)
+      .map((poolIndex) => ({ side: 'player', poolIndex }));
+    if (targets.length > 0) {
+      const costReceiverIndex =
+        rerollDieBatch.indirectCost > 0 ? indirectCostReceiverIndex(enemy, rerollDieBatch.indirectCost) : null;
+      return { type: 'rerollDice', dieIndices: rerollDieBatch.dieIndices, targets, costReceiverIndex };
+    }
+  }
+
+  // 7. Especial combinado (SPEC-023): placeholder sin efecto real, se "resuelve" igual que el
+  // jugador (mismo aviso/consumo) si no queda ninguna acción de prioridad más alta disponible.
+  const specialBatch = combineAutomatonBatch(enemy.pool, isSpecialSymbol, enemy.resources, hasNonKoAlly);
+  if (specialBatch !== null) {
+    const costReceiverIndex =
+      specialBatch.indirectCost > 0 ? indirectCostReceiverIndex(enemy, specialBatch.indirectCost) : null;
+    return { type: 'special', dieIndices: specialBatch.dieIndices, costReceiverIndex };
   }
 
   const blanks = blankDieIndices(enemy.pool);
