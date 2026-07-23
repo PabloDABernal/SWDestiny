@@ -4,9 +4,11 @@ import type { DeckSlot } from './parseDeck';
 // Tabla nombre-de-set (tal cual aparece en el "text file" de ARH DB) → 2 dígitos de set.
 // Validada contra db.swdrenewedhope.com/api/public/card/<código> el 2026-07-21 (SPEC-017);
 // "Transformations" añadido el 2026-07-22 (código real confirmado por el usuario:
-// db.swdrenewedhope.com/card/13007A → prefijo 13); "Display of Power" añadido el 2026-07-23
-// (código real confirmado por el usuario: db.swdrenewedhope.com/card/22099 → prefijo 22,
-// carta "Hangar Bay, Jabiim (Display of Power #99)").
+// db.swdrenewedhope.com/card/13007A → prefijo 13); "Display of Power" y "Awaiting Fate"
+// añadidos el 2026-07-23 (códigos reales confirmados por el usuario:
+// db.swdrenewedhope.com/card/22099 → prefijo 22, "Hangar Bay, Jabiim (Display of Power #99)";
+// db.swdrenewedhope.com/card/24003 → prefijo 24, "Darth Plagueis, The Wise (Awaiting Fate #3)").
+// El salto 13→22→24 sugiere sets intermedios (14-21, 23) todavía sin confirmar (ver BACKLOG).
 // Un set fuera de esta tabla es un error; ampliar aquí cuando ARH publique sets nuevos.
 const SET_CODES: Record<string, string> = {
   Awakenings: '01',
@@ -23,6 +25,7 @@ const SET_CODES: Record<string, string> = {
   'Covert Missions': '12',
   Transformations: '13',
   'Display of Power': '22',
+  'Awaiting Fate': '24',
 };
 
 // Línea de carta: nombre (puede llevar comas y paréntesis) + último paréntesis "(<Set> #<n>)".
