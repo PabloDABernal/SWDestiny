@@ -2,6 +2,9 @@
 
 Ideas que surgen durante la implementación. Una línea por idea. NO se implementan hasta que se conviertan en spec.
 
+- Turnos reales alternados (RR pg 19-22): sustituir el estand-in actual de "Nueva ronda"/"Turno enemigo" (botones sueltos) por la fase de acción real — turnos de una acción cada uno, empezando quien controle el battlefield (sin battlefield implementado todavía, a decidir quién empieza), hasta que ambos pasen seguido. Reordenado por decisión del usuario (2026-07-23) para ir justo después de SPEC-024 (reparto inicial/mulligan), antes de retomar la capa de texto/keywords de v4. Requiere spec propia (probablemente varias, sin subdividir un mismo número).
+- Símbolos de dado que faltan por implementar: caras que quitan recursos o cartas (de la mano) al rival (RR pg 12/13, confirmar el patrón exacto contra ARH DB, similar a como se hizo con el coste de recurso en SPEC-008b). Detectado por el usuario jugando el 2026-07-23; pendiente de spec propia.
+
 - Visibilidad del recuento "Mazo: N": hoy es texto gris pequeño (`.draw-pile__count`, `src/App.tsx`/`src/styles.css`) y el usuario no lo encuentra a simple vista (le pasó en el playtest de SPEC-016 y SPEC-017). Darle más contraste/tamaño o ponerlo junto al nombre del bando. (Detectado en SPEC-017, 2026-07-22.)
 
 - Visibilidad de los dados marcados/seleccionados en el pool: `.pool-die--selected` (`src/styles.css`) hoy solo cambia el borde/sombra del dado, y al usuario le cuesta distinguir a simple vista qué dados están marcados (fuente de Focus/Reroll, objetivo ya girado/elegido para rerollear, etc.) frente a los que no. Revisar contraste, tamaño o algún indicador más claro (icono, fondo distinto) cuando se aborde pulido general de UI. (Detectado jugando SPEC-023, 2026-07-23.)

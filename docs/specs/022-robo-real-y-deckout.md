@@ -1,6 +1,6 @@
 # SPEC-022: Robo real (hasta tamaño de mano) y deck-out real
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** v3 — mano, mazo, robo, condición de victoria por deck-out (sección 5, línea
 153). Corrige las piezas provisionales de SPEC-018/019 con la regla real del reglamento (RR pg
 19-20, 22, 25 — ver `docs/reglamento/03-areas-de-juego.md`, `04-estructura-y-customizacion.md`,
@@ -118,4 +118,8 @@ mantenimiento) y solo si un bando se queda **sin cartas en mano Y sin mazo a la 
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+2026-07-23: playtest manual OK (usuario, confirmado tras jugar varias rondas): robo hasta tamaño de
+mano en "Nueva ronda", descarte libre de cartas, "Robar" manual sin límite. De paso, jugando esta
+spec salieron dos bugs ajenos a ella pero relacionados con mano/mazo, ya corregidos: el modo "elige
+objetivo" de una mejora se quedaba atascado si fallaba por recursos insuficientes, y "Reset total"
+no recuperaba las cartas descartadas (ver `SideState.discardPile`, commit del mismo día).

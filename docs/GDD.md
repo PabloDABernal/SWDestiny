@@ -164,6 +164,15 @@ spec posterior, una vez exista un consumidor real de recursos.
 - **v4:** cartas jugables por capas (mejoras/apoyos "vanilla" → focus/reroll/especial → texto de
   cartas y keywords, empezando por los más simples como Ambush).
 - **v5:** el autómata juega cartas (con trampas de coste) + campo de batalla.
+- **Reordenado 2026-07-23 (decisión del usuario):** antes de seguir con la capa de texto/keywords de
+  v4, dos piezas transversales que faltaban de v2/v3 y que hacen falta para jugar una partida real
+  sin recurrir tanto a los botones sueltos actuales: **reparto inicial y mulligan** (al arrancar
+  partida, repartir 5 cartas a cada bando con opción de redraw, RR pg 19) y **turnos reales
+  alternados** (sustituir "Nueva ronda"/"Turno enemigo" por la fase de acción con turnos de 1 acción
+  cada uno, RR pg 19-22 — ver `docs/reglamento/04-estructura-y-customizacion.md`). Sin límite
+  artificial de mano: el reglamento real no tiene tope máximo (solo roba-hasta-5 en mantenimiento),
+  así que no se añade ninguno propio del proyecto. También quedan pendientes símbolos de dado que
+  faltan por implementar (quitar recursos/cartas al rival) — ver BACKLOG.
 
 ### Mazo de robo (primera pieza de v3, SPEC-016)
 
@@ -251,6 +260,19 @@ cara disponible siguiendo esa misma prioridad (daño > escudo > recurso; si ning
 gasta). Reroll(dado) automático apunta a los dados ya tirados del jugador que más le convenga
 anular. Especial automático también se "resuelve" (mismo placeholder) si no le queda ninguna acción
 mejor.
+
+### Reparto inicial y mulligan (primera pieza del bloque de turnos reales, SPEC-024)
+
+Botón nuevo **"Nueva partida"**, habilitado solo cuando ambos bandos tienen mazo importado y
+mano vacía (estado fresco tras importar o "Reset total"). Al pulsarlo, reparte **5 cartas** a
+cada bando desde su mazo de robo (RR pg 19); si el mazo de robo tiene menos de 5, reparte las que
+haya. El jugador entra entonces en modo **mulligan**: ve su mano de 5 y marca las cartas que
+quiere devolver al mazo (0 a 5); al confirmar, esas cartas vuelven al mazo de robo (rebarajado
+junto con el resto) y roba las mismas que devolvió, **una sola vez** (RR pg 19, "Redraw"). Hasta
+confirmar el mulligan (aunque sea con 0 cartas marcadas, equivalente a pasar), el resto de
+acciones (Activar, jugar cartas, Nueva ronda, Turno enemigo...) quedan bloqueadas, mismo patrón de
+exclusión mutua que ya usa `playUpgrade`. El enemigo (autómata) nunca hace mulligan: se queda con
+su mano inicial de 5 tal cual.
 
 ## 6. Fuera de alcance (explícito, hasta que se decida lo contrario)
 
