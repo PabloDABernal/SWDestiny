@@ -10,8 +10,10 @@ capa de texto/keywords de v4.
 
 Un botón nuevo **"Nueva partida"** reparte 5 cartas a cada bando desde su mazo de robo, en cuanto
 ambos tienen mazo importado y la mano vacía. Tras el reparto, el jugador puede hacer **mulligan**:
-elegir qué cartas de su mano de 5 devolver al mazo (0 a 5) y robar las mismas de vuelta, una sola
-vez por partida. El enemigo no hace mulligan, se queda con su mano inicial tal cual.
+elegir qué cartas de su mano de 5 devolver al mazo (0 a 5); esas cartas vuelven al mazo, que se
+rebaraja, y el jugador roba de vuelta **la misma cantidad** de cartas que devolvió (no
+necesariamente las mismas cartas, el mazo se ha rebarajado) — una sola vez por partida. El enemigo
+no hace mulligan, se queda con su mano inicial tal cual.
 
 ## Criterios de aceptación
 
@@ -49,14 +51,24 @@ vez por partida. El enemigo no hace mulligan, se queda con su mano inicial tal c
 
 - Mazo de robo con menos de 5 cartas al pulsar "Nueva partida": reparte las que haya, la mano queda
   por debajo de 5, sin error ni bloqueo.
-- Jugador marca las 5 cartas para mulligan: las 5 vuelven al mazo, se rebaraja, y roba 5 nuevas (o
-  menos, si el mazo resultante tiene menos de 5 tras la devolución — aunque devolver y robar el mismo
-  número siempre deja el tamaño de mazo igual que antes de "Nueva partida", así que esto no debería
-  poder pasar salvo que el mazo ya estuviera corto desde el reparto inicial).
+- Jugador marca las 5 cartas para mulligan: las 5 vuelven al mazo, se rebaraja, y roba 5 de vuelta.
+  Si el mazo de robo resultante tiene menos de 5 (solo puede pasar si ya estaba corto desde el
+  reparto inicial), reparte las que haya, igual que el reparto inicial — sin error ni caso especial.
 - Jugador confirma mulligan con 0 cartas marcadas: no se mueve ninguna carta, pero el mulligan queda
   "usado" (no se puede volver a abrir).
-- Recarga de página con el mulligan pendiente de confirmar: a decidir contra el SDD si este estado
-  (mulligan pendiente) se persiste o no — ver Notas técnicas.
+- El estado de "mulligan pendiente de confirmar" **no se persiste** en localStorage: es estado de
+  partida (como `resolve`/`playUpgrade` hoy), no de mazo. Una recarga de página a mitad de mulligan
+  pierde ese estado; la mano ya repartida sí persiste (`hand`, igual que siempre), así que tras
+  recargar el jugador ve su mano de 5 pero sin el modo mulligan activo — no puede volver a abrirlo
+  (ya se "gastó" el reparto), ni tampoco queda bloqueado sin poder jugar. Aceptado como
+  comportamiento igual de imperfecto que el resto de estado de partida no persistido en el proyecto.
+- Bando cuyo mazo de robo tiene 0 cartas de partida (import atípico, sin cartas de no-personaje):
+  "Nueva partida" le reparte 0. Ese bando queda con mano=0 y mazo=0 a la vez, pero **esta spec no
+  comprueba deck-out** — esa comprobación sigue siendo exclusiva de "Nueva ronda" (SPEC-022); "Nueva
+  partida" solo reparte, no evalúa fin de partida. El botón "Nueva partida" puede quedar habilitado
+  indefinidamente para ese bando (mano sigue en 0 tras repartir 0), pulsarlo de nuevo simplemente
+  vuelve a repartir 0: inofensivo, no bloquea nada. Mismo tipo de inconsistencia ya aceptada entre
+  "Robar" y "Nueva ronda" en SPEC-022.
 - "Nueva partida" pulsada con un solo bando en estado fresco (p. ej. jugador con mano vacía, enemigo
   con mano ya repartida de una partida anterior sin "Reset total" de por medio): el botón queda
   deshabilitado hasta que ambos bandos estén en estado fresco (mazo importado + mano vacía).
@@ -71,13 +83,16 @@ vez por partida. El enemigo no hace mulligan, se queda con su mano inicial tal c
 - Nueva acción de store, p. ej. `startGame()`: reparte 5 cartas a cada bando (usa la misma mecánica
   de robo que ya existe, sin pasar por `newRound()` para no re-tirar dados/dar recursos/etc.).
 - Nuevo estado de "mulligan pendiente" (p. ej. `mulligan: { marked: number[] } | null` en el store,
-  análogo a `playUpgrade`), que bloquea las mismas acciones que ya bloquea `playUpgrade` (mismos
-  guards a replicar: `activate`, `selectDie`, `selectUpgradeCard`, `playSupport`, `discardCard`,
-  `newRound` con el botón "Turno enemigo").
-- A confirmar contra el SDD: si el estado de "mulligan pendiente" se persiste en localStorage (como
-  `hand`/`drawPile`) o es puramente de partida (como `activated`) — probablemente lo segundo, dado
-  que el SDD ya establece que "pools, activaciones, daño, fin de partida no se persiste", pero
-  requiere decisión explícita antes de implementar.
+  análogo a `playUpgrade`), que **no se persiste** en localStorage (sigue el mismo patrón que
+  `resolve`/`playUpgrade` hoy: es estado de partida, no de mazo — ver Casos límite).
+  - Guards a añadir: `activate`, `selectDie`, `selectUpgradeCard`, `playSupport`, `discardCard` ya
+    tienen guards por `playUpgrade`/`resolve.pendingEffect`/`resolve.focusFaceChoice` en
+    `src/store/gameStore.ts` — añadir ahí también `state.mulligan !== null`, mismo patrón.
+  - **Ojo**: hoy `playUpgrade` (ni `resolve`) **no bloquea `newRound()`** — ni en el store ni en la
+    UI (`src/App.tsx`, el botón "Nueva ronda" solo se deshabilita con `outcome !== null`; el único
+    guard existente por `playUpgrade` está en el botón "Turno enemigo"). El guard de `mulligan` en
+    `newRound()` y en el botón "Nueva ronda" hay que **crearlo de cero** en esta spec, no es una
+    replicación de algo que ya exista para ese botón.
 - El botón "Nueva partida" convive con "Reset total"/"Nueva ronda" ya existentes (`src/App.tsx`);
   su condición de habilitado depende de `hand.length === 0` en ambos bandos y de que ambos tengan
   `characters.length > 0`.
