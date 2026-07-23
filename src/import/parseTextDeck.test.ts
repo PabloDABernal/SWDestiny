@@ -66,6 +66,12 @@ describe('parseTextDeck', () => {
     ]);
   });
 
+  it('reconoce el set Display of Power (código 22, confirmado el 2026-07-23)', () => {
+    expect(parseTextDeck('Hangar Bay, Jabiim (Display of Power #99)')).toEqual([
+      { code: '22099', qty: 1 },
+    ]);
+  });
+
   it('ignora las cartas de la sección PLOT sin intentar resolverlas (dos caras A/B, SPEC-017)', () => {
     const slots = parseTextDeck(
       'CHARACTER\n---------\n2x Clone Trooper (Legacies #38)\n\nPLOT\n----\nRescue Han Solo (Transformations #15)\n',
