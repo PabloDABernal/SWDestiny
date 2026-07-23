@@ -227,6 +227,31 @@ keywords. No hay forma de destruir/dañar un apoyo en esta spec: se queda en jue
 total", que lo devuelve al mazo de robo rebarajado (igual que las mejoras, SPEC-020). Solo el
 jugador juega cartas; el autómata sigue sin poder hacerlo hasta v5.
 
+### Focus, reroll y especial (tercera pieza de v4, SPEC-023)
+
+Tres símbolos de dado nuevos, resolubles tanto por el jugador como por el autómata (RR pg 12):
+
+- **Focus**: gira hasta *n* dados **propios** sin resolver (de cualquier personaje, mejora o apoyo
+  del propio bando) a la cara que se elija libremente, salvo el/los dado(s) de focus que se están
+  usando para activar la acción. Girar un dado no lo resuelve: se queda en el pool mostrando la
+  nueva cara, disponible para resolverse (o volver a girarse) después. Puede traer coste de
+  recursos como cualquier otra cara; se paga igual que daño/escudo/recurso.
+- **Reroll** (de dado — distinto del reroll de blancos que ya usa el autómata): vuelve a tirar
+  hasta *n* dados **de cualquier pool** (propio o rival). Distinta de la acción de turno "descartar
+  una carta de la mano para rerollear" (RR pg 21, pendiente — ver BACKLOG); esa otra acción, cuando
+  exista, solo afectará al propio pool. Puede traer coste de recursos igual que Focus.
+- **Especial**: usa la habilidad especial impresa en la carta del dado (RR pg 12). Como el texto de
+  cartas/keywords todavía no existe (siguiente capa de v4), esta spec resuelve la cara como
+  **placeholder**: al pulsarla se muestra un aviso genérico ("habilidad especial de la carta,
+  pendiente de implementar") y el dado se consume, sin ningún efecto real de juego.
+
+El autómata amplía su tabla de prioridades: daño → escudo → activar → recurso → **focus →
+reroll(dado) → especial** → reroll de blancos → pasar. Focus automático gira el dado a su mejor
+cara disponible siguiendo esa misma prioridad (daño > escudo > recurso; si ninguna aplica, no lo
+gasta). Reroll(dado) automático apunta a los dados ya tirados del jugador que más le convenga
+anular. Especial automático también se "resuelve" (mismo placeholder) si no le queda ninguna acción
+mejor.
+
 ## 6. Fuera de alcance (explícito, hasta que se decida lo contrario)
 
 - Multijugador, alianzas, free-for-all (reglas de la Parte 9 del reglamento).

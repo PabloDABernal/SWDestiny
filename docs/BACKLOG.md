@@ -4,7 +4,7 @@ Ideas que surgen durante la implementación. Una línea por idea. NO se implemen
 
 - Visibilidad del recuento "Mazo: N": hoy es texto gris pequeño (`.draw-pile__count`, `src/App.tsx`/`src/styles.css`) y el usuario no lo encuentra a simple vista (le pasó en el playtest de SPEC-016 y SPEC-017). Darle más contraste/tamaño o ponerlo junto al nombre del bando. (Detectado en SPEC-017, 2026-07-22.)
 
-- El centinela `characterIndex: -1` que usan los dados de mejora/apoyo sin personaje anfitrión o sin filtrado por KO (`rollUpgradeDie`, SPEC-020/021) colisionaría el día que exista reroll manual del jugador indexando por `characterIndex`, o un ataque/coste dirigido con `effectIndex === -1`. No es un bug hoy (nada del código actual llega a ese caso), pero hay que revisarlo explícitamente antes de implementar cualquiera de esas dos cosas. (Detectado en SPEC-021, 2026-07-22.)
+- Un ataque/coste dirigido con `effectIndex === -1` (el centinela `characterIndex: -1` de dados de mejora/apoyo sin personaje anfitrión, `rollUpgradeDie`, SPEC-020/021) seguiría colisionando si algún día se apunta un efecto directamente a "la carta", no al personaje. No es un bug hoy (nada del código actual llega a ese caso); revisarlo explícitamente antes de implementarlo. *(La otra mitad de este riesgo —reroll manual del jugador indexando por `characterIndex`— quedó resuelta en SPEC-023, ver abajo.)* (Detectado en SPEC-021, 2026-07-22.)
 
 - `parseTextDeck` ignora sin resolver las cartas de la sección PLOT (fix del 2026-07-22): su código de dos caras (A/B, p. ej. `13015A`) no es deducible del número de coleccionista del text file ("#15"), y como hoy no se usan para nada (SDD: "trama... no se guarda en ningún sitio todavía"), intentar resolverlas hacía fallar el import entero. Cuando llegue la spec que juegue trama, hay que decidir cómo saber qué cara (A/B) corresponde — el "text file" no lo dice, puede que haga falta mirar el JSON de `slots` o pedir la carta por ambos códigos posibles. (Detectado al arreglar el import, 2026-07-22.)
 
@@ -34,3 +34,9 @@ Ideas que surgen durante la implementación. Una línea por idea. NO se implemen
   (2026-07-21): usa `parsePlayerFace` (no los parsers "pelados"), combina base+modificadores y paga
   coste de recurso/indirecto igual que el jugador, en daño/escudo/recurso, con reparto multi-objetivo
   sin overkill. (Detectado en SPEC-008b/010.)
+- ~~Reroll manual del jugador indexando por `characterIndex` colisionaría con el centinela -1~~ —
+  **Resuelto en SPEC-023** (2026-07-23): Focus/Reroll de dado seleccionan el dado objetivo por su
+  posición en el array `pool` (`poolIndex`), nunca por `characterIndex`; de paso se corrigió el
+  mismo bug ya real en el reroll de blancos del autómata (indexaba `characters[characterIndex]`,
+  que rompía con dados de mejora/apoyo), que ahora también busca la definición del dado por `code`
+  vía caché. (Detectado en SPEC-021.)

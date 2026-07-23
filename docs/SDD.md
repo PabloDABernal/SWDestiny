@@ -81,6 +81,15 @@ ecosistema de componentes de tablero/dados ya hechos.)*
   ronda" igual que los personajes) y su propio botón "Activar" en la UI. Ninguna de las dos
   (mejoras/apoyos) sale de juego salvo por KO del personaje anfitrión (mejoras) o "Reset total"
   (ambas): no hay destrucción por texto de carta todavía.
+- **Focus/reroll/especial (SPEC-023)**: primera vez que el objetivo de una resolución es un
+  **dado** (posición dentro de un `pool`), no un personaje/bando. Para evitar la colisión ya
+  anotada en BACKLOG (el centinela `characterIndex: -1` de dados de mejora/apoyo sin personaje
+  anfitrión no es único entre sí, SPEC-020/021), la selección de dado objetivo para Focus/Reroll
+  usa siempre la posición del dado dentro del array `pool` (propio o rival), nunca
+  `characterIndex`. El formato exacto de estas caras en ARH DB (¿`<n>Fo`? ¿lleva coste?) no está
+  confirmado todavía y se valida contra datos reales durante la implementación, igual que se hizo
+  con el coste de recurso en SPEC-008b. Especial se resuelve como placeholder sin motor de efectos
+  de carta.
 
 ## Reglas técnicas de alcance por fase (para revisor-código y revisor-specs)
 
