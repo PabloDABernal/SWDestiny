@@ -86,9 +86,9 @@ ecosistema de componentes de tablero/dados ya hechos.)*
   anotada en BACKLOG (el centinela `characterIndex: -1` de dados de mejora/apoyo sin personaje
   anfitrión no es único entre sí, SPEC-020/021), la selección de dado objetivo para Focus/Reroll
   usa siempre la posición del dado dentro del array `pool` (propio o rival), nunca
-  `characterIndex`. Formato de estas caras en ARH DB: Focus = `<n>F` (confirmado contra un mazo
-  real el 2026-07-23); Reroll de dado = `<n>Rr` y Especial = `Sp[coste]` siguen siendo provisionales,
-  pendientes de confirmar. Especial se resuelve como placeholder sin motor de efectos de carta.
+  `characterIndex`. Formato de estas caras en ARH DB, confirmado contra un mazo real el
+  2026-07-23: Focus = `<n>F`, Reroll de dado = `<n>Re`; Especial = `Sp[coste]` sigue siendo
+  provisional. Especial se resuelve como placeholder sin motor de efectos de carta.
   Mejoras/apoyos sin dado propio (`card.sides` vacío/no-array desde ARH DB) ya no revientan al
   activar su personaje/apoyo anfitrión: simplemente no aportan ningún dado (bug real, detectado
   jugando SPEC-023 con "Hunker Down"; la pregunta de ocultar el botón "Activar" para esos casos
