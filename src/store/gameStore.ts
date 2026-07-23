@@ -157,6 +157,31 @@ function persistSupports(side: Side, supports: string[]): void {
   }
 }
 
+const DISCARD_PILE_KEY = (side: Side) => `swd:discardpile:${side}`;
+
+/** Pila de descarte por bando: cartas descartadas de la mano (`discardCard`). No se juegan desde
+ * aquí (SPEC-022 sigue sin pila consultable en juego); solo existe para que "Reset total" pueda
+ * devolverlas al mazo junto con `drawPile`/`hand`/mejoras/apoyos (bug detectado jugando SPEC-022:
+ * antes se perdían para siempre, también tras un Reset total). */
+function loadPersistedDiscardPile(side: Side): string[] {
+  try {
+    const raw = localStorage.getItem(DISCARD_PILE_KEY(side));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.every((c) => typeof c === 'string') ? (parsed as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistDiscardPile(side: Side, discardPile: string[]): void {
+  try {
+    localStorage.setItem(DISCARD_PILE_KEY(side), JSON.stringify(discardPile));
+  } catch {
+    // best-effort
+  }
+}
+
 const DIFFICULTY_KEY = 'swd:difficulty';
 const VALID_DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard'];
 
@@ -190,6 +215,9 @@ interface SideState {
   upgrades: string[][];
   /** Apoyos en juego (SPEC-021): lista de códigos, no ligada a ningún personaje. Persistida. */
   supports: string[];
+  /** Pila de descarte (SPEC-022): códigos descartados de la mano, sin UI consultable todavía; solo
+   * alimenta el mazo rebarajado en "Reset total". */
+  discardPile: string[];
   /** Activación de cada apoyo esta ronda (paralelo a `supports` por posición). Estado de ronda,
    * NO persistido, igual que `activated` de personajes. */
   supportsActivated: boolean[];
@@ -218,6 +246,7 @@ function freshSide(
   hand: string[] = [],
   upgrades: string[][] = emptyUpgrades(characters.length),
   supports: string[] = [],
+  discardPile: string[] = [],
 ): SideState {
   return {
     characters,
@@ -225,6 +254,7 @@ function freshSide(
     hand,
     upgrades,
     supports,
+    discardPile,
     supportsActivated: supports.map(() => false),
     activated: [],
     damage: [],
@@ -644,6 +674,7 @@ function initialSide(side: Side): SideState {
     loadPersistedHand(side),
     loadPersistedUpgrades(side, characters.length),
     loadPersistedSupports(side),
+    loadPersistedDiscardPile(side),
   );
 }
 
@@ -691,6 +722,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       persistUpgrades(side, emptyUpgrades(characters.length));
       // Apoyos en juego vacíos en cada (re)importación (SPEC-021).
       persistSupports(side, []);
+      // Pila de descarte vacía en cada (re)importación (SPEC-022).
+      persistDiscardPile(side, []);
       // Reinicia el estado de partida de ESTE bando (vida completa) y recalcula el fin.
       set((state) => {
         const sides = { ...state.sides, [side]: freshSide(characters, drawPile) };
@@ -787,11 +820,18 @@ export const useGameStore = create<GameState>((set, get) => ({
   resetAll: () =>
     set((state) => {
       const rebuild = (side: Side, s: SideState): SideState => {
-        const drawPile = shuffle([...s.drawPile, ...s.hand, ...s.upgrades.flat(), ...s.supports]);
+        const drawPile = shuffle([
+          ...s.drawPile,
+          ...s.hand,
+          ...s.upgrades.flat(),
+          ...s.supports,
+          ...s.discardPile,
+        ]);
         persistDrawPile(side, drawPile);
         persistHand(side, []);
         persistUpgrades(side, emptyUpgrades(s.characters.length));
         persistSupports(side, []);
+        persistDiscardPile(side, []);
         return freshSide(s.characters, drawPile);
       };
       const sides: Record<Side, SideState> = {
@@ -1075,7 +1115,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (!card) return state;
       const cost = card.cost ?? 0;
       if (s.resources < cost) {
-        return { resolveError: 'Recursos insuficientes para jugar esta carta.' };
+        // Sale del modo "elige objetivo" al fallar (igual que Cancelar): si no, el jugador queda
+        // bloqueado (Activar deshabilitado) hasta cancelar a mano o conseguir recursos (bug
+        // detectado jugando SPEC-020/021). La carta sigue en la mano para reintentarlo luego.
+        return { playUpgrade: null, resolveError: 'Recursos insuficientes para jugar esta carta.' };
       }
       const handIndex = s.hand.indexOf(mode.code);
       if (handIndex === -1) return { playUpgrade: null };
@@ -1165,8 +1208,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (index === -1) return state;
       const hand = s.hand.slice();
       hand.splice(index, 1);
+      const discardPile = [...s.discardPile, code];
       persistHand(side, hand);
-      return { sides: { ...state.sides, [side]: { ...s, hand } } };
+      persistDiscardPile(side, discardPile);
+      return { sides: { ...state.sides, [side]: { ...s, hand, discardPile } } };
     }),
 
   // Turno del autómata (GDD §4): evalúa la tabla de prioridades (motor puro en game/automaton)

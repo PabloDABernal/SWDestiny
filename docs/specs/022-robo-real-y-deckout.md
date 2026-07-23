@@ -40,8 +40,11 @@ mantenimiento) y solo si un bando se queda **sin cartas en mano Y sin mazo a la 
 
 ## Fuera de alcance (explícito)
 
-- Pila de descarte visible/consultable: descartar hace desaparecer la carta sin más, no hay UI de
-  pila de descarte todavía (igual que las mejoras/apoyos descartados por KO/Reset total).
+- Pila de descarte visible/consultable: no hay UI para verla ni interactuar con ella. Sí existe
+  internamente desde el playtest (`SideState.discardPile`, decisión del usuario 2026-07-23): una
+  carta descartada no se pierde para siempre, "Reset total" la devuelve al mazo rebarajado junto
+  con `drawPile`/`hand`/mejoras/apoyos (igual que ya hacía con las mejoras/apoyos en juego). No hay
+  forma de consultarla ni jugarla desde ahí, solo alimenta el reshuffle de Reset total.
 - Tamaño de mano distinto de 5, o modificable por texto de carta: no hay keywords todavía; 5 fijo
   para ambos bandos.
 - Cualquier lógica de qué descartar por parte del autómata: nunca descarta en esta spec.
@@ -72,8 +75,8 @@ mantenimiento) y solo si un bando se queda **sin cartas en mano Y sin mazo a la 
 - Descartar con la mano ya vacía: no hay nada que descartar, el botón no aparece (no hay cartas
   que listar).
 - "Reset total" con más/menos de 5 cartas en mano: sigue vaciando la mano y reconstruyendo el mazo
-  completo (drawPile + hand + mejoras + apoyos en juego, rebarajado), sin relación con el tamaño
-  de mano.
+  completo (drawPile + hand + mejoras + apoyos en juego + pila de descarte, rebarajado), sin
+  relación con el tamaño de mano.
 - "Nueva ronda" pulsada con la partida ya terminada (outcome no nulo): sigue siendo no-op.
 - Mazo con menos cartas de las que faltan para llegar a 5 (p. ej. mano en 2, mazo con solo 1
   carta): roba esa única carta (mano queda en 3, por debajo de 5) y ya no roba más; no hay
@@ -103,8 +106,8 @@ mantenimiento) y solo si un bando se queda **sin cartas en mano Y sin mazo a la 
   final) — a decidir en una spec futura si "Robar" también deja de disparar deck-out directamente
   y pasa a depender del mismo chequeo de fin de ronda, una vez se entienda mejor cómo encaja el
   botón manual (provisional, SPEC-018) con la regla real de robo.
-- Nueva acción `discardCard(side, code)` o similar en el store: quita una carta de `hand` por
-  código/índice, sin más efecto (no hay pila de descarte que alimentar todavía).
+- `discardCard(side, code)`: quita una carta de `hand` y la añade a `SideState.discardPile`
+  (persistido, `swd:discardpile:<side>`); sin más efecto, no hay UI para consultarla.
 - Nueva UI: un botón "Descartar" por carta en `Hand.tsx`, visible solo para el jugador (igual que
   el resto de acciones de mano).
 - El reglamento real ata el descarte al paso 4 del mantenimiento (RR: enderezar → devolver dados →
