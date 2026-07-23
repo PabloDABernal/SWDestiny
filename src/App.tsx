@@ -91,7 +91,7 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
                   targetable={(targetableSide || upgradeTargetableSide) && !ko}
                   showActivate={isPlayer}
                   upgrades={upgradeCards}
-                  activateDisabled={playUpgrade !== null || mulligan !== null || turn !== side}
+                  activateDisabled={outcome !== null || playUpgrade !== null || mulligan !== null || turn !== side}
                   onActivate={() => activate(side, i)}
                   onTarget={() => (upgradeTargetableSide ? playUpgradeOn(i) : applyDieTo(side, i))}
                   key={`${c.code}-${i}`}
@@ -102,6 +102,8 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
           <SupportList
             codes={s.supports}
             activated={s.supportsActivated}
+            showActivate={isPlayer}
+            activateDisabled={outcome !== null || playUpgrade !== null || mulligan !== null || turn !== side}
             onActivate={(i) => activateSupport(side, i)}
           />
         </>

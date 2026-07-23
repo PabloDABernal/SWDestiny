@@ -882,6 +882,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   activate: (side: Side, index: number) =>
     set((state) => {
+      // Bloqueado si la partida ya terminó (SPEC-025: ninguna acción de turno tiene efecto).
+      if (state.outcome !== null) return state;
       // Bloqueado mientras se espera el receptor del coste indirecto (SPEC-010, resolución atómica)
       // o se elige la cara de un dado en una resolución de Focus en curso (SPEC-023, ídem).
       if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
@@ -1317,6 +1319,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   activateSupport: (side: Side, index: number) =>
     set((state) => {
+      // Bloqueado si la partida ya terminó (SPEC-025: ninguna acción de turno tiene efecto).
+      if (state.outcome !== null) return state;
       // Mismos guards de exclusión mutua que activar un personaje (SPEC-020/021/023/024).
       if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
       if (state.playUpgrade !== null || state.mulligan !== null) return state;
@@ -1425,6 +1429,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (res === null || res === 'no-base' || res === 'insufficient') return s;
           return {
             sides: res.sides,
+            outcome: res.outcome,
             lastEnemyAction: `El enemigo aplica ${label} a ${target.name} (${total} de escudo).`,
           };
         });
@@ -1450,6 +1455,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (res === null || res === 'no-base' || res === 'insufficient') return s;
           return {
             sides: res.sides,
+            outcome: res.outcome,
             lastEnemyAction: `El enemigo resuelve ${label} (+${total} recurso).`,
           };
         });
