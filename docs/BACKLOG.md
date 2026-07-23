@@ -2,7 +2,8 @@
 
 Ideas que surgen durante la implementación. Una línea por idea. NO se implementan hasta que se conviertan en spec.
 
-- Turnos reales alternados (RR pg 19-22): sustituir el estand-in actual de "Nueva ronda"/"Turno enemigo" (botones sueltos) por la fase de acción real — turnos de una acción cada uno, empezando quien controle el battlefield (sin battlefield implementado todavía, a decidir quién empieza), hasta que ambos pasen seguido. Reordenado por decisión del usuario (2026-07-23) para ir justo después de SPEC-024 (reparto inicial/mulligan), antes de retomar la capa de texto/keywords de v4. Requiere spec propia (probablemente varias, sin subdividir un mismo número).
+- Turnos reales alternados: ahora es SPEC-025 (docs/specs/025-turnos-reales-alternados.md), creada el 2026-07-23. Se deja esta línea hasta que se marque completada tras el playtest.
+- Descarte interactivo dentro del mantenimiento automático (RR: "descarta lo que quieras" antes de robar, RR pg 19-20): SPEC-025 quita el botón "Descartar" suelto pero el mantenimiento automático solo roba, sin ningún paso de descarte interactivo (decisión explícita del usuario, 2026-07-23, para no agrandar más esa spec). Pendiente de spec propia futura; reutilizar el patrón visual del mulligan (checkboxes + confirmar, SPEC-024) parece el candidato natural.
 - Símbolos de dado que faltan por implementar: caras que quitan recursos o cartas (de la mano) al rival (RR pg 12/13, confirmar el patrón exacto contra ARH DB, similar a como se hizo con el coste de recurso en SPEC-008b). Detectado por el usuario jugando el 2026-07-23; pendiente de spec propia.
 
 - Visibilidad del recuento "Mazo: N": hoy es texto gris pequeño (`.draw-pile__count`, `src/App.tsx`/`src/styles.css`) y el usuario no lo encuentra a simple vista (le pasó en el playtest de SPEC-016 y SPEC-017). Darle más contraste/tamaño o ponerlo junto al nombre del bando. (Detectado en SPEC-017, 2026-07-22.)

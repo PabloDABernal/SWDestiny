@@ -274,6 +274,20 @@ acciones (Activar, jugar cartas, Nueva ronda, Turno enemigo...) quedan bloqueada
 exclusión mutua que ya usa `playUpgrade`. El enemigo (autómata) nunca hace mulligan: se queda con
 su mano inicial de 5 tal cual.
 
+### Turnos reales alternados (segunda pieza del bloque de turnos reales, SPEC-025)
+
+La fase de acción sustituye los botones sueltos "Nueva ronda"/"Turno enemigo" por turnos
+alternados reales (RR pg 19-22): en su turno, cada bando hace **una acción** (activar, jugar una
+carta, o resolver un lote completo de dados del mismo símbolo, incluido multi-objetivo/Focus/
+Reroll/coste indirecto) o pasa. Sin campo de batalla implementado, **siempre empieza el jugador**
+cada ronda. El enemigo actúa automáticamente en su turno (sin botón), ejecutando la siguiente
+acción de su tabla de prioridades ya existente, o pasando si no tiene ninguna legal. Dos pases
+consecutivos (uno de cada bando, sin ninguna acción real entre medias) disparan el mantenimiento
+automático (misma lógica que ya tenía "Nueva ronda": +2 recursos, robo hasta tamaño de mano, reset
+de pool/activaciones) y empieza una ronda nueva, otra vez con el jugador tomando el primer turno.
+Los botones "Robar" manual y "Descartar" suelto desaparecen (no son acciones de turno reales); el
+descarte interactivo dentro del mantenimiento queda para una spec futura (BACKLOG).
+
 ## 6. Fuera de alcance (explícito, hasta que se decida lo contrario)
 
 - Multijugador, alianzas, free-for-all (reglas de la Parte 9 del reglamento).
