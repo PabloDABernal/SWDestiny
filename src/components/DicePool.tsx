@@ -25,8 +25,7 @@ export function DicePool({ side }: { side: Side }) {
   const pickRerollTarget = useGameStore((s) => s.pickRerollTarget);
   const confirmReroll = useGameStore((s) => s.confirmReroll);
   const cancelResolve = useGameStore((s) => s.cancelResolve);
-  const newRound = useGameStore((s) => s.newRound);
-  const outcome = useGameStore((s) => s.outcome);
+  const turn = useGameStore((s) => s.turn);
   const resolveError = useGameStore((s) => s.resolveError);
 
   // El jugador solo ARRANCA la resolución de su propio pool (SPEC-008a).
@@ -57,11 +56,6 @@ export function DicePool({ side }: { side: Side }) {
       <div className="pool__head">
         <span className="pool__title">Pool ({pool.length})</span>
         {resources > 0 && <span className="pool__resources">💰 {resources}</span>}
-        {interactive && (
-          <button className="pool__reset" onClick={newRound} disabled={outcome !== null}>
-            Nueva ronda
-          </button>
-        )}
       </div>
 
       {interactive && mode && (
@@ -169,9 +163,12 @@ export function DicePool({ side }: { side: Side }) {
 
             // Arrancar un modo nuevo, o seguir marcando/desmarcando dados del MISMO símbolo ya en
             // curso (incluye sumar más presupuesto de Focus/Reroll, SPEC-008a/023): mismo `selectDie`
-            // genérico de siempre.
+            // genérico de siempre. Arrancar un modo nuevo exige además que sea tu turno (SPEC-025);
+            // si el modo ya está abierto, por invariante turn === 'player' desde que se abrió, así
+            // que el chequeo no cambia el comportamiento de seguir marcando/desmarcando.
             const canSelect =
               interactive &&
+              turn === 'player' &&
               symbol !== null &&
               (mode === null || (mode.symbol === symbol && !mode.pendingEffect && mode.focusFaceChoice == null));
 

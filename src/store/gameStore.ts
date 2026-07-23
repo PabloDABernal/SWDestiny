@@ -591,6 +591,19 @@ function nextResolveAfterApply(
     : null;
 }
 
+/** Tras aplicar una tanda con éxito (SPEC-025): calcula el próximo `resolve` (arriba) y, si el modo
+ * se cierra del todo (no queda ningún dado base de ese símbolo, o la partida terminó), cierra el
+ * turno de `mode.side` — es la "una acción" completa de este turno, incluso si hizo falta más de un
+ * clic para repartirla entre varios objetivos (SPEC-011/014). Si el modo sigue abierto (queda más
+ * de ese mismo lote por repartir), el turno NO cambia: sigue siendo la misma acción en curso. */
+function afterApply(
+  mode: ResolveMode,
+  res: { sides: Record<Side, SideState>; outcome: Outcome },
+): { resolve: ResolveMode | null; turn?: Side; passStreak?: number } {
+  const resolve = nextResolveAfterApply(res.sides, mode, res.outcome);
+  return resolve === null ? { resolve, turn: opposite(mode.side), passStreak: 0 } : { resolve };
+}
+
 interface GameState {
   sides: Record<Side, SideState>;
   resolve: ResolveMode | null;
@@ -602,6 +615,13 @@ interface GameState {
    * índices de `sides.player.hand` marcados para devolver al mazo. No se persiste (estado de
    * partida, igual que `resolve`/`playUpgrade`). */
   mulligan: { marked: number[] } | null;
+  /** Turnos reales alternados (SPEC-025): de quién es el turno ahora. No se persiste (estado de
+   * partida, igual que `resolve`/`playUpgrade`/`mulligan`). Siempre `'player'` al empezar cada
+   * ronda (sin campo de batalla implementado). */
+  turn: Side;
+  /** Pases consecutivos sin ninguna acción real entre medias (SPEC-025). Al llegar a 2 dispara el
+   * mantenimiento automático y se reinicia a 0. Cualquier acción real lo reinicia a 0. */
+  passStreak: number;
   outcome: Outcome;
   /** Feedback de la última acción del autómata (incluida "pasa"), para mostrar en la UI. */
   lastEnemyAction: string | null;
@@ -622,9 +642,10 @@ interface GameState {
    * ninguna carta. No-op si no hay mulligan pendiente. */
   confirmMulligan: () => void;
   activate: (side: Side, index: number) => void;
-  /** Solo re-tira dados: vacía pools/activaciones/rerolls de ambos bandos; conserva recursos, vida,
-   * escudos y KO. No-op si la partida ya terminó (SPEC-009). */
-  newRound: () => void;
+  /** Cede el turno de `side` sin hacer nada (SPEC-025). No-op si no es su turno o hay un modo
+   * abierto (`resolve`/`playUpgrade`/`mulligan`). Dos pases consecutivos disparan el mantenimiento
+   * automático (misma lógica que antes tenía "Nueva ronda") y reinician el turno al jugador. */
+  pass: (side: Side) => void;
   /** Devuelve todo al estado inicial de los mazos importados (vida completa, sin escudos/KO,
    * recursos a 2), sin reimportar ni borrar personajes (SPEC-009). */
   resetAll: () => void;
@@ -672,13 +693,49 @@ interface GameState {
   /** Activa el apoyo en juego `index` de `side`: tira su dado y lo añade al pool del bando
    * (SPEC-021). No-op si ya está activado esta ronda. */
   activateSupport: (side: Side, index: number) => void;
-  /** Roba 1 carta del mazo de robo a la mano de `side` (SPEC-018). Si el mazo está vacío, termina
-   * la partida en el acto (deck-out): Derrota si es el jugador, Victoria si es el enemigo. */
-  drawCard: (side: Side) => void;
-  /** Descarta la carta `code` de la mano de `side`, en cualquier momento (SPEC-022, aproximación
-   * al paso de descarte del mantenimiento real). No-op si `code` no está en la mano. */
-  discardCard: (side: Side, code: string) => void;
   enemyTurn: () => void;
+}
+
+// Mantenimiento (SPEC-009/011/019/022, ahora disparado por SPEC-025 tras dos pases consecutivos en
+// vez de por un botón "Nueva ronda" manual): re-tira dados (vacía pools/activaciones/rerolls), suma
+// +2 recursos a cada bando (persisten) y roba hasta HAND_SIZE (si el mazo no llega, roba lo que
+// haya). CONSERVA vida, escudos y KO. Deck-out (RR pg 22): se comprueba DESPUÉS de robar, solo si un
+// bando queda sin mano Y sin mazo a la vez — primero el enemigo (Victoria), luego el jugador
+// (Derrota), mismo orden que `computeOutcome`.
+function runMaintenance(sides: Record<Side, SideState>): Pick<GameState, 'sides' | 'resolve' | 'resolveError' | 'lastEnemyAction' | 'outcome'> {
+  const maintain = (side: Side, s: SideState): SideState => {
+    const toDraw = Math.max(0, HAND_SIZE - s.hand.length);
+    const drawn = s.drawPile.slice(0, toDraw);
+    const drawPile = s.drawPile.slice(toDraw);
+    const hand = [...s.hand, ...drawn];
+    persistDrawPile(side, drawPile);
+    persistHand(side, hand);
+    return {
+      ...s,
+      pool: [],
+      activated: [],
+      // Resetea la activación de los apoyos en juego (SPEC-021), igual que la de personajes; los
+      // apoyos en sí (`supports`) no se tocan, siguen en juego.
+      supportsActivated: s.supports.map(() => false),
+      rerollsUsed: { free: false, extra: 0 },
+      resources: s.resources + 2,
+      drawPile,
+      hand,
+    };
+  };
+  const nextSides: Record<Side, SideState> = {
+    player: maintain('player', sides.player),
+    enemy: maintain('enemy', sides.enemy),
+  };
+  const deckedOut = (s: SideState) => s.drawPile.length === 0 && s.hand.length === 0;
+  const outcome: Outcome = deckedOut(nextSides.enemy) ? 'victory' : deckedOut(nextSides.player) ? 'defeat' : null;
+  return {
+    sides: nextSides,
+    resolve: null,
+    resolveError: null,
+    lastEnemyAction: null,
+    outcome,
+  };
 }
 
 function initialSide(side: Side): SideState {
@@ -703,6 +760,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   resolveError: null,
   playUpgrade: null,
   mulligan: null,
+  turn: 'player',
+  passStreak: 0,
   outcome: null,
   lastEnemyAction: null,
   difficulty: loadPersistedDifficulty(),
@@ -741,8 +800,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Pila de descarte vacía en cada (re)importación (SPEC-022).
       persistDiscardPile(side, []);
       // Reinicia el estado de partida de ESTE bando (vida completa) y recalcula el fin. Limpia
-      // también playUpgrade/mulligan (SPEC-024: reimportar a mitad de mulligan/jugar una mejora no
-      // debe dejar esos modos abiertos apuntando a un bando que ya no existe en ese estado).
+      // también playUpgrade/mulligan (SPEC-024) y turn/passStreak (SPEC-025): reimportar a mitad de
+      // partida no debe dejar esos modos/turno abiertos apuntando a un estado que ya no corresponde.
       set((state) => {
         const sides = { ...state.sides, [side]: freshSide(characters, drawPile) };
         return {
@@ -751,6 +810,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           resolveError: null,
           playUpgrade: null,
           mulligan: null,
+          turn: 'player',
+          passStreak: 0,
           outcome: computeOutcome(sides),
         };
       });
@@ -827,6 +888,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Bloqueado mientras se elige objetivo para jugar una mejora (SPEC-020) o hay un mulligan
       // pendiente de confirmar (SPEC-024).
       if (state.playUpgrade !== null || state.mulligan !== null) return state;
+      // Bloqueado fuera de tu turno, o si ya tienes un dado marcado sin resolver (SPEC-025): hay
+      // que terminar o cancelar esa resolución antes de hacer otra cosa.
+      if (state.turn !== side) return state;
+      if (state.resolve !== null && state.resolve.side === side) return state;
       const s = state.sides[side];
       const character = s.characters[index];
       if (!character || s.activated[index]) return state;
@@ -843,56 +908,30 @@ export const useGameStore = create<GameState>((set, get) => ({
         return [rollUpgradeDie({ sides: [...card.sides] }, card.code, card.name, index)];
       });
       const pool = [...s.pool, ...rollCharacter(character, index), ...upgradeDice];
-      return { sides: { ...state.sides, [side]: { ...s, activated, pool } } };
+      // Activar es SIEMPRE una acción completa (SPEC-025): cierra el turno de `side`.
+      return {
+        sides: { ...state.sides, [side]: { ...s, activated, pool } },
+        turn: opposite(side),
+        passStreak: 0,
+      };
     }),
 
-  // "Nueva ronda" (SPEC-009/011): mantenimiento. Re-tira dados (vacía pools/activaciones/rerolls),
-  // suma +2 recursos a cada bando (persisten, SPEC-009) y roba 1 carta por bando (SPEC-019).
-  // CONSERVA vida, escudos y KO. No-op si la partida ya terminó (solo "Reset total" reinicia
-  // entonces). Robo real (SPEC-022, RR pg 25): roba hasta HAND_SIZE, no +1; si el mazo no llega,
-  // roba lo que haya. Deck-out (SPEC-022, RR pg 22): se comprueba DESPUÉS de robar (no como guarda
-  // previa, a diferencia de SPEC-019), solo si un bando queda sin mano Y sin mazo a la vez —
-  // primero el enemigo (Victoria), luego el jugador (Derrota), mismo orden que computeOutcome.
-  newRound: () =>
+  // "Pasar" (SPEC-025): cede el turno de `side` sin hacer nada. Dos pases consecutivos (uno de cada
+  // bando, sin ninguna acción real entre medias) disparan el mantenimiento automático
+  // (`runMaintenance`, misma lógica que antes tenía el botón manual "Nueva ronda") y reinician el
+  // turno al jugador.
+  pass: (side: Side) =>
     set((state) => {
       if (state.outcome !== null) return state;
-      // Bloqueado mientras hay un mulligan pendiente de confirmar (SPEC-024): guard nuevo, antes
-      // "Nueva ronda" no tenía ninguna exclusión con playUpgrade ni con ningún otro modo.
-      if (state.mulligan !== null) return state;
-
-      const maintain = (side: Side, s: SideState): SideState => {
-        const toDraw = Math.max(0, HAND_SIZE - s.hand.length);
-        const drawn = s.drawPile.slice(0, toDraw);
-        const drawPile = s.drawPile.slice(toDraw);
-        const hand = [...s.hand, ...drawn];
-        persistDrawPile(side, drawPile);
-        persistHand(side, hand);
-        return {
-          ...s,
-          pool: [],
-          activated: [],
-          // Resetea la activación de los apoyos en juego (SPEC-021), igual que la de personajes;
-          // los apoyos en sí (`supports`) no se tocan, siguen en juego.
-          supportsActivated: s.supports.map(() => false),
-          rerollsUsed: { free: false, extra: 0 },
-          resources: s.resources + 2,
-          drawPile,
-          hand,
-        };
-      };
-      const sides: Record<Side, SideState> = {
-        player: maintain('player', state.sides.player),
-        enemy: maintain('enemy', state.sides.enemy),
-      };
-      const deckedOut = (s: SideState) => s.drawPile.length === 0 && s.hand.length === 0;
-      const outcome: Outcome = deckedOut(sides.enemy) ? 'victory' : deckedOut(sides.player) ? 'defeat' : null;
-      return {
-        sides,
-        resolve: null,
-        resolveError: null,
-        lastEnemyAction: null,
-        ...(outcome !== null ? { outcome } : {}),
-      };
+      if (state.turn !== side) return state;
+      // Mismo guard de exclusión mutua que el resto de acciones (SPEC-025): no tiene sentido pasar
+      // con una acción a medio construir, hay que cancelarla primero.
+      if (state.resolve !== null || state.playUpgrade !== null || state.mulligan !== null) return state;
+      const passStreak = state.passStreak + 1;
+      if (passStreak >= 2) {
+        return { ...runMaintenance(state.sides), turn: 'player', passStreak: 0 };
+      }
+      return { turn: opposite(side), passStreak };
     }),
 
   // "Reset total" (SPEC-009): reconstruye ambos bandos a su estado inicial (vida completa, sin
@@ -926,6 +965,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         resolveError: null,
         playUpgrade: null,
         mulligan: null,
+        turn: 'player',
+        passStreak: 0,
         lastEnemyAction: null,
         outcome: computeOutcome(sides),
       };
@@ -940,6 +981,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Bloqueado mientras se elige objetivo para jugar una mejora (SPEC-020) o hay un mulligan
       // pendiente de confirmar (SPEC-024).
       if (state.playUpgrade !== null || state.mulligan !== null) return state;
+      // Bloqueado fuera de tu turno (SPEC-025).
+      if (state.turn !== side) return state;
       const die = state.sides[side].pool[poolIndex];
       if (!die) return state;
       const symbol = dieSymbol(die.face);
@@ -947,8 +990,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (symbol === null) return state;
 
       const cur = state.resolve;
-      // Distinto bando/símbolo, o sin modo: empieza modo nuevo con este dado (reemplaza).
-      if (!cur || cur.side !== side || cur.symbol !== symbol) {
+      // Ya hay un modo abierto de otro bando/símbolo (SPEC-025): no se reemplaza, hay que cancelarlo
+      // primero con "Cancelar" (marcar un dado bloquea el resto de acciones hasta resolver/cancelar).
+      if (cur !== null && (cur.side !== side || cur.symbol !== symbol)) return state;
+      // Sin modo: lo abre con este dado.
+      if (cur === null) {
         return { resolve: { side, symbol, marked: [poolIndex] }, resolveError: null };
       }
       // Mismo bando y símbolo: toggle en el conjunto marcado (uno o varios).
@@ -979,8 +1025,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         return {
           sides: res.sides,
           outcome: res.outcome,
-          resolve: nextResolveAfterApply(res.sides, cur, res.outcome),
           resolveError: null,
+          ...afterApply(cur, res),
         };
       }
 
@@ -1013,8 +1059,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       return {
         sides: res.sides,
         outcome: res.outcome,
-        resolve: nextResolveAfterApply(res.sides, cur, res.outcome),
         resolveError: null,
+        ...afterApply(cur, res),
       };
     }),
 
@@ -1038,8 +1084,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       return {
         sides: res.sides,
         outcome: res.outcome,
-        resolve: nextResolveAfterApply(res.sides, cur, res.outcome),
         resolveError: null,
+        ...afterApply(cur, res),
       };
     }),
 
@@ -1052,6 +1098,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((state) => {
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.symbol !== 'focus') return state;
+      // Bloqueado fuera de tu turno (SPEC-025): compara contra quién abrió la resolución, no contra
+      // un `side` propio de esta acción (no lo tiene, el objetivo es un dado, no un bando).
+      if (state.turn !== cur.side) return state;
       if (cur.pendingEffect || cur.focusFaceChoice != null) return state;
       if (cur.marked.length === 0 || cur.marked.includes(poolIndex)) return state;
       const picks = cur.focusPicks ?? [];
@@ -1066,6 +1115,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((state) => {
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.symbol !== 'focus') return state;
+      // Bloqueado fuera de tu turno (SPEC-025).
+      if (state.turn !== cur.side) return state;
       const poolIndex = cur.focusFaceChoice;
       if (poolIndex == null) return state;
       const die = state.sides[cur.side].pool[poolIndex];
@@ -1099,8 +1150,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       return {
         sides: res.sides,
         outcome: res.outcome,
-        resolve: nextResolveAfterApply(res.sides, cur, res.outcome),
         resolveError: null,
+        ...afterApply(cur, res),
       };
     }),
 
@@ -1111,6 +1162,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((state) => {
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.symbol !== 'reroll') return state;
+      // Bloqueado fuera de tu turno (SPEC-025): compara contra quién abrió la resolución
+      // (`cur.side`), NO contra `targetSide` — a propósito puede ser el pool rival (SPEC-023).
+      if (state.turn !== cur.side) return state;
       if (cur.pendingEffect) return state;
       if (targetSide === cur.side && cur.marked.includes(poolIndex)) return state;
       if (!state.sides[targetSide].pool[poolIndex]) return state;
@@ -1147,8 +1201,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       return {
         sides: res.sides,
         outcome: res.outcome,
-        resolve: nextResolveAfterApply(res.sides, cur, res.outcome),
         resolveError: null,
+        ...afterApply(cur, res),
       };
     }),
 
@@ -1171,8 +1225,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       return {
         sides: res.sides,
         outcome: res.outcome,
-        resolve: nextResolveAfterApply(res.sides, cur, res.outcome),
         resolveError: 'Habilidad especial de la carta (pendiente de implementar).',
+        ...afterApply(cur, res),
       };
     }),
 
@@ -1184,6 +1238,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
       // Bloqueado mientras hay un mulligan pendiente de confirmar (SPEC-024).
       if (state.mulligan !== null) return state;
+      // Bloqueado fuera de tu turno, o si ya tienes un dado marcado sin resolver (SPEC-025).
+      if (state.turn !== side) return state;
+      if (state.resolve !== null && state.resolve.side === side) return state;
       if (!state.sides[side].hand.includes(code)) return state;
       const card = readCache(code);
       if (!card || card.type_code !== 'upgrade') return state;
@@ -1213,10 +1270,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       const upgrades = s.upgrades.map((codes, i) => (i === characterIndex ? [...codes, mode.code] : codes));
       persistHand(mode.side, hand);
       persistUpgrades(mode.side, upgrades);
+      // Jugar la mejora con éxito es SIEMPRE una acción completa (SPEC-025): cierra el turno.
       return {
         sides: { ...state.sides, [mode.side]: { ...s, hand, upgrades, resources: s.resources - cost } },
         playUpgrade: null,
         resolveError: null,
+        turn: opposite(mode.side),
+        passStreak: 0,
       };
     }),
 
@@ -1228,6 +1288,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Mismos guards de exclusión mutua que jugar una mejora (SPEC-020/021/023/024).
       if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
       if (state.playUpgrade !== null || state.mulligan !== null) return state;
+      // Bloqueado fuera de tu turno, o si ya tienes un dado marcado sin resolver (SPEC-025).
+      if (state.turn !== side) return state;
+      if (state.resolve !== null && state.resolve.side === side) return state;
       const s = state.sides[side];
       if (!s.hand.includes(code)) return state;
       const card = readCache(code);
@@ -1243,9 +1306,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       const supportsActivated = [...s.supportsActivated, false];
       persistHand(side, hand);
       persistSupports(side, supports);
+      // Jugar el apoyo con éxito es SIEMPRE una acción completa (SPEC-025): cierra el turno.
       return {
         sides: { ...state.sides, [side]: { ...s, hand, supports, supportsActivated, resources: s.resources - cost } },
         resolveError: null,
+        turn: opposite(side),
+        passStreak: 0,
       };
     }),
 
@@ -1254,6 +1320,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Mismos guards de exclusión mutua que activar un personaje (SPEC-020/021/023/024).
       if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
       if (state.playUpgrade !== null || state.mulligan !== null) return state;
+      // Bloqueado fuera de tu turno, o si ya tienes un dado marcado sin resolver (SPEC-025).
+      if (state.turn !== side) return state;
+      if (state.resolve !== null && state.resolve.side === side) return state;
       const s = state.sides[side];
       const code = s.supports[index];
       if (!code || s.supportsActivated[index]) return state;
@@ -1265,47 +1334,24 @@ export const useGameStore = create<GameState>((set, get) => ({
       // sin tirar ni añadir ningún dado al pool (mismo guard que las mejoras, ver `activate`).
       const hasDie = Array.isArray(card.sides) && card.sides.length > 0;
       const pool = hasDie ? [...s.pool, rollUpgradeDie({ sides: [...card.sides] }, card.code, card.name, -1)] : s.pool;
-      return { sides: { ...state.sides, [side]: { ...s, supportsActivated, pool } } };
-    }),
-
-  drawCard: (side: Side) =>
-    set((state) => {
-      if (state.outcome !== null) return state;
-      const s = state.sides[side];
-      if (s.drawPile.length === 0) {
-        // Deck-out (SPEC-018): evento puntual disparado por el propio intento de robar, no
-        // derivable de computeOutcome (0 cartas sin haber robado es un estado válido).
-        return { outcome: side === 'player' ? 'defeat' : 'victory' };
-      }
-      const [code, ...drawPile] = s.drawPile;
-      const hand = [...s.hand, code];
-      persistDrawPile(side, drawPile);
-      persistHand(side, hand);
-      return { sides: { ...state.sides, [side]: { ...s, drawPile, hand } } };
-    }),
-
-  discardCard: (side: Side, code: string) =>
-    set((state) => {
-      if (state.outcome !== null) return state;
-      if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
-      if (state.playUpgrade !== null || state.mulligan !== null) return state;
-      const s = state.sides[side];
-      const index = s.hand.indexOf(code);
-      if (index === -1) return state;
-      const hand = s.hand.slice();
-      hand.splice(index, 1);
-      const discardPile = [...s.discardPile, code];
-      persistHand(side, hand);
-      persistDiscardPile(side, discardPile);
-      return { sides: { ...state.sides, [side]: { ...s, hand, discardPile } } };
+      // Activar un apoyo es SIEMPRE una acción completa (SPEC-025): cierra el turno.
+      return {
+        sides: { ...state.sides, [side]: { ...s, supportsActivated, pool } },
+        turn: opposite(side),
+        passStreak: 0,
+      };
     }),
 
   // Turno del autómata (GDD §4): evalúa la tabla de prioridades (motor puro en game/automaton)
-  // y ejecuta como máximo UNA acción por llamada, reutilizando resolvePlayerBatch/activate
-  // (SPEC-013: el autómata combina modificadores y paga costes igual que el jugador).
+  // y ejecuta como máximo UNA acción por invocación, reutilizando resolvePlayerBatch/activate
+  // (SPEC-013: el autómata combina modificadores y paga costes igual que el jugador). Desde
+  // SPEC-025, cada invocación es un turno real del enemigo (ya no hay botón "Turno enemigo": se
+  // dispara automáticamente, ver App.tsx, cuando `turn === 'enemy'`); cada acción (o pase) cierra
+  // el turno igual que las del jugador.
   enemyTurn: () => {
     const state = get();
     if (state.outcome !== null) return;
+    if (state.turn !== 'enemy') return;
     const enemy = state.sides.enemy;
     const player = state.sides.player;
     if (enemy.characters.length === 0) return;
@@ -1360,6 +1406,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             lastEnemyAction: `El enemigo ataca a ${target.name} con ${label} (${total} de daño).`,
           };
         });
+        // Toda acción del autómata cierra su turno (SPEC-025): aplicado en el wrapper, no rama por
+        // rama, para no olvidar ninguna (p. ej. reroll de blancos, ver más abajo).
+        set({ turn: 'player', passStreak: 0 });
         return;
       }
       case 'shield': {
@@ -1379,6 +1428,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             lastEnemyAction: `El enemigo aplica ${label} a ${target.name} (${total} de escudo).`,
           };
         });
+        set({ turn: 'player', passStreak: 0 });
         return;
       }
       case 'activate': {
@@ -1403,6 +1453,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             lastEnemyAction: `El enemigo resuelve ${label} (+${total} recurso).`,
           };
         });
+        set({ turn: 'player', passStreak: 0 });
         return;
       }
       case 'focus': {
@@ -1416,6 +1467,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             lastEnemyAction: `El enemigo usa focus (${label}) y gira ${action.targets.length} dado(s) propio(s).`,
           };
         });
+        set({ turn: 'player', passStreak: 0 });
         return;
       }
       case 'rerollDice': {
@@ -1429,6 +1481,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             lastEnemyAction: `El enemigo usa reroll de dado (${label}) sobre ${action.targets.length} dado(s) del jugador.`,
           };
         });
+        set({ turn: 'player', passStreak: 0 });
         return;
       }
       case 'special': {
@@ -1447,6 +1500,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             lastEnemyAction: `El enemigo resuelve ${label} (habilidad especial, pendiente de implementar).`,
           };
         });
+        set({ turn: 'player', passStreak: 0 });
         return;
       }
       case 'reroll': {
@@ -1470,9 +1524,17 @@ export const useGameStore = create<GameState>((set, get) => ({
             lastEnemyAction: `El enemigo rerollea ${action.dieIndices.length} dado(s) en blanco (${kindLabel}).`,
           };
         });
+        // El reroll de blancos SÍ cuenta como acción real (cierra el turno): es fácil de pasar por
+        // alto porque no aparece nombrado junto a daño/escudo/activar/recurso/focus/reroll(dado)/
+        // especial, pero es una fila más de la tabla de prioridades (GDD §4, prioridad 5).
+        set({ turn: 'player', passStreak: 0 });
         return;
       }
       case 'pass':
+        // Reutiliza el mismo contador de pases que usa el jugador (SPEC-025); el mensaje se fija
+        // DESPUÉS para que no lo pise un posible mantenimiento automático (que pone
+        // lastEnemyAction: null).
+        get().pass('enemy');
         set({ lastEnemyAction: 'El enemigo pasa.' });
         return;
     }

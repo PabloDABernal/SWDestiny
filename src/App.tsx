@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { readCache } from './import/resolveCards';
 import { useGameStore, opposite, type Side } from './store/gameStore';
 import { ImportPanel } from './components/ImportPanel';
@@ -13,12 +14,12 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
   const resolve = useGameStore((st) => st.resolve);
   const playUpgrade = useGameStore((st) => st.playUpgrade);
   const mulligan = useGameStore((st) => st.mulligan);
+  const turn = useGameStore((st) => st.turn);
   const outcome = useGameStore((st) => st.outcome);
   const activate = useGameStore((st) => st.activate);
   const applyDieTo = useGameStore((st) => st.applyDieTo);
   const playUpgradeOn = useGameStore((st) => st.playUpgradeOn);
   const activateSupport = useGameStore((st) => st.activateSupport);
-  const drawCard = useGameStore((st) => st.drawCard);
   const toggleMulliganCard = useGameStore((st) => st.toggleMulliganCard);
   const cancelPlayUpgrade = useGameStore((st) => st.cancelPlayUpgrade);
   const confirmMulligan = useGameStore((st) => st.confirmMulligan);
@@ -63,18 +64,7 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
         <p className="roster__empty">Sin mazo importado.</p>
       ) : (
         <>
-          <p className="draw-pile__count">
-            Mazo: {s.drawPile.length} · Mano: {s.hand.length}
-            {isPlayer && (
-              <button
-                className="hand__draw-button"
-                onClick={() => drawCard(side)}
-                disabled={outcome !== null || mulligan !== null}
-              >
-                Robar
-              </button>
-            )}
-          </p>
+          <p className="draw-pile__count">Mazo: {s.drawPile.length} · Mano: {s.hand.length}</p>
           {isPlayer && (
             <Hand
               side={side}
@@ -101,7 +91,7 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
                   targetable={(targetableSide || upgradeTargetableSide) && !ko}
                   showActivate={isPlayer}
                   upgrades={upgradeCards}
-                  activateDisabled={playUpgrade !== null || mulligan !== null}
+                  activateDisabled={playUpgrade !== null || mulligan !== null || turn !== side}
                   onActivate={() => activate(side, i)}
                   onTarget={() => (upgradeTargetableSide ? playUpgradeOn(i) : applyDieTo(side, i))}
                   key={`${c.code}-${i}`}
@@ -126,8 +116,9 @@ export function App() {
   const resolve = useGameStore((s) => s.resolve);
   const playUpgrade = useGameStore((s) => s.playUpgrade);
   const mulligan = useGameStore((s) => s.mulligan);
+  const turn = useGameStore((s) => s.turn);
   const startGame = useGameStore((s) => s.startGame);
-  const newRound = useGameStore((s) => s.newRound);
+  const pass = useGameStore((s) => s.pass);
   const resetAll = useGameStore((s) => s.resetAll);
   const enemyTurn = useGameStore((s) => s.enemyTurn);
   const lastEnemyAction = useGameStore((s) => s.lastEnemyAction);
@@ -144,6 +135,15 @@ export function App() {
     enemyCharacters > 0 &&
     playerHand.length === 0 &&
     enemyHand.length === 0;
+
+  // Turnos reales alternados (SPEC-025): en cuanto es el turno del enemigo, el autómata ejecuta su
+  // siguiente acción automáticamente, sin botón. `enemyTurn` re-lee el estado fresco y solo actúa si
+  // `turn === 'enemy'` (guard interno), así que una doble invocación (React StrictMode) es inofensiva.
+  useEffect(() => {
+    if (turn === 'enemy' && outcome === null && enemyHasDeck) {
+      enemyTurn();
+    }
+  }, [turn, outcome, enemyHasDeck, enemyTurn]);
 
   const hint =
     resolve === null || outcome !== null || resolve.marked.length === 0
@@ -174,33 +174,29 @@ export function App() {
         </div>
       )}
       {hint && <p className="app__hint">{hint}</p>}
+      {turn === 'enemy' && outcome === null && <p className="app__hint">Turno del enemigo...</p>}
       {lastEnemyAction && <p className="app__hint">{lastEnemyAction}</p>}
 
       <div className="controls">
         <button onClick={startGame} disabled={!canStartGame}>
           Nueva partida
         </button>
-        <button onClick={newRound} disabled={outcome !== null || mulligan !== null}>
-          Nueva ronda
-        </button>
         <button onClick={resetAll}>Reset total</button>
         <button
-          onClick={enemyTurn}
-          // Bloqueado con cualquier dado marcado sin aplicar (no solo pendingEffect, SPEC-023): desde
-          // que Reroll de dado puede tocar el pool del jugador, dejar un dado marcado a medio resolver
-          // mientras el autómata juega podría rerollearlo bajo el jugador (revisor-codigo lo detectó
-          // como riesgo real). Terminar o cancelar la resolución en curso antes de pasar turno evita
-          // aplicar un efecto con la cara/símbolo ya obsoleto del dado. Bloqueado también con un
-          // mulligan pendiente de confirmar (SPEC-024), mismo criterio que playUpgrade.
+          onClick={() => pass('player')}
+          // Bloqueado con cualquier dado marcado sin aplicar (no solo pendingEffect, SPEC-023), con
+          // una mejora seleccionada, o con un mulligan pendiente de confirmar (SPEC-024/025): no
+          // tiene sentido pasar con una acción a medio construir, hay que cancelarla primero. Y,
+          // claro, solo se puede pasar en tu propio turno.
           disabled={
             outcome !== null ||
-            !enemyHasDeck ||
-            (resolve !== null && resolve.marked.length > 0) ||
+            turn !== 'player' ||
+            resolve !== null ||
             playUpgrade !== null ||
             mulligan !== null
           }
         >
-          Turno enemigo
+          Pasar
         </button>
       </div>
 

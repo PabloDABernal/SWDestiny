@@ -86,11 +86,6 @@ button:disabled {
   gap: 8px;
 }
 
-.hand__draw-button {
-  font-size: 0.85rem;
-  padding: 2px 10px;
-}
-
 .hand {
   list-style: none;
   display: flex;
@@ -128,8 +123,7 @@ button:disabled {
   color: #9aa0b0;
 }
 
-.hand__play-button,
-.hand__discard-button {
+.hand__play-button {
   font-size: 0.8rem;
   padding: 1px 8px;
 }
@@ -356,12 +350,6 @@ button:disabled {
 
 .pool__title {
   font-weight: 600;
-}
-
-.pool__reset {
-  margin-left: auto;
-  padding: 4px 12px;
-  font-size: 0.85rem;
 }
 
 .pool__error {
