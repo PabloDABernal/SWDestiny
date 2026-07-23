@@ -1,6 +1,6 @@
 # SPEC-023: Focus, reroll y especial
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** 5. Alcance por versión → "Focus, reroll y especial (tercera pieza de v4, SPEC-023)"
 **Depende de:** SPEC-010 (costes de recurso), SPEC-013/014 (autómata con modificadores/costes),
 SPEC-015 (dificultad), SPEC-020/021 (mejoras/apoyos, por el centinela `characterIndex: -1`)
@@ -111,4 +111,19 @@ dado con un aviso genérico, sin efecto real de juego todavía).
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+**2026-07-23 (usuario, mazo real, móvil):** Focus y Reroll de dado funcionan correctamente jugando
+(girar dados propios, rerollear dados de cualquier pool incluido el rival, agrupación de valores,
+bloqueo de "Turno enemigo" con dado marcado). Durante el playtest se corrigieron varios problemas
+reales encontrados con datos reales, no cubiertos por los tests unitarios previos (sin acceso de
+red al implementar la spec):
+
+- Notación real de ARH DB: Focus = `F` (no `Fo`), Reroll de dado = `Re` (no `Rr`); Especial (`Sp`)
+  sigue sin confirmar (no se probó ninguna carta con esa cara).
+- Bug real (no de esta spec, pero bloqueaba el playtest): activar un personaje/apoyo con una
+  mejora/apoyo sin dado propio (p. ej. "Hunker Down") reventaba la actualización de estado entera;
+  corregido en `activate`/`activateSupport`.
+- Set "Display of Power", "Awaiting Fate" y el resto de la continuación fan "A Renewed Hope" (11
+  sets) añadidos a `parseTextDeck`, con códigos confirmados por el usuario contra cartas reales.
+
+**Pendiente (no bloqueante, anotado en BACKLOG):** mejorar la visibilidad de qué dados están
+marcados/seleccionados en el pool (el usuario reporta que cuesta distinguirlos a simple vista).
