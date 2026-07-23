@@ -115,16 +115,31 @@ que decida quién empieza).
   `passStreak: 0`.
 - Guard nuevo `state.turn !== side` (fuera de tu turno, no-op) a añadir también en: `selectDie`
   (arrancar/seguir marcando dados), `selectUpgradeCard` (seleccionar mejora a jugar),
-  `pickFocusTarget`, `chooseFocusFace`, `pickRerollTarget` (elegir dado/cara objetivo dentro de una
-  resolución de Focus/Reroll en curso) — cualquier paso que construye la "una acción" de este turno,
-  no solo el que la cierra. `applyDieTo`, `resolveResources`, `resolveSpecial`, `confirmFocus`,
-  `confirmReroll`, `playUpgradeOn`, `cancelResolve`, `cancelPlayUpgrade` ya quedan cubiertos por el
-  mismo guard al ser parte de la misma acción en curso (mismo `side` que la abrió).
+  `pickFocusTarget`, `chooseFocusFace` (elegir dado/cara objetivo dentro de una resolución de Focus
+  en curso) — cualquier paso que construye la "una acción" de este turno, no solo el que la cierra.
+  `applyDieTo`, `resolveResources`, `resolveSpecial`, `confirmFocus`, `confirmReroll`,
+  `playUpgradeOn`, `cancelResolve`, `cancelPlayUpgrade` ya quedan cubiertos por el mismo guard al ser
+  parte de la misma acción en curso (mismo `side` que la abrió). **Excepción**: `pickRerollTarget`
+  (`targetSide`, `poolIndex`) se compara contra `state.resolve.side` (quién abrió la resolución de
+  Reroll de dado), **no** contra `targetSide` — `targetSide` puede ser el pool rival a propósito
+  (SPEC-023: Reroll de dado elige objetivo en cualquier pool), así que el guard correcto es
+  `state.turn !== state.resolve.side`, no `state.turn !== targetSide` (bloquearía por error el caso
+  de uso principal de esa acción).
 - Guard adicional para bloquear "empezar otra cosa" mientras hay un `resolve` abierto sin
-  `pendingEffect`/`focusFaceChoice` (dados marcados sin confirmar): `activate`, `selectUpgradeCard` y
-  `playSupport` necesitan un guard nuevo `state.resolve !== null && state.resolve.side === side` →
-  no-op, análogo al que ya existe hoy para `playUpgrade`/`mulligan` (decisión del usuario, 2026-07-23:
-  marcar un dado bloquea el resto de acciones hasta resolver o cancelar, igual que las mejoras).
+  `pendingEffect`/`focusFaceChoice` (dados marcados sin confirmar): `activate`, `activateSupport`,
+  `selectUpgradeCard` y `playSupport` necesitan un guard nuevo
+  `state.resolve !== null && state.resolve.side === side` → no-op, análogo al que ya existe hoy para
+  `playUpgrade`/`mulligan` (decisión del usuario, 2026-07-23: marcar un dado bloquea el resto de
+  acciones hasta resolver o cancelar, igual que las mejoras). `activateSupport` es simétrico a
+  `activate` (el criterio de aceptación bloquea "activar" personaje **o apoyo**) y hoy
+  (`gameStore.ts`) solo bloquea por `pendingEffect`/`focusFaceChoice`/`playUpgrade`/`mulligan`, no por
+  `resolve` abierto sin más — necesita el mismo guard nuevo que `activate`.
+- `selectDie` hoy (`gameStore.ts`), cuando el dado clicado es de un símbolo o bando distinto al del
+  `resolve` en curso, **reemplaza** el modo entero por uno nuevo (`return { resolve: { side, symbol,
+  marked: [poolIndex] }, ... }`) en vez de bloquear el clic. Con la decisión de este apartado (marcar
+  un dado bloquea el resto de acciones hasta resolver/cancelar), ese "reemplazo" debe convertirse en
+  no-op cuando ya hay `marked.length > 0`: solo se puede seguir marcando/desmarcando dados del MISMO
+  símbolo y bando ya en curso, o cancelar primero con "Cancelar" para poder empezar otro símbolo.
 - El disparo automático de la acción del enemigo (cuando `turn === 'enemy'`) necesita un mecanismo
   fuera de una acción de usuario — no hay ningún clic que lo dispare. Opciones a valorar en
   implementación: un `useEffect` en `App.tsx` que observe `turn` y llame a una acción del store
