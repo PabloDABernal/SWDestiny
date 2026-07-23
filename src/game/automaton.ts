@@ -277,7 +277,9 @@ function focusCandidates(
     const sides = dieSidesOf(d);
     if (!sides) return;
     const face = bestFocusFace(sides);
-    if (!face) return;
+    // Sin mejora real si ya muestra su mejor cara (revisor-codigo, SPEC-023): girar al mismo valor
+    // no es una acción legal, ni gasta el presupuesto en un giro sin efecto.
+    if (!face || face === d.face) return;
     out.push({ poolIndex: i, face, amount: parsePlayerFace(face)?.amount ?? 0 });
   });
   out.sort((a, b) => b.amount - a.amount || a.poolIndex - b.poolIndex);

@@ -149,7 +149,12 @@ export function App() {
         <button onClick={resetAll}>Reset total</button>
         <button
           onClick={enemyTurn}
-          disabled={outcome !== null || !enemyHasDeck || resolve?.pendingEffect != null || playUpgrade !== null}
+          // Bloqueado con cualquier dado marcado sin aplicar (no solo pendingEffect, SPEC-023): desde
+          // que Reroll de dado puede tocar el pool del jugador, dejar un dado marcado a medio resolver
+          // mientras el autómata juega podría rerollearlo bajo el jugador (revisor-codigo lo detectó
+          // como riesgo real). Terminar o cancelar la resolución en curso antes de pasar turno evita
+          // aplicar un efecto con la cara/símbolo ya obsoleto del dado.
+          disabled={outcome !== null || !enemyHasDeck || (resolve !== null && resolve.marked.length > 0) || playUpgrade !== null}
         >
           Turno enemigo
         </button>

@@ -457,6 +457,20 @@ describe('nextAutomatonAction — focus, reroll de dado y especial (SPEC-023)', 
     expect(action.type).toBe('pass');
   });
 
+  it('focus no gasta la acción en un dado que ya muestra su mejor cara (sin mejora real, revisor-codigo)', () => {
+    // El candidato muestra '3MD1' (coste 1, impagable con 0 recursos): no lo resuelve daño (fila 1,
+    // por eso sigue en el pool), y su mejor cara posible sigue siendo esa misma — girarlo con Focus
+    // no mejoraría nada.
+    const enemy = enemySide({
+      activated: [true, true],
+      pool: [die(0, '1Fo'), die(1, '3MD1')],
+      resources: 0,
+    });
+    const dieSidesOf = (d: PooledDie) => (d.code === 'c1' ? ['3MD1', '1R', 'Sp', '-', '-', '-'] : null);
+    const action = nextAutomatonAction(enemy, playerSide(), noRerollsUsed, NORMAL_EXTRA_REROLLS, dieSidesOf);
+    expect(action.type).toBe('pass');
+  });
+
   it('reroll de dado apunta al dado de daño sin resolver del jugador con más cantidad', () => {
     const enemy = enemySide({ activated: [true, true], pool: [die(0, '1Rr')] });
     const player = playerSide({ pool: [die(0, '1MD'), die(1, '3MD')] });
