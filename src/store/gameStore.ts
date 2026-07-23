@@ -721,10 +721,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (isKO(character, s.damage[index] ?? 0)) return state;
       const activated = s.activated.slice();
       activated[index] = true;
-      // Las mejoras ligadas a este personaje (SPEC-020) tiran su dado junto con los suyos.
+      // Las mejoras ligadas a este personaje (SPEC-020) tiran su dado junto con los suyos. Algunas
+      // mejoras reales no tienen dado propio (texto puro): `card.sides` llega vacío/no-array desde
+      // ARH DB, y la mejora simplemente no aporta ningún dado (bug detectado jugando SPEC-023: sin
+      // este guard, activar el personaje anfitrión reventaba entero y no activaba nada).
       const upgradeDice = (s.upgrades[index] ?? []).flatMap((code) => {
         const card = readCache(code);
-        if (!card) return [];
+        if (!card || !Array.isArray(card.sides) || card.sides.length === 0) return [];
         return [rollUpgradeDie({ sides: [...card.sides] }, card.code, card.name, index)];
       });
       const pool = [...s.pool, ...rollCharacter(character, index), ...upgradeDice];
@@ -1129,8 +1132,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (!card) return state;
       const supportsActivated = s.supportsActivated.slice();
       supportsActivated[index] = true;
-      const die = rollUpgradeDie({ sides: [...card.sides] }, card.code, card.name, -1);
-      const pool = [...s.pool, die];
+      // Algunos apoyos reales no tienen dado propio (BACKLOG); marca el apoyo activado igual, pero
+      // sin tirar ni añadir ningún dado al pool (mismo guard que las mejoras, ver `activate`).
+      const hasDie = Array.isArray(card.sides) && card.sides.length > 0;
+      const pool = hasDie ? [...s.pool, rollUpgradeDie({ sides: [...card.sides] }, card.code, card.name, -1)] : s.pool;
       return { sides: { ...state.sides, [side]: { ...s, supportsActivated, pool } } };
     }),
 

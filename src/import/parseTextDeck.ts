@@ -4,7 +4,9 @@ import type { DeckSlot } from './parseDeck';
 // Tabla nombre-de-set (tal cual aparece en el "text file" de ARH DB) → 2 dígitos de set.
 // Validada contra db.swdrenewedhope.com/api/public/card/<código> el 2026-07-21 (SPEC-017);
 // "Transformations" añadido el 2026-07-22 (código real confirmado por el usuario:
-// db.swdrenewedhope.com/card/13007A → prefijo 13).
+// db.swdrenewedhope.com/card/13007A → prefijo 13); "Display of Power" añadido el 2026-07-23
+// (código real confirmado por el usuario: db.swdrenewedhope.com/card/22099 → prefijo 22,
+// carta "Hangar Bay, Jabiim (Display of Power #99)").
 // Un set fuera de esta tabla es un error; ampliar aquí cuando ARH publique sets nuevos.
 const SET_CODES: Record<string, string> = {
   Awakenings: '01',
@@ -20,6 +22,7 @@ const SET_CODES: Record<string, string> = {
   'Spark of Hope': '11',
   'Covert Missions': '12',
   Transformations: '13',
+  'Display of Power': '22',
 };
 
 // Línea de carta: nombre (puede llevar comas y paréntesis) + último paréntesis "(<Set> #<n>)".

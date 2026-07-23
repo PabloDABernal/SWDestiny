@@ -69,13 +69,13 @@ describe('dieSymbol (SPEC-008a/008b/010)', () => {
     expect(dieSymbol('3Shi1')).toBe('shield'); // coste indirecto (010)
     expect(dieSymbol('+2MD')).toBe('melee'); // modificador (010)
     expect(dieSymbol('+1R')).toBe('resource');
-    expect(dieSymbol('2Fo')).toBe('focus'); // SPEC-023
+    expect(dieSymbol('2F')).toBe('focus'); // SPEC-023
     expect(dieSymbol('1Rr')).toBe('reroll'); // SPEC-023
     expect(dieSymbol('Sp')).toBe('special'); // SPEC-023
   });
 
   it('null para no resolubles (blanco, disrupt, descarte)', () => {
-    for (const face of ['-', '1F', 'Dr', 'Dc']) {
+    for (const face of ['-', 'Dr', 'Dc']) {
       expect(dieSymbol(face)).toBeNull();
     }
   });
@@ -109,7 +109,7 @@ describe('parsePlayerFace (SPEC-010)', () => {
   });
 
   it('focus y reroll de dado, con y sin coste (SPEC-023)', () => {
-    expect(parsePlayerFace('2Fo')).toMatchObject({ symbol: 'focus', amount: 2, resourceCost: 0 });
+    expect(parsePlayerFace('2F')).toMatchObject({ symbol: 'focus', amount: 2, resourceCost: 0 });
     expect(parsePlayerFace('1Rr1')).toMatchObject({ symbol: 'reroll', amount: 1, resourceCost: 1 });
   });
 
@@ -125,7 +125,7 @@ describe('parsePlayerFace (SPEC-010)', () => {
   });
 
   it('null para no resolubles', () => {
-    for (const face of ['-', '1F', 'Dr', 'Dc']) {
+    for (const face of ['-', 'Dr', 'Dc']) {
       expect(parsePlayerFace(face)).toBeNull();
     }
   });
