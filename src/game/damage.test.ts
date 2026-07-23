@@ -70,7 +70,7 @@ describe('dieSymbol (SPEC-008a/008b/010)', () => {
     expect(dieSymbol('+2MD')).toBe('melee'); // modificador (010)
     expect(dieSymbol('+1R')).toBe('resource');
     expect(dieSymbol('2F')).toBe('focus'); // SPEC-023
-    expect(dieSymbol('1Rr')).toBe('reroll'); // SPEC-023
+    expect(dieSymbol('1Re')).toBe('reroll'); // SPEC-023
     expect(dieSymbol('Sp')).toBe('special'); // SPEC-023
   });
 
@@ -110,7 +110,7 @@ describe('parsePlayerFace (SPEC-010)', () => {
 
   it('focus y reroll de dado, con y sin coste (SPEC-023)', () => {
     expect(parsePlayerFace('2F')).toMatchObject({ symbol: 'focus', amount: 2, resourceCost: 0 });
-    expect(parsePlayerFace('1Rr1')).toMatchObject({ symbol: 'reroll', amount: 1, resourceCost: 1 });
+    expect(parsePlayerFace('1Re1')).toMatchObject({ symbol: 'reroll', amount: 1, resourceCost: 1 });
   });
 
   it('especial: valor fijo 0, con y sin coste (SPEC-023)', () => {
