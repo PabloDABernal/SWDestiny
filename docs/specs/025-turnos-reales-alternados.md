@@ -104,9 +104,11 @@ que decida quién empieza).
 - Nuevo estado en el store: `turn: Side` (quién puede actuar ahora) y `passStreak: number` (pases
   consecutivos sin ninguna acción real entre medias). Ninguno de los dos se persiste (mismo patrón
   que `resolve`/`playUpgrade`/`mulligan`).
-- Nueva acción `pass(side)`: solo válida si `state.turn === side`; incrementa `passStreak`, cambia
-  `turn` al otro bando. Si `passStreak` llega a 2, dispara el mantenimiento (misma lógica interna que
-  hoy tiene `newRound()`, reutilizada como función, no como acción pública del store) y reinicia
+- Nueva acción `pass(side)`: solo válida si `state.turn === side` **y** no hay ningún modo abierto
+  (`resolve`/`playUpgrade`/`mulligan`, mismo guard de exclusión mutua que el resto de acciones, no
+  solo el botón "Pasar" deshabilitado en la UI); incrementa `passStreak`, cambia `turn` al otro
+  bando. Si `passStreak` llega a 2, dispara el mantenimiento (misma lógica interna que hoy tiene
+  `newRound()`, reutilizada como función, no como acción pública del store) y reinicia
   `turn: 'player'`, `passStreak: 0`.
 - Toda acción real que hoy muta el estado de partida (`activate`, `playUpgradeOn` al completarse,
   `playSupport`, `activateSupport`, y el cierre de `resolvePlayerBatch`/`confirmFocus`/
@@ -150,7 +152,15 @@ que decida quién empieza).
   prioridades por invocación" (confirmado en `src/game/automaton.ts`/`gameStore.ts`: nunca resuelve
   más de un objetivo por llamada, SPEC-013/014) — no hace falta cambiar `nextAutomatonAction`, solo
   quién y cuándo la invoca, y que ahora también cuenta como pase si no tiene acción legal (en vez de
-  simplemente no hacer nada como hoy).
+  simplemente no hacer nada como hoy). El `switch` interno de `enemyTurn()` resuelve cada
+  `action.type` con `set()` directos que no pasan por `activate`/`applyDieTo`/etc., así que el flip de
+  turno (`turn: 'player'`, `passStreak: 0`) y el conteo de pase (`passStreak + 1`, `turn: 'player'`,
+  sin resetear) hay que aplicarlos en el wrapper que envuelve el `switch` según
+  `action.type !== 'pass'`, no rama por rama — con especial cuidado en dos ramas fáciles de dejar
+  fuera: `'reroll'` (blancos, prioridad 5 del autómata, hoy solo actualiza `rerollsUsed`/
+  `lastEnemyAction`) SÍ cuenta como acción real (cierra el turno, resetea `passStreak`); `'pass'`
+  (hoy solo pone `lastEnemyAction`) hay que conectarlo al mismo mecanismo de `passStreak` que usa
+  `pass('player')`, no dejarlo como no-op de turno.
 - Botones a eliminar: "Nueva ronda" y "Turno enemigo" (`src/App.tsx`, controls), **y también el
   segundo botón "Nueva ronda"** que hoy existe en `src/components/DicePool.tsx` (`pool__reset`,
   llama a `newRound()` directamente — fácil de pasar por alto porque no está en `App.tsx`); "Robar"
