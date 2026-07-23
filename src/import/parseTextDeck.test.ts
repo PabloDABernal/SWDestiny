@@ -84,6 +84,17 @@ describe('parseTextDeck', () => {
     ]);
   });
 
+  it('reconoce el resto de sets de "A Renewed Hope" (confirmados el 2026-07-23)', () => {
+    expect(parseTextDeck('1x X (Faltering Allegiances #1)')).toEqual([{ code: '14001', qty: 1 }]);
+    expect(parseTextDeck('1x X (Redemption #1)')).toEqual([{ code: '15001', qty: 1 }]);
+    expect(parseTextDeck('1x X (Unlikely Heroes #1)')).toEqual([{ code: '18001', qty: 1 }]);
+    expect(parseTextDeck('1x X (Galactic Struggle #1)')).toEqual([{ code: '19001', qty: 1 }]);
+    expect(parseTextDeck('1x X (Echoes of Destiny #1)')).toEqual([{ code: '20001', qty: 1 }]);
+    expect(parseTextDeck('1x X (Seeking Answers #1)')).toEqual([{ code: '21001', qty: 1 }]);
+    expect(parseTextDeck('1x X (Resurgence #1)')).toEqual([{ code: '23001', qty: 1 }]);
+    expect(parseTextDeck('1x X (Uncharted Alliances #1)')).toEqual([{ code: '25001', qty: 1 }]);
+  });
+
   it('ignora las cartas de la sección PLOT sin intentar resolverlas (dos caras A/B, SPEC-017)', () => {
     const slots = parseTextDeck(
       'CHARACTER\n---------\n2x Clone Trooper (Legacies #38)\n\nPLOT\n----\nRescue Han Solo (Transformations #15)\n',
