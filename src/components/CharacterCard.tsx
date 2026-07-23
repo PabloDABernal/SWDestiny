@@ -13,8 +13,8 @@ interface CharacterCardProps {
   targetable: boolean;
   /** El enemigo es pasivo en v1: no muestra botón Activar. */
   showActivate: boolean;
-  /** Nombres de las mejoras en juego ligadas a este personaje (SPEC-020). */
-  upgradeNames: string[];
+  /** Mejoras en juego ligadas a este personaje (SPEC-020), con sus caras de dado si tiene. */
+  upgrades: { name: string; sides?: string[] }[];
   /** true mientras se elige objetivo para jugar una mejora (SPEC-020): Activar queda deshabilitado
    * para que no parezca un clic sin efecto. */
   activateDisabled?: boolean;
@@ -30,7 +30,7 @@ export function CharacterCard({
   ko,
   targetable,
   showActivate,
-  upgradeNames,
+  upgrades,
   activateDisabled,
   onActivate,
   onTarget,
@@ -68,10 +68,21 @@ export function CharacterCard({
         {character.isElite ? ' · Elite' : ''}
         {` · ${character.dice.length} dado${character.dice.length > 1 ? 's' : ''}`}
       </div>
-      {upgradeNames.length > 0 && (
-        <ul className="character-card__upgrades" title="Mejoras en juego">
-          {upgradeNames.map((name, i) => (
-            <li key={i}>⚙ {name}</li>
+      {upgrades.length > 0 && (
+        <ul className="character-card__upgrades">
+          {upgrades.map((upgrade, i) => (
+            <li key={i}>
+              <span className="character-card__upgrade-name">⚙ {upgrade.name}</span>
+              {upgrade.sides && upgrade.sides.length > 0 && (
+                <ol className="die__sides">
+                  {upgrade.sides.map((side, j) => (
+                    <li className="side" key={j}>
+                      {side}
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </li>
           ))}
         </ul>
       )}

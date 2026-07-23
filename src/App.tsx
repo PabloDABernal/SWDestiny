@@ -63,7 +63,10 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
             {s.characters.map((c, i) => {
               const dmg = s.damage[i] ?? 0;
               const ko = isKO(c, dmg);
-              const upgradeNames = (s.upgrades[i] ?? []).map((code) => readCache(code)?.name ?? code);
+              const upgradeCards = (s.upgrades[i] ?? []).map((code) => {
+                const card = readCache(code);
+                return { name: card?.name ?? code, sides: card?.sides };
+              });
               return (
                 <CharacterCard
                   character={c}
@@ -73,7 +76,7 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
                   ko={ko}
                   targetable={(targetableSide || upgradeTargetableSide) && !ko}
                   showActivate={isPlayer}
-                  upgradeNames={upgradeNames}
+                  upgrades={upgradeCards}
                   activateDisabled={playUpgrade !== null}
                   onActivate={() => activate(side, i)}
                   onTarget={() => (upgradeTargetableSide ? playUpgradeOn(i) : applyDieTo(side, i))}

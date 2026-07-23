@@ -129,6 +129,15 @@ button:disabled {
   color: #9aa0b0;
 }
 
+.character-card__upgrades > li {
+  margin-bottom: 6px;
+}
+
+.character-card__upgrade-name {
+  display: block;
+  margin-bottom: 4px;
+}
+
 .roster__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
