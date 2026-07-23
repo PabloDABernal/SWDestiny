@@ -598,6 +598,10 @@ interface GameState {
   resolveError: string | null;
   /** Mejora seleccionada en la mano a la espera de un personaje objetivo (SPEC-020). */
   playUpgrade: { side: Side; code: string } | null;
+  /** Mulligan del jugador pendiente de confirmar tras "Nueva partida" (SPEC-024): `marked` son
+   * índices de `sides.player.hand` marcados para devolver al mazo. No se persiste (estado de
+   * partida, igual que `resolve`/`playUpgrade`). */
+  mulligan: { marked: number[] } | null;
   outcome: Outcome;
   /** Feedback de la última acción del autómata (incluida "pasa"), para mostrar en la UI. */
   lastEnemyAction: string | null;
@@ -606,6 +610,17 @@ interface GameState {
   /** Solo afecta a la PRÓXIMA importación del enemigo (vida); el reroll extra aplica de inmediato. */
   setDifficulty: (difficulty: Difficulty) => void;
   importDeck: (side: Side, raw: string) => Promise<void>;
+  /** Reparte 5 cartas a cada bando (o las que haya) desde su mazo de robo y abre el mulligan del
+   * jugador (SPEC-024). No-op si la partida ya terminó o si algún bando no está en estado fresco
+   * (mazo importado y mano vacía en ambos). */
+  startGame: () => void;
+  /** Marca/desmarca `handIndex` de la mano del jugador como carta a devolver en el mulligan en
+   * curso (SPEC-024). No-op si no hay mulligan pendiente. */
+  toggleMulliganCard: (handIndex: number) => void;
+  /** Confirma el mulligan en curso (SPEC-024): devuelve las cartas marcadas al mazo de robo del
+   * jugador (rebarajado) y roba la misma cantidad de vuelta. Cierra el modo aunque no se marque
+   * ninguna carta. No-op si no hay mulligan pendiente. */
+  confirmMulligan: () => void;
   activate: (side: Side, index: number) => void;
   /** Solo re-tira dados: vacía pools/activaciones/rerolls de ambos bandos; conserva recursos, vida,
    * escudos y KO. No-op si la partida ya terminó (SPEC-009). */
@@ -687,6 +702,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   resolve: null,
   resolveError: null,
   playUpgrade: null,
+  mulligan: null,
   outcome: null,
   lastEnemyAction: null,
   difficulty: loadPersistedDifficulty(),
@@ -724,10 +740,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       persistSupports(side, []);
       // Pila de descarte vacía en cada (re)importación (SPEC-022).
       persistDiscardPile(side, []);
-      // Reinicia el estado de partida de ESTE bando (vida completa) y recalcula el fin.
+      // Reinicia el estado de partida de ESTE bando (vida completa) y recalcula el fin. Limpia
+      // también playUpgrade/mulligan (SPEC-024: reimportar a mitad de mulligan/jugar una mejora no
+      // debe dejar esos modos abiertos apuntando a un bando que ya no existe en ese estado).
       set((state) => {
         const sides = { ...state.sides, [side]: freshSide(characters, drawPile) };
-        return { sides, resolve: null, resolveError: null, outcome: computeOutcome(sides) };
+        return {
+          sides,
+          resolve: null,
+          resolveError: null,
+          playUpgrade: null,
+          mulligan: null,
+          outcome: computeOutcome(sides),
+        };
       });
     } catch (e) {
       const message =
@@ -741,13 +766,67 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
+  // "Nueva partida" (SPEC-024): reparte 5 cartas (o las que haya) a cada bando desde su mazo de
+  // robo y abre el mulligan del jugador. Solo tiene sentido en estado fresco (mazo importado y
+  // mano vacía en AMBOS bandos); la UI ya deshabilita el botón fuera de ese estado, pero el store
+  // repite la comprobación por si acaso.
+  startGame: () =>
+    set((state) => {
+      if (state.outcome !== null) return state;
+      const fresh = (s: SideState) => s.characters.length > 0 && s.hand.length === 0;
+      if (!fresh(state.sides.player) || !fresh(state.sides.enemy)) return state;
+
+      const deal = (side: Side, s: SideState): SideState => {
+        const hand = s.drawPile.slice(0, HAND_SIZE);
+        const drawPile = s.drawPile.slice(HAND_SIZE);
+        persistDrawPile(side, drawPile);
+        persistHand(side, hand);
+        return { ...s, drawPile, hand };
+      };
+      const sides: Record<Side, SideState> = {
+        player: deal('player', state.sides.player),
+        enemy: deal('enemy', state.sides.enemy),
+      };
+      return { sides, mulligan: { marked: [] }, resolveError: null };
+    }),
+
+  toggleMulliganCard: (handIndex: number) =>
+    set((state) => {
+      if (state.mulligan === null) return state;
+      if (!state.sides.player.hand[handIndex]) return state;
+      const marked = state.mulligan.marked.includes(handIndex)
+        ? state.mulligan.marked.filter((i) => i !== handIndex)
+        : [...state.mulligan.marked, handIndex];
+      return { mulligan: { marked } };
+    }),
+
+  confirmMulligan: () =>
+    set((state) => {
+      const mode = state.mulligan;
+      if (mode === null) return state;
+      const s = state.sides.player;
+      const returned = mode.marked.map((i) => s.hand[i]).filter((c): c is string => c !== undefined);
+      const keptHand = s.hand.filter((_, i) => !mode.marked.includes(i));
+      const drawPile = shuffle([...s.drawPile, ...returned]);
+      const drawn = drawPile.slice(0, returned.length);
+      const hand = [...keptHand, ...drawn];
+      const finalDrawPile = drawPile.slice(returned.length);
+      persistDrawPile('player', finalDrawPile);
+      persistHand('player', hand);
+      return {
+        sides: { ...state.sides, player: { ...s, hand, drawPile: finalDrawPile } },
+        mulligan: null,
+      };
+    }),
+
   activate: (side: Side, index: number) =>
     set((state) => {
       // Bloqueado mientras se espera el receptor del coste indirecto (SPEC-010, resolución atómica)
       // o se elige la cara de un dado en una resolución de Focus en curso (SPEC-023, ídem).
       if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
-      // Bloqueado mientras se elige objetivo para jugar una mejora (SPEC-020).
-      if (state.playUpgrade !== null) return state;
+      // Bloqueado mientras se elige objetivo para jugar una mejora (SPEC-020) o hay un mulligan
+      // pendiente de confirmar (SPEC-024).
+      if (state.playUpgrade !== null || state.mulligan !== null) return state;
       const s = state.sides[side];
       const character = s.characters[index];
       if (!character || s.activated[index]) return state;
@@ -777,6 +856,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   newRound: () =>
     set((state) => {
       if (state.outcome !== null) return state;
+      // Bloqueado mientras hay un mulligan pendiente de confirmar (SPEC-024): guard nuevo, antes
+      // "Nueva ronda" no tenía ninguna exclusión con playUpgrade ni con ningún otro modo.
+      if (state.mulligan !== null) return state;
 
       const maintain = (side: Side, s: SideState): SideState => {
         const toDraw = Math.max(0, HAND_SIZE - s.hand.length);
@@ -843,6 +925,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         resolve: null,
         resolveError: null,
         playUpgrade: null,
+        mulligan: null,
         lastEnemyAction: null,
         outcome: computeOutcome(sides),
       };
@@ -854,8 +937,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Bloqueado mientras se espera el receptor del coste indirecto (SPEC-010) o se elige la cara
       // de un dado en una resolución de Focus en curso (SPEC-023).
       if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
-      // Bloqueado mientras se elige objetivo para jugar una mejora (SPEC-020).
-      if (state.playUpgrade !== null) return state;
+      // Bloqueado mientras se elige objetivo para jugar una mejora (SPEC-020) o hay un mulligan
+      // pendiente de confirmar (SPEC-024).
+      if (state.playUpgrade !== null || state.mulligan !== null) return state;
       const die = state.sides[side].pool[poolIndex];
       if (!die) return state;
       const symbol = dieSymbol(die.face);
@@ -1098,6 +1182,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Bloqueado mientras se espera el receptor del coste indirecto (SPEC-010) o se elige la cara
       // de un dado en una resolución de Focus en curso (SPEC-023).
       if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
+      // Bloqueado mientras hay un mulligan pendiente de confirmar (SPEC-024).
+      if (state.mulligan !== null) return state;
       if (!state.sides[side].hand.includes(code)) return state;
       const card = readCache(code);
       if (!card || card.type_code !== 'upgrade') return state;
@@ -1139,9 +1225,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   playSupport: (side: Side, code: string) =>
     set((state) => {
       if (state.outcome !== null) return state;
-      // Mismos guards de exclusión mutua que jugar una mejora (SPEC-020/021/023).
+      // Mismos guards de exclusión mutua que jugar una mejora (SPEC-020/021/023/024).
       if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
-      if (state.playUpgrade !== null) return state;
+      if (state.playUpgrade !== null || state.mulligan !== null) return state;
       const s = state.sides[side];
       if (!s.hand.includes(code)) return state;
       const card = readCache(code);
@@ -1165,9 +1251,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   activateSupport: (side: Side, index: number) =>
     set((state) => {
-      // Mismos guards de exclusión mutua que activar un personaje (SPEC-020/021/023).
+      // Mismos guards de exclusión mutua que activar un personaje (SPEC-020/021/023/024).
       if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
-      if (state.playUpgrade !== null) return state;
+      if (state.playUpgrade !== null || state.mulligan !== null) return state;
       const s = state.sides[side];
       const code = s.supports[index];
       if (!code || s.supportsActivated[index]) return state;
@@ -1202,7 +1288,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((state) => {
       if (state.outcome !== null) return state;
       if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
-      if (state.playUpgrade !== null) return state;
+      if (state.playUpgrade !== null || state.mulligan !== null) return state;
       const s = state.sides[side];
       const index = s.hand.indexOf(code);
       if (index === -1) return state;

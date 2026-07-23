@@ -115,6 +115,19 @@ button:disabled {
   border-color: #5c8a9a;
 }
 
+.hand__card--marked {
+  border-color: #ffd479;
+  opacity: 0.8;
+}
+
+.hand__mulligan-mark {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: #9aa0b0;
+}
+
 .hand__play-button,
 .hand__discard-button {
   font-size: 0.8rem;

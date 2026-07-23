@@ -12,12 +12,14 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
   const s = useGameStore((st) => st.sides[side]);
   const resolve = useGameStore((st) => st.resolve);
   const playUpgrade = useGameStore((st) => st.playUpgrade);
+  const mulligan = useGameStore((st) => st.mulligan);
   const outcome = useGameStore((st) => st.outcome);
   const activate = useGameStore((st) => st.activate);
   const applyDieTo = useGameStore((st) => st.applyDieTo);
   const playUpgradeOn = useGameStore((st) => st.playUpgradeOn);
   const activateSupport = useGameStore((st) => st.activateSupport);
   const drawCard = useGameStore((st) => st.drawCard);
+  const toggleMulliganCard = useGameStore((st) => st.toggleMulliganCard);
 
   // Objetivo válido de un PERSONAJE. Con pendingEffect (SPEC-010) se elige el receptor del coste
   // indirecto: SIEMPRE el propio bando. Si no, daño → bando contrario, escudo → propio; recurso,
@@ -52,13 +54,20 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
               <button
                 className="hand__draw-button"
                 onClick={() => drawCard(side)}
-                disabled={outcome !== null}
+                disabled={outcome !== null || mulligan !== null}
               >
                 Robar
               </button>
             )}
           </p>
-          {isPlayer && <Hand side={side} codes={s.hand} />}
+          {isPlayer && (
+            <Hand
+              side={side}
+              codes={s.hand}
+              mulligan={mulligan}
+              onToggleMulligan={toggleMulliganCard}
+            />
+          )}
           <div className="roster__grid">
             {s.characters.map((c, i) => {
               const dmg = s.damage[i] ?? 0;
@@ -77,7 +86,7 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
                   targetable={(targetableSide || upgradeTargetableSide) && !ko}
                   showActivate={isPlayer}
                   upgrades={upgradeCards}
-                  activateDisabled={playUpgrade !== null}
+                  activateDisabled={playUpgrade !== null || mulligan !== null}
                   onActivate={() => activate(side, i)}
                   onTarget={() => (upgradeTargetableSide ? playUpgradeOn(i) : applyDieTo(side, i))}
                   key={`${c.code}-${i}`}
@@ -102,11 +111,26 @@ export function App() {
   const resolve = useGameStore((s) => s.resolve);
   const playUpgrade = useGameStore((s) => s.playUpgrade);
   const cancelPlayUpgrade = useGameStore((s) => s.cancelPlayUpgrade);
+  const mulligan = useGameStore((s) => s.mulligan);
+  const startGame = useGameStore((s) => s.startGame);
+  const confirmMulligan = useGameStore((s) => s.confirmMulligan);
   const newRound = useGameStore((s) => s.newRound);
   const resetAll = useGameStore((s) => s.resetAll);
   const enemyTurn = useGameStore((s) => s.enemyTurn);
   const lastEnemyAction = useGameStore((s) => s.lastEnemyAction);
   const enemyHasDeck = useGameStore((s) => s.sides.enemy.characters.length > 0);
+  const playerHand = useGameStore((s) => s.sides.player.hand);
+  const enemyHand = useGameStore((s) => s.sides.enemy.hand);
+  const playerCharacters = useGameStore((s) => s.sides.player.characters.length);
+  const enemyCharacters = useGameStore((s) => s.sides.enemy.characters.length);
+  // "Nueva partida" (SPEC-024): solo tiene sentido en estado fresco, ambos bandos con mazo
+  // importado y mano vacía (si no, ya se está jugando o falta importar).
+  const canStartGame =
+    outcome === null &&
+    playerCharacters > 0 &&
+    enemyCharacters > 0 &&
+    playerHand.length === 0 &&
+    enemyHand.length === 0;
 
   const hint =
     resolve === null || outcome !== null || resolve.marked.length === 0
@@ -143,10 +167,20 @@ export function App() {
           <button onClick={cancelPlayUpgrade}>Cancelar</button>
         </p>
       )}
+      {mulligan && outcome === null && (
+        <p className="app__hint">
+          Mulligan pendiente. Marca en tu mano las cartas que quieras devolver al mazo (0 a 5) y
+          confirma para robar la misma cantidad de vuelta.{' '}
+          <button onClick={confirmMulligan}>Confirmar mulligan</button>
+        </p>
+      )}
       {lastEnemyAction && <p className="app__hint">{lastEnemyAction}</p>}
 
       <div className="controls">
-        <button onClick={newRound} disabled={outcome !== null}>
+        <button onClick={startGame} disabled={!canStartGame}>
+          Nueva partida
+        </button>
+        <button onClick={newRound} disabled={outcome !== null || mulligan !== null}>
           Nueva ronda
         </button>
         <button onClick={resetAll}>Reset total</button>
@@ -156,8 +190,15 @@ export function App() {
           // que Reroll de dado puede tocar el pool del jugador, dejar un dado marcado a medio resolver
           // mientras el autómata juega podría rerollearlo bajo el jugador (revisor-codigo lo detectó
           // como riesgo real). Terminar o cancelar la resolución en curso antes de pasar turno evita
-          // aplicar un efecto con la cara/símbolo ya obsoleto del dado.
-          disabled={outcome !== null || !enemyHasDeck || (resolve !== null && resolve.marked.length > 0) || playUpgrade !== null}
+          // aplicar un efecto con la cara/símbolo ya obsoleto del dado. Bloqueado también con un
+          // mulligan pendiente de confirmar (SPEC-024), mismo criterio que playUpgrade.
+          disabled={
+            outcome !== null ||
+            !enemyHasDeck ||
+            (resolve !== null && resolve.marked.length > 0) ||
+            playUpgrade !== null ||
+            mulligan !== null
+          }
         >
           Turno enemigo
         </button>
