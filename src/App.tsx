@@ -20,6 +20,8 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
   const activateSupport = useGameStore((st) => st.activateSupport);
   const drawCard = useGameStore((st) => st.drawCard);
   const toggleMulliganCard = useGameStore((st) => st.toggleMulliganCard);
+  const cancelPlayUpgrade = useGameStore((st) => st.cancelPlayUpgrade);
+  const confirmMulligan = useGameStore((st) => st.confirmMulligan);
 
   // Objetivo válido de un PERSONAJE. Con pendingEffect (SPEC-010) se elige el receptor del coste
   // indirecto: SIEMPRE el propio bando. Si no, daño → bando contrario, escudo → propio; recurso,
@@ -44,6 +46,19 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
         {!isPlayer && <DifficultySelector />}
         <ImportPanel side={side} label={label} />
       </div>
+      {isPlayer && playUpgrade && outcome === null && (
+        <p className="app__hint">
+          Mejora seleccionada. Pulsa uno de tus personajes para jugarla sobre él.{' '}
+          <button onClick={cancelPlayUpgrade}>Cancelar</button>
+        </p>
+      )}
+      {isPlayer && mulligan && outcome === null && (
+        <p className="app__hint">
+          Mulligan pendiente. Marca en tu mano las cartas que quieras devolver al mazo (0 a 5) y
+          confirma para robar la misma cantidad de vuelta.{' '}
+          <button onClick={confirmMulligan}>Confirmar mulligan</button>
+        </p>
+      )}
       {s.characters.length === 0 ? (
         <p className="roster__empty">Sin mazo importado.</p>
       ) : (
@@ -110,10 +125,8 @@ export function App() {
   const outcome = useGameStore((s) => s.outcome);
   const resolve = useGameStore((s) => s.resolve);
   const playUpgrade = useGameStore((s) => s.playUpgrade);
-  const cancelPlayUpgrade = useGameStore((s) => s.cancelPlayUpgrade);
   const mulligan = useGameStore((s) => s.mulligan);
   const startGame = useGameStore((s) => s.startGame);
-  const confirmMulligan = useGameStore((s) => s.confirmMulligan);
   const newRound = useGameStore((s) => s.newRound);
   const resetAll = useGameStore((s) => s.resetAll);
   const enemyTurn = useGameStore((s) => s.enemyTurn);
@@ -161,19 +174,6 @@ export function App() {
         </div>
       )}
       {hint && <p className="app__hint">{hint}</p>}
-      {playUpgrade && outcome === null && (
-        <p className="app__hint">
-          Mejora seleccionada. Pulsa uno de tus personajes para jugarla sobre él.{' '}
-          <button onClick={cancelPlayUpgrade}>Cancelar</button>
-        </p>
-      )}
-      {mulligan && outcome === null && (
-        <p className="app__hint">
-          Mulligan pendiente. Marca en tu mano las cartas que quieras devolver al mazo (0 a 5) y
-          confirma para robar la misma cantidad de vuelta.{' '}
-          <button onClick={confirmMulligan}>Confirmar mulligan</button>
-        </p>
-      )}
       {lastEnemyAction && <p className="app__hint">{lastEnemyAction}</p>}
 
       <div className="controls">
