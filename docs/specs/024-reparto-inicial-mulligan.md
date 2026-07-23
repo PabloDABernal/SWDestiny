@@ -74,7 +74,17 @@ no hace mulligan, se queda con su mano inicial tal cual.
   deshabilitado hasta que ambos bandos estén en estado fresco (mazo importado + mano vacía).
 - "Reset total" o reimportar un mazo mientras el mulligan está pendiente de confirmar: se permite
   igual que ya permiten esas acciones con otros modos en curso, y limpia el estado de mulligan
-  pendiente (vuelve a mano vacía, botón "Nueva partida" vuelve a estar disponible).
+  pendiente (vuelve a mano vacía, botón "Nueva partida" vuelve a estar disponible). **Ojo**: hoy
+  `importDeck` no limpia `playUpgrade` al reimportar (solo resetea `resolve`/`outcome`), así que hay
+  que añadir explícitamente `mulligan: null` ahí (y en `resetAll`, que sí limpia `playUpgrade` hoy)
+  para no repetir ese mismo olvido con el estado nuevo — ver Notas técnicas.
+- Caso extremadamente improbable, reconocido y aceptado: si en mitad de una partida ya arrancada
+  ambas manos llegan a 0 a la vez sin pasar por "Reset total" (solo posible si el jugador descarta
+  toda su mano justo cuando la del enemigo también está en 0; el enemigo nunca descarta, SPEC-022),
+  la condición de habilitado de "Nueva partida" (`hand.length === 0` en ambos bandos) se reactivaría
+  aunque la partida siga en curso. Se acepta el riesgo sin guard adicional: es casi inalcanzable y,
+  si ocurriera, pulsar "Nueva partida" simplemente repartiría 5 cartas de más a mitad de partida sin
+  romper nada (no hay "Fuera de alcance" que dependa de que esto sea imposible, solo inusual).
 - Outcome de partida ya decidido (Victoria/Derrota): "Nueva partida" y el mulligan son no-op, mismo
   criterio que el resto de acciones.
 
@@ -96,6 +106,9 @@ no hace mulligan, se queda con su mano inicial tal cual.
 - El botón "Nueva partida" convive con "Reset total"/"Nueva ronda" ya existentes (`src/App.tsx`);
   su condición de habilitado depende de `hand.length === 0` en ambos bandos y de que ambos tengan
   `characters.length > 0`.
+- `mulligan: null` hay que añadirlo tanto en `resetAll` (que ya limpia `playUpgrade`) como en
+  `importDeck` (que hoy **no** limpia `playUpgrade` al reimportar, solo `resolve`/`outcome` —
+  mismo olvido a no repetir con el estado nuevo).
 
 ## Resultado del playtest
 
