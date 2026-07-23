@@ -72,6 +72,12 @@ describe('parseTextDeck', () => {
     ]);
   });
 
+  it('reconoce el set Awaiting Fate (código 24, confirmado el 2026-07-23)', () => {
+    expect(parseTextDeck('2x Darth Plagueis, The Wise (Awaiting Fate #3)')).toEqual([
+      { code: '24003', qty: 2 },
+    ]);
+  });
+
   it('ignora las cartas de la sección PLOT sin intentar resolverlas (dos caras A/B, SPEC-017)', () => {
     const slots = parseTextDeck(
       'CHARACTER\n---------\n2x Clone Trooper (Legacies #38)\n\nPLOT\n----\nRescue Han Solo (Transformations #15)\n',
