@@ -27,20 +27,28 @@ dado con un aviso genérico, sin efecto real de juego todavía).
 - [ ] El jugador puede resolver un dado que muestre Especial: aparece un aviso genérico ("habilidad
       especial de la carta, pendiente de implementar") y el dado se consume, sin pedir ningún
       objetivo ni tener efecto de juego.
-- [ ] Si una cara de Focus o Reroll trae coste de recursos, resolverla exige tener y gastar esos
-      recursos igual que hoy con daño/escudo/recurso (SPEC-008b/010); sin recursos suficientes, no
-      se puede resolver.
+- [ ] Si una cara de Focus, Reroll o Especial trae coste de recursos, resolverla exige tener y
+      gastar esos recursos igual que hoy con daño/escudo/recurso (SPEC-008b/010); sin recursos
+      suficientes, no se puede resolver (tampoco el aviso genérico de Especial).
+- [ ] Si hay varios dados propios de Focus sin resolver a la vez, el jugador (y el autómata) los
+      agrupa en una sola acción sumando sus valores (igual que ya hace la tabla con daño, escudo y
+      recurso, SPEC-008a/013/014), pudiendo girar hasta esa suma de dados objetivo en una sola
+      resolución/pulsación.
+- [ ] Igual que Focus, si hay varios dados propios de Reroll(dado) sin resolver a la vez, se
+      agrupan sumando sus valores en una sola acción/pulsación.
 - [ ] Al pulsar "Turno enemigo" con un dado de Focus disponible (y sin daño/escudo/activar/recurso
-      legal antes en la tabla), el autómata gira uno de sus propios dados a la mejor cara
-      disponible siguiendo la misma prioridad (daño > escudo > recurso); si ningún dado propio
-      mejora resolviendo Focus, no lo usa y se prueba la siguiente fila.
-- [ ] Al pulsar "Turno enemigo" con un dado de Reroll disponible (y sin acción de prioridad más
-      alta legal), el autómata re-tira el/los dado(s) sin resolver del jugador con mayor daño
-      pendiente (hasta el valor de la cara); si el jugador no tiene ningún dado de daño sin
-      resolver, no es acción legal y se prueba la siguiente fila.
+      legal antes en la tabla), el autómata gira, de una sola vez y hasta el valor combinado
+      disponible, sus propios dados a la mejor cara disponible siguiendo la misma prioridad
+      (daño > escudo > recurso); si ningún dado propio mejora girándolo, no usa Focus y se prueba
+      la siguiente fila.
+- [ ] Al pulsar "Turno enemigo" con uno o más dados de Reroll(dado) disponibles (y sin acción de
+      prioridad más alta legal), el autómata re-tira, hasta el valor combinado disponible, el/los
+      dado(s) sin resolver del jugador con mayor daño pendiente; si el jugador no tiene ningún dado
+      de daño sin resolver, no es acción legal y se prueba la siguiente fila.
 - [ ] Al pulsar "Turno enemigo" con un dado de Especial disponible (y sin ninguna acción de
       prioridad más alta legal, incluidas focus/reroll(dado)), el autómata lo resuelve igual que
-      el jugador (mismo aviso/consumo), antes de probar el reroll de blancos existente.
+      el jugador (mismo aviso/consumo, pagando su coste si lo tuviera), antes de probar el reroll
+      de blancos existente.
 
 ## Fuera de alcance (explícito)
 
@@ -75,6 +83,9 @@ dado con un aviso genérico, sin efecto real de juego todavía).
   acción legal para esa fila; la tabla sigue evaluando especial, reroll de blancos y pasar.
 - Reroll apuntando al propio pool (p. ej. rerollear los propios blancos con esta cara en vez del
   reroll gratuito) → válido, sin restricción de origen.
+- Intentar iniciar una resolución de Focus/Reroll/Especial mientras ya hay otro modo abierto
+  (`resolve.pendingEffect` de daño/escudo/recurso, o `playUpgrade` esperando personaje objetivo) →
+  no permitido hasta cerrar el modo en curso, igual que ya exigen SPEC-020/021 para sus acciones.
 
 ## Notas técnicas (opcional)
 
@@ -84,10 +95,19 @@ dado con un aviso genérico, sin efecto real de juego todavía).
 - Selección de dado objetivo para Focus/Reroll por posición en el array `pool` (`poolIndex`), nunca
   por `characterIndex` — evita la colisión del centinela `-1` anotada en BACKLOG (SPEC-020/021).
 - Girar un dado (Focus) no lo saca del pool ni lo marca resuelto: solo cambia la cara que muestra.
-- Rerollear un dado (Reroll) vuelve a tirarlo (nuevo valor aleatorio de sus 6 caras), mismo
-  mecanismo que ya usa el reroll de blancos existente.
+- Rerollear un dado (Reroll) vuelve a tirarlo (nuevo valor aleatorio de sus 6 caras).
+- **Bug a evitar (detectado por revisor-specs):** el mecanismo actual del reroll de blancos del
+  autómata (`gameStore.ts`, case `'reroll'`) obtiene el `Die` a re-tirar indexando
+  `characters[characterIndex].dice[dieIndex]`. Eso crashea con dados de apoyo
+  (`characterIndex: -1`) y da resultado incorrecto con dados de mejora (devuelve el die del
+  personaje anfitrión, no el de la mejora). Como esta spec permite que Focus/Reroll apunten a
+  dados de mejora/apoyo sin filtrado especial, **no puede reutilizarse ese mecanismo tal cual**:
+  Focus/Reroll deben obtener la definición del dado (sus 6 caras) por `code` vía caché
+  (`readCache`, mismo patrón ya usado en `activate`/`activateSupport`), no por índices de
+  personaje.
 - La tabla de prioridades del autómata (`automaton.ts`) gana tres filas nuevas entre recurso y el
-  reroll de blancos existente.
+  reroll de blancos existente; necesitan un tipo de acción distinto de `'reroll'` (ya usado por el
+  reroll de blancos) para no colisionar.
 
 ## Resultado del playtest
 
