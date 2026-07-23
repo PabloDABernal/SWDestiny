@@ -1,6 +1,6 @@
 # SPEC-024: Reparto inicial y mulligan
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** "Reparto inicial y mulligan (primera pieza del bloque de turnos reales,
 SPEC-024)", sección 5 — bloque nuevo (reordenado 2026-07-23, decisión del usuario) que precede a la
 capa de texto/keywords de v4.
@@ -112,4 +112,7 @@ no hace mulligan, se queda con su mano inicial tal cual.
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+2026-07-23: playtest manual OK (usuario, confirmado). "Nueva partida" reparte 5 cartas a cada bando
+y solo se habilita con ambos bandos en estado fresco; mulligan del jugador (marcar cartas, confirmar,
+rebarajar y robar la misma cantidad) funciona; bloqueo de Activar/jugar carta/descartar/Robar/"Nueva
+ronda"/"Turno enemigo" mientras el mulligan está pendiente; el enemigo no tiene opción de mulligan.
