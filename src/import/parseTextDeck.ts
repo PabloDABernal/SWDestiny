@@ -4,12 +4,11 @@ import type { DeckSlot } from './parseDeck';
 // Tabla nombre-de-set (tal cual aparece en el "text file" de ARH DB) → 2 dígitos de set.
 // Validada contra db.swdrenewedhope.com/api/public/card/<código> el 2026-07-21 (SPEC-017);
 // "Transformations" añadido el 2026-07-22 (código real confirmado por el usuario:
-// db.swdrenewedhope.com/card/13007A → prefijo 13). Sets de la continuación fan "A Renewed Hope"
-// añadidos el 2026-07-23, códigos confirmados uno a uno por el usuario (NO se deducen de su orden
-// en el desplegable "Sets" de ARH DB, que no coincide con la numeración interna real — ver BACKLOG):
-// db.swdrenewedhope.com/card/22099 → 22, "Hangar Bay, Jabiim (Display of Power #99)";
-// db.swdrenewedhope.com/card/24003 → 24, "Darth Plagueis, The Wise (Awaiting Fate #3)";
-// db.swdrenewedhope.com/card/16094 → 16, "High Stakes".
+// db.swdrenewedhope.com/card/13007A → prefijo 13). Los 11 sets de la continuación fan
+// "A Renewed Hope" (desplegable "Sets" de ARH DB) añadidos el 2026-07-23, códigos confirmados
+// uno a uno por el usuario (NO se deducen de su orden en ese desplegable, que no coincide con la
+// numeración interna real — ver BACKLOG): 14-16, 18-25 (17 no está asignado a ningún set listado
+// actualmente en ARH DB).
 // Un set fuera de esta tabla es un error; ampliar aquí cuando ARH publique sets nuevos.
 const SET_CODES: Record<string, string> = {
   Awakenings: '01',
@@ -25,9 +24,17 @@ const SET_CODES: Record<string, string> = {
   'Spark of Hope': '11',
   'Covert Missions': '12',
   Transformations: '13',
+  'Faltering Allegiances': '14',
+  Redemption: '15',
   'High Stakes': '16',
+  'Unlikely Heroes': '18',
+  'Galactic Struggle': '19',
+  'Echoes of Destiny': '20',
+  'Seeking Answers': '21',
   'Display of Power': '22',
+  Resurgence: '23',
   'Awaiting Fate': '24',
+  'Uncharted Alliances': '25',
 };
 
 // Línea de carta: nombre (puede llevar comas y paréntesis) + último paréntesis "(<Set> #<n>)".
