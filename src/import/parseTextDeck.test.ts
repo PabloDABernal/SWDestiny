@@ -78,6 +78,12 @@ describe('parseTextDeck', () => {
     ]);
   });
 
+  it('reconoce el set High Stakes (código 16, confirmado el 2026-07-23)', () => {
+    expect(parseTextDeck('1x Proton Grenades (High Stakes #96)')).toEqual([
+      { code: '16096', qty: 1 },
+    ]);
+  });
+
   it('ignora las cartas de la sección PLOT sin intentar resolverlas (dos caras A/B, SPEC-017)', () => {
     const slots = parseTextDeck(
       'CHARACTER\n---------\n2x Clone Trooper (Legacies #38)\n\nPLOT\n----\nRescue Han Solo (Transformations #15)\n',
