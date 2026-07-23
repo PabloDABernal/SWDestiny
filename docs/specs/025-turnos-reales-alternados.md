@@ -43,6 +43,11 @@ que decida quién empieza).
   hoy, sin ningún paso de descarte interactivo en esta spec).
 - [ ] Fuera de tu turno, ninguna de tus acciones (activar, jugar carta, marcar/resolver dados) tiene
   efecto: hay que esperar a que vuelva a ser tu turno.
+- [ ] Si marcas un dado (arrancas un modo de resolución, sin llegar a confirmarlo), el resto de
+  acciones (activar, jugar una carta, empezar a resolver otro símbolo) quedan bloqueadas hasta que
+  confirmes esa resolución (cierra tu turno) o la canceles con "Cancelar" (no gasta tu turno, vuelves
+  a poder elegir cualquier acción) — mismo patrón de exclusión mutua que ya usan `playUpgrade`/
+  `mulligan` para bloquear el resto de acciones.
 
 ## Fuera de alcance (explícito)
 
@@ -81,6 +86,10 @@ que decida quién empieza).
   el jugador pase de nuevo Y el enemigo pase inmediatamente después para cerrar la fase.
 - "Reset total": sigue reconstruyendo ambos bandos al estado inicial; el turno vuelve a
   `'player'` y el contador de pases a 0, igual que cualquier otro estado de ronda no persistido.
+- Reimportar un mazo (`importDeck`) a mitad de partida: además de limpiar `playUpgrade`/`mulligan`
+  (ya lo hace desde SPEC-024), también resetea `turn: 'player'` y `passStreak: 0` — mismo criterio
+  que "Reset total", para no dejar un turno/contador de pases apuntando a un estado que ya no
+  corresponde tras reimportar.
 - Recarga de página a mitad de partida: el turno actual (`turn`) y el contador de pases **no se
   persisten** (mismo patrón que `resolve`/`playUpgrade`/`mulligan`: es estado de partida, no de
   mazo). Tras recargar, la partida vuelve a estado fresco de ronda: turno del jugador, sin pases
@@ -104,6 +113,18 @@ que decida quién empieza).
   `confirmReroll`/`resolveResources`/`resolveSpecial` cuando el modo se cierra del todo) necesita: (a)
   guard nuevo `state.turn !== side` → no-op, y (b) al aplicarse, `turn: opposite(side)`,
   `passStreak: 0`.
+- Guard nuevo `state.turn !== side` (fuera de tu turno, no-op) a añadir también en: `selectDie`
+  (arrancar/seguir marcando dados), `selectUpgradeCard` (seleccionar mejora a jugar),
+  `pickFocusTarget`, `chooseFocusFace`, `pickRerollTarget` (elegir dado/cara objetivo dentro de una
+  resolución de Focus/Reroll en curso) — cualquier paso que construye la "una acción" de este turno,
+  no solo el que la cierra. `applyDieTo`, `resolveResources`, `resolveSpecial`, `confirmFocus`,
+  `confirmReroll`, `playUpgradeOn`, `cancelResolve`, `cancelPlayUpgrade` ya quedan cubiertos por el
+  mismo guard al ser parte de la misma acción en curso (mismo `side` que la abrió).
+- Guard adicional para bloquear "empezar otra cosa" mientras hay un `resolve` abierto sin
+  `pendingEffect`/`focusFaceChoice` (dados marcados sin confirmar): `activate`, `selectUpgradeCard` y
+  `playSupport` necesitan un guard nuevo `state.resolve !== null && state.resolve.side === side` →
+  no-op, análogo al que ya existe hoy para `playUpgrade`/`mulligan` (decisión del usuario, 2026-07-23:
+  marcar un dado bloquea el resto de acciones hasta resolver o cancelar, igual que las mejoras).
 - El disparo automático de la acción del enemigo (cuando `turn === 'enemy'`) necesita un mecanismo
   fuera de una acción de usuario — no hay ningún clic que lo dispare. Opciones a valorar en
   implementación: un `useEffect` en `App.tsx` que observe `turn` y llame a una acción del store
@@ -115,8 +136,13 @@ que decida quién empieza).
   más de un objetivo por llamada, SPEC-013/014) — no hace falta cambiar `nextAutomatonAction`, solo
   quién y cuándo la invoca, y que ahora también cuenta como pase si no tiene acción legal (en vez de
   simplemente no hacer nada como hoy).
-- Botones a eliminar de `src/App.tsx`: "Nueva ronda", "Turno enemigo" (controls), "Robar"
-  (`hand__draw-button`) y "Descartar" (`hand__discard-button`, `Hand.tsx`). Añadir botón "Pasar".
+- Botones a eliminar: "Nueva ronda" y "Turno enemigo" (`src/App.tsx`, controls), **y también el
+  segundo botón "Nueva ronda"** que hoy existe en `src/components/DicePool.tsx` (`pool__reset`,
+  llama a `newRound()` directamente — fácil de pasar por alto porque no está en `App.tsx`); "Robar"
+  (`hand__draw-button`, `App.tsx`) y "Descartar" (`hand__discard-button`, `Hand.tsx`). Añadir botón
+  "Pasar", deshabilitado en los mismos casos en que hoy se deshabilita "Turno enemigo"
+  (`state.resolve` con dados marcados, `playUpgrade`/`mulligan` abiertos) — no tiene sentido pasar
+  con una acción a medio construir; hay que cancelarla primero.
 - `drawCard`/`discardCard` como acciones del store pueden eliminarse o quedar sin UI que las invoque
   (a decidir en implementación cuál es más limpio; si no se llama nunca, mejor eliminarlas que dejar
   código muerto).
