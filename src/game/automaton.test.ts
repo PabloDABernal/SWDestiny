@@ -439,7 +439,7 @@ describe('nextAutomatonAction — focus, reroll de dado y especial (SPEC-023)', 
   it('focus gira el mejor dado propio disponible a su mejor cara (daño > escudo > recurso)', () => {
     const enemy = enemySide({
       activated: [true, true],
-      pool: [die(0, '2Fo'), die(1, '-')],
+      pool: [die(0, '2F'), die(1, '-')],
     });
     const dieSidesOf = (d: PooledDie) => (d.code === 'c1' ? ['3MD', '1R', 'Sp', '-', '-', '-'] : null);
     const action = nextAutomatonAction(enemy, playerSide(), noRerollsUsed, NORMAL_EXTRA_REROLLS, dieSidesOf);
@@ -452,7 +452,7 @@ describe('nextAutomatonAction — focus, reroll de dado y especial (SPEC-023)', 
   });
 
   it('focus sin ningún dado propio que mejore no es acción legal (pasa a la siguiente fila)', () => {
-    const enemy = enemySide({ activated: [true, true], pool: [die(0, '1Fo')] });
+    const enemy = enemySide({ activated: [true, true], pool: [die(0, '1F')] });
     const action = nextAutomatonAction(enemy, playerSide(), noRerollsUsed, NORMAL_EXTRA_REROLLS, () => null);
     expect(action.type).toBe('pass');
   });
@@ -463,7 +463,7 @@ describe('nextAutomatonAction — focus, reroll de dado y especial (SPEC-023)', 
     // no mejoraría nada.
     const enemy = enemySide({
       activated: [true, true],
-      pool: [die(0, '1Fo'), die(1, '3MD1')],
+      pool: [die(0, '1F'), die(1, '3MD1')],
       resources: 0,
     });
     const dieSidesOf = (d: PooledDie) => (d.code === 'c1' ? ['3MD1', '1R', 'Sp', '-', '-', '-'] : null);
@@ -501,7 +501,7 @@ describe('nextAutomatonAction — focus, reroll de dado y especial (SPEC-023)', 
   it('recurso tiene prioridad sobre focus/reroll de dado/especial', () => {
     const enemy = enemySide({
       activated: [true, true],
-      pool: [die(0, '1R'), die(0, '1Fo'), die(0, '1Rr'), die(0, 'Sp')],
+      pool: [die(0, '1R'), die(0, '1F'), die(0, '1Rr'), die(0, 'Sp')],
     });
     expect(next(enemy, playerSide(), noRerollsUsed).type).toBe('resource');
   });
@@ -509,7 +509,7 @@ describe('nextAutomatonAction — focus, reroll de dado y especial (SPEC-023)', 
   it('focus > reroll de dado > especial > reroll de blancos, en ese orden', () => {
     const withFocusTarget = enemySide({
       activated: [true, true],
-      pool: [die(0, '1Fo'), die(1, '-'), die(0, '1Rr'), die(0, 'Sp'), die(0, '-'), die(1, '-')],
+      pool: [die(0, '1F'), die(1, '-'), die(0, '1Rr'), die(0, 'Sp'), die(0, '-'), die(1, '-')],
     });
     const dieSidesOf = (d: PooledDie) => (d.code === 'c1' && d.dieIndex === 0 ? ['3MD', '-', '-', '-', '-', '-'] : null);
     expect(

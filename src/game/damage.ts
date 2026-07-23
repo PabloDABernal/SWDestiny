@@ -59,11 +59,10 @@ export function parseCostedFace(
  * coste de daño indirecto propio `i<n>`. Formato `[+]<valor><SÍMBOLO>[i]<coste>`.
  * Función SEPARADA de los parsers del autómata (parseDamage/parseShield/parseResource).
  *
- * Focus (`Fo`) y reroll de dado (`Rr`) siguen el mismo formato con valor (SPEC-023, RR pg 12).
- * Especial (`Sp`) tiene valor fijo 0 (no modificable) y se reconoce aparte: formato `Sp[coste]`,
- * sin modificador ni coste indirecto. El código exacto de estas tres caras en ARH DB no se ha
- * podido confirmar contra datos reales (sin acceso de red al importar esta spec); revisar contra
- * un mazo real y ajustar el regex si no coincide (ver docs/SDD.md).
+ * Focus (`F`, confirmado contra un mazo real el 2026-07-23) y reroll de dado (`Rr`, todavía
+ * provisional) siguen el mismo formato con valor (SPEC-023, RR pg 12). Especial (`Sp`) tiene valor
+ * fijo 0 (no modificable) y se reconoce aparte: formato `Sp[coste]`, sin modificador ni coste
+ * indirecto.
  */
 export function parsePlayerFace(face: string): {
   symbol: DieSymbol;
@@ -82,7 +81,7 @@ export function parsePlayerFace(face: string): {
       isModifier: false,
     };
   }
-  const m = /^(\+)?(\d+)(MD|RD|ID|Sh|Rr|R|Fo)(i)?(\d+)?$/.exec(face);
+  const m = /^(\+)?(\d+)(MD|RD|ID|Sh|Rr|R|F)(i)?(\d+)?$/.exec(face);
   if (!m) return null;
   const token = m[3];
   const symbol: DieSymbol =
@@ -96,7 +95,7 @@ export function parsePlayerFace(face: string): {
             ? 'shield'
             : token === 'R'
               ? 'resource'
-              : token === 'Fo'
+              : token === 'F'
                 ? 'focus'
                 : 'reroll';
   const cost = m[5] ? Number(m[5]) : 0;
