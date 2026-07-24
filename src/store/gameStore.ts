@@ -21,6 +21,7 @@ import {
   applyEnemyHealthMultiplier,
   nextAutomatonAction,
   indirectCostReceiverIndex,
+  distributeIncomingDamage,
   DEFAULT_DIFFICULTY,
   DIFFICULTY_SETTINGS,
   type AutomatonOpponent,
@@ -407,6 +408,88 @@ function resolvePlayerBatch(
   return { sides: next, outcome: computeOutcome(next) };
 }
 
+/**
+ * Resuelve un dado de daño **indirecto** (símbolo ◎, SPEC-026): a diferencia de melee/ranged, quien
+ * ataca (`mode.side`) no elige objetivo — el valor total (base + modificadores) lo reparte
+ * automáticamente el bando contrario (`distributeIncomingDamage`, `src/game/automaton.ts`) entre
+ * sus propios personajes no-KO, evitando KOs innecesarios cuando sea posible. Coste de recurso y
+ * coste de daño indirecto propio (si los hay en la misma cara) se pagan igual que en
+ * `resolvePlayerBatch`.
+ */
+function applyIndirectDamage(
+  sides: Record<Side, SideState>,
+  mode: { side: Side; symbol: DieSymbol; marked: number[] },
+  costReceiverIndex: number | null,
+): { sides: Record<Side, SideState>; outcome: Outcome } | BatchError | null {
+  const own = sides[mode.side];
+  const sums = sumPlayerMarked(own.pool, mode.marked);
+  if (!sums.hasBase) return 'no-base';
+  if (own.resources < sums.resourceCost) return 'insufficient';
+  const effectTotal = sums.baseAmount + sums.modifierAmount;
+  const markedSet = new Set(mode.marked);
+
+  let ownPool = own.pool.filter((_, i) => !markedSet.has(i));
+  let ownUpgrades = own.upgrades;
+  const ownResources = own.resources - sums.resourceCost;
+  const ownDamage = own.characters.map((_, i) => own.damage[i] ?? 0);
+  const ownShields = own.characters.map((_, i) => own.shields[i] ?? 0);
+  const next: Record<Side, SideState> = { ...sides };
+
+  // Reparto del defensor (bando contrario), sin overkill innecesario cuando se pueda evitar.
+  const opp = opposite(mode.side);
+  const target = sides[opp];
+  const distribution = distributeIncomingDamage(target, effectTotal);
+  const tShields = target.characters.map((_, i) => target.shields[i] ?? 0);
+  const tDamage = target.characters.map((_, i) => target.damage[i] ?? 0);
+  for (const { targetIndex, amount } of distribution) {
+    const ch = target.characters[targetIndex];
+    const { shieldsRemaining, healthDamage } = resolveShieldedDamage(tShields[targetIndex], amount);
+    tShields[targetIndex] = shieldsRemaining;
+    tDamage[targetIndex] = Math.min(ch.health, tDamage[targetIndex] + healthDamage);
+  }
+  let tPool = target.pool;
+  let tUpgrades = target.upgrades;
+  const koIndices = distribution
+    .map((d) => d.targetIndex)
+    .filter((i) => isKO(target.characters[i], tDamage[i]));
+  if (koIndices.length > 0) {
+    const koSet = new Set(koIndices);
+    tPool = target.pool.filter((d) => !koSet.has(d.characterIndex));
+    tUpgrades = target.upgrades.map((codes, i) => (koSet.has(i) ? [] : codes));
+    persistUpgrades(opp, tUpgrades);
+  }
+  next[opp] = { ...target, shields: tShields, damage: tDamage, pool: tPool, upgrades: tUpgrades };
+
+  // Coste de daño indirecto propio (escudos del receptor lo absorben, SPEC-005) — igual que en
+  // resolvePlayerBatch, ninguna relación con el reparto de arriba.
+  if (sums.indirectCost > 0) {
+    if (costReceiverIndex === null) return null;
+    const rc = own.characters[costReceiverIndex];
+    if (!rc || isKO(rc, ownDamage[costReceiverIndex])) return null;
+    const { shieldsRemaining, healthDamage } = resolveShieldedDamage(
+      ownShields[costReceiverIndex],
+      sums.indirectCost,
+    );
+    ownShields[costReceiverIndex] = shieldsRemaining;
+    ownDamage[costReceiverIndex] = Math.min(rc.health, ownDamage[costReceiverIndex] + healthDamage);
+    if (isKO(rc, ownDamage[costReceiverIndex])) {
+      ownPool = ownPool.filter((d) => d.characterIndex !== costReceiverIndex);
+      ownUpgrades = ownUpgrades.map((codes, i) => (i === costReceiverIndex ? [] : codes));
+      persistUpgrades(mode.side, ownUpgrades);
+    }
+  }
+
+  next[mode.side] = {
+    ...own,
+    pool: ownPool,
+    upgrades: ownUpgrades,
+    resources: ownResources,
+    damage: ownDamage,
+    shields: ownShields,
+  };
+  return { sides: next, outcome: computeOutcome(next) };
+}
+
 // --- Focus, reroll de dado y especial (SPEC-023): el objetivo es un DADO (posición en un `pool`),
 // no un personaje/bando, así que no encajan en `resolvePlayerBatch`. Comparten con él el pago del
 // coste de daño indirecto propio (mismo receptor determinista propio, SPEC-005/010). ---
@@ -671,6 +754,10 @@ interface GameState {
   /** SPEC-023: resuelve los dados de Especial marcados (paga su coste si tiene, los consume) y deja
    * un aviso genérico en `resolveError` — placeholder sin efecto real de juego. */
   resolveSpecial: () => void;
+  /** SPEC-026: resuelve el único dado base de indirecto marcado (sin elegir objetivo, como
+   * recurso/especial): el bando contrario reparte el valor solo entre sus personajes no-KO,
+   * evitando KOs innecesarios cuando sea posible. No-op si no hay dado marcado. */
+  resolveIndirect: () => void;
   /** Selecciona una mejora de la mano para jugar, a la espera de elegir personaje objetivo
    * (SPEC-020). No-op si `code` no es una carta de tipo mejora. */
   selectUpgradeCard: (side: Side, code: string) => void;
@@ -994,7 +1081,21 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (cur === null) {
         return { resolve: { side, symbol, marked: [poolIndex] }, resolveError: null };
       }
-      // Mismo bando y símbolo: toggle en el conjunto marcado (uno o varios).
+      // Mismo bando y símbolo: toggle en el conjunto marcado (uno o varios). Excepción SPEC-026:
+      // indirecto se resuelve de un dado BASE a la vez (no combinado, a diferencia del resto de
+      // símbolos) — marcar un segundo dado base de indirecto mientras ya hay uno marcado es no-op
+      // (los modificadores +X sí pueden acompañar al único dado base).
+      if (
+        symbol === 'indirect' &&
+        !cur.marked.includes(poolIndex) &&
+        !parsePlayerFace(die.face)?.isModifier &&
+        cur.marked.some((i) => {
+          const markedDie = state.sides[side].pool[i];
+          return markedDie && !parsePlayerFace(markedDie.face)?.isModifier;
+        })
+      ) {
+        return state;
+      }
       const marked = cur.marked.includes(poolIndex)
         ? cur.marked.filter((i) => i !== poolIndex)
         : [...cur.marked, poolIndex];
@@ -1011,12 +1112,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.outcome !== null || cur === null || cur.marked.length === 0) return state;
 
       // Recurso/especial se resuelven con su propio botón; focus/reroll con sus propias acciones
-      // de elegir dado objetivo (SPEC-023) — ninguno de los cuatro usa el clic sobre un personaje.
+      // de elegir dado objetivo (SPEC-023); indirecto también con su propio botón, sin elegir
+      // objetivo (SPEC-026: lo reparte el defensor, no quien ataca) — ninguno de los cinco usa el
+      // clic sobre un personaje.
       if (
         cur.symbol === 'resource' ||
         cur.symbol === 'special' ||
         cur.symbol === 'focus' ||
-        cur.symbol === 'reroll'
+        cur.symbol === 'reroll' ||
+        cur.symbol === 'indirect'
       ) {
         return state;
       }
@@ -1195,6 +1299,30 @@ export const useGameStore = create<GameState>((set, get) => ({
         sides: res.sides,
         outcome: res.outcome,
         resolveError: 'Habilidad especial de la carta (pendiente de implementar).',
+        ...afterApply(cur, res),
+      };
+    }),
+
+  // Daño indirecto (SPEC-026): sin objetivo elegido por quien ataca, el bando contrario reparte el
+  // valor solo entre sus personajes (distributeIncomingDamage, src/game/automaton.ts).
+  resolveIndirect: () =>
+    set((state) => {
+      const cur = state.resolve;
+      if (state.outcome !== null || cur === null || cur.symbol !== 'indirect') return state;
+      if (cur.marked.length === 0) return state;
+      const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
+      if (!sums.hasBase) return { resolveError: 'Necesitas un dado base del mismo símbolo (un modificador solo no se resuelve).' };
+      if (state.sides[cur.side].resources < sums.resourceCost) {
+        return { resolveError: 'Recursos insuficientes para pagar el coste.' };
+      }
+      const costReceiverIndex =
+        sums.indirectCost > 0 ? indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost) : null;
+      const res = applyIndirectDamage(state.sides, cur, costReceiverIndex);
+      if (res === null || res === 'no-base' || res === 'insufficient') return state;
+      return {
+        sides: res.sides,
+        outcome: res.outcome,
+        resolveError: null,
         ...afterApply(cur, res),
       };
     }),

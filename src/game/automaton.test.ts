@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   nextAutomatonAction,
   applyEnemyHealthMultiplier,
+  distributeIncomingDamage,
   DIFFICULTY_SETTINGS,
   type AutomatonSide,
   type AutomatonOpponent,
@@ -623,5 +624,47 @@ describe('DIFFICULTY_SETTINGS — reroll extra por nivel', () => {
     const enemy = enemySide({ activated: [true, true], pool: [die(0, '-'), die(1, '-')] });
     const action = next(enemy, playerSide(), { free: true, extra: 1 }, DIFFICULTY_SETTINGS.hard.extraRerolls);
     expect(action).toEqual({ type: 'reroll', dieIndices: [0, 1], kind: 'extra' });
+  });
+});
+
+describe('distributeIncomingDamage (SPEC-026: reparto del daño indirecto que recibe el defensor)', () => {
+  it('con un único personaje no-KO, todo el valor va ahí', () => {
+    const side = enemySide({ characters: [ch('A', 10)], damage: [0], shields: [0] });
+    expect(distributeIncomingDamage(side, 3)).toEqual([{ targetIndex: 0, amount: 3 }]);
+  });
+
+  it('cabe entero en el de mayor capacidad (sin escudos): no toca al otro, sin KO', () => {
+    // A: vida 10, cabe hasta 9 sin KO. B: vida 3, cabe hasta 2 sin KO.
+    const side = enemySide({ characters: [ch('A', 10), ch('B', 3)], damage: [0, 0], shields: [0, 0] });
+    expect(distributeIncomingDamage(side, 5)).toEqual([{ targetIndex: 0, amount: 5 }]);
+  });
+
+  it('si no cabe en uno solo, reparte el resto en el siguiente sin matar a ninguno si es posible', () => {
+    // A: vida 10 (cap 9), B: vida 5 (cap 4). Total 12 no cabe en A solo (9), sobran 3 → van a B (cap 4, sobrevive).
+    const side = enemySide({ characters: [ch('A', 10), ch('B', 5)], damage: [0, 0], shields: [0, 0] });
+    expect(distributeIncomingDamage(side, 12)).toEqual([
+      { targetIndex: 0, amount: 9 },
+      { targetIndex: 1, amount: 3 },
+    ]);
+  });
+
+  it('los escudos amplían la capacidad de absorber sin KO', () => {
+    // A: vida 5, 3 escudos → cap 5+3-1=7.
+    const side = enemySide({ characters: [ch('A', 5)], damage: [0], shields: [3] });
+    expect(distributeIncomingDamage(side, 7)).toEqual([{ targetIndex: 0, amount: 7 }]);
+  });
+
+  it('si el total supera lo que todos juntos pueden absorber, concentra el KO inevitable en el de menor capacidad', () => {
+    // A: vida 10 (cap 9), B: vida 3 (cap 2). Total 15: A recibe 9 (sobrevive), B recibe el resto (6), queda KO.
+    const side = enemySide({ characters: [ch('A', 10), ch('B', 3)], damage: [0, 0], shields: [0, 0] });
+    expect(distributeIncomingDamage(side, 15)).toEqual([
+      { targetIndex: 0, amount: 9 },
+      { targetIndex: 1, amount: 6 },
+    ]);
+  });
+
+  it('ignora a los personajes ya KO', () => {
+    const side = enemySide({ characters: [ch('A', 10), ch('B', 5)], damage: [0, 5], shields: [0, 0] });
+    expect(distributeIncomingDamage(side, 3)).toEqual([{ targetIndex: 0, amount: 3 }]);
   });
 });

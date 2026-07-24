@@ -199,6 +199,57 @@ export function indirectCostReceiverIndex(side: AutomatonSide, cost: number): nu
   return bestAny;
 }
 
+/**
+ * Reparto automático de un valor de **daño entrante** (SPEC-026, símbolo ◎ daño indirecto: por
+ * regla real lo reparte el defensor, no quien ataca) entre los personajes no-KO de `side`, evitando
+ * KOs innecesarios cuando sea posible — mismo espíritu "sin overkill" que `pickTargetAndBatch`/
+ * `capBatchToMargin` (SPEC-014), pero repartiendo un valor YA fijo entre varios objetivos en vez de
+ * elegir qué dados propios resolver.
+ *
+ * Algoritmo: por cada no-KO, calcula cuánto podría absorber sin quedar KO (escudos + vida restante
+ * menos 1); reparte el valor total empezando por el que más puede absorber (para concentrar el daño
+ * en el "más tanque" y no repartir KOs de más), hasta agotar el valor o los candidatos. Si el valor
+ * total supera lo que TODOS juntos pueden absorber sin KO, el resto (inevitable) se concentra en el
+ * candidato con menos capacidad (ya iba a acabar peor parado), en vez de repartir la muerte entre
+ * varios. Desempates deterministas (menor índice), igual que el resto del autómata.
+ */
+export function distributeIncomingDamage(
+  side: AutomatonSide,
+  totalValue: number,
+): { targetIndex: number; amount: number }[] {
+  const survivableCap = (i: number): number => {
+    const c = side.characters[i];
+    const dmg = side.damage[i] ?? 0;
+    return (side.shields[i] ?? 0) + (c.health - dmg - 1);
+  };
+  const higherCap = (a: number, b: number) => survivableCap(a) > survivableCap(b);
+
+  const candidates = side.characters
+    .map((_, i) => i)
+    .filter((i) => !isKO(side.characters[i], side.damage[i] ?? 0))
+    .sort((a, b) => (higherCap(a, b) ? -1 : higherCap(b, a) ? 1 : a - b));
+
+  const assignments: { targetIndex: number; amount: number }[] = [];
+  let remaining = totalValue;
+  for (const i of candidates) {
+    if (remaining <= 0) break;
+    const amount = Math.min(remaining, Math.max(0, survivableCap(i)));
+    if (amount > 0) {
+      assignments.push({ targetIndex: i, amount });
+      remaining -= amount;
+    }
+  }
+  if (remaining > 0 && candidates.length > 0) {
+    // Inevitable: al menos uno queda KO. Se concentra en el de menor capacidad (último candidato),
+    // en vez de repartir el exceso entre varios.
+    const last = candidates[candidates.length - 1];
+    const existing = assignments.find((a) => a.targetIndex === last);
+    if (existing) existing.amount += remaining;
+    else assignments.push({ targetIndex: last, amount: remaining });
+  }
+  return assignments;
+}
+
 const isDamageSymbol = (s: DieSymbol) => s === 'melee' || s === 'ranged' || s === 'indirect';
 const isShieldSymbol = (s: DieSymbol) => s === 'shield';
 const isResourceSymbol = (s: DieSymbol) => s === 'resource';

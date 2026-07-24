@@ -19,6 +19,7 @@ export function DicePool({ side }: { side: Side }) {
   const selectDie = useGameStore((s) => s.selectDie);
   const resolveResources = useGameStore((s) => s.resolveResources);
   const resolveSpecial = useGameStore((s) => s.resolveSpecial);
+  const resolveIndirect = useGameStore((s) => s.resolveIndirect);
   const pickFocusTarget = useGameStore((s) => s.pickFocusTarget);
   const chooseFocusFace = useGameStore((s) => s.chooseFocusFace);
   const confirmFocus = useGameStore((s) => s.confirmFocus);
@@ -74,6 +75,11 @@ export function DicePool({ side }: { side: Side }) {
           {mode.symbol === 'special' && (
             <button onClick={resolveSpecial} disabled={mode.marked.length === 0}>
               Resolver especial
+            </button>
+          )}
+          {mode.symbol === 'indirect' && (
+            <button onClick={resolveIndirect} disabled={mode.marked.length === 0}>
+              Resolver indirecto
             </button>
           )}
           {mode.symbol === 'focus' && mode.focusFaceChoice == null && (
