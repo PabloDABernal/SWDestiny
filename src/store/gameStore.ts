@@ -1613,21 +1613,23 @@ export const useGameStore = create<GameState>((set, get) => ({
         // acción del autómata no se da por completa hasta que el jugador termine de repartir).
         const total = batchTotal(action.dieIndices);
         const label = batchLabel(action.dieIndices);
-        let prepared = false;
+        let distributionPending = false;
         set((s) => {
           const res = prepareEnemyIndirectAttack(s.sides, action.dieIndices, action.costReceiverIndex);
           if (res === null || res === 'no-base' || res === 'insufficient') return s;
-          prepared = true;
+          distributionPending = res.outcome === null;
           return {
             sides: res.sides,
             outcome: res.outcome,
-            indirectDistribution: res.outcome === null ? { pending: res.pendingValue } : null,
+            indirectDistribution: distributionPending ? { pending: res.pendingValue } : null,
             lastEnemyAction: `El enemigo ataca con ${label} (${total} de daño indirecto): reparte tú el daño entre tus personajes.`,
           };
         });
-        // Si no se pudo preparar la tanda (no debería pasar, nextAutomatonAction ya la valida), no
-        // deja el turno colgado: se cierra igual que el resto de acciones fallidas del autómata.
-        if (!prepared) set({ turn: 'player', passStreak: 0 });
+        // Si no se pudo preparar la tanda (no debería pasar, nextAutomatonAction ya la valida), o si
+        // la partida ya terminó al prepararla (coste indirecto propio del autómata deja su bando
+        // entero KO), no deja el turno colgado: se cierra igual que el resto de acciones del
+        // autómata (mismo patrón que 'attack'/'shield'/etc. de abajo, que siempre lo hacen).
+        if (!distributionPending) set({ turn: 'player', passStreak: 0 });
         return;
       }
       case 'attack': {
