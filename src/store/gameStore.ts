@@ -490,6 +490,132 @@ function applyIndirectDamage(
 }
 
 /**
+ * Resuelve una tanda de disrupt (símbolo `Dr`, SPEC-029): el bando CONTRARIO pierde recursos = valor
+ * total (base + modificadores), sin bajar de 0 — quien resuelve no gana nada a cambio (no es
+ * "robar"). Coste de recurso propio y coste de daño indirecto propio se pagan igual que en
+ * `resolvePlayerBatch`. Sin objetivo de personaje: afecta al bando contrario entero.
+ */
+function applyDisrupt(
+  sides: Record<Side, SideState>,
+  mode: { side: Side; symbol: DieSymbol; marked: number[] },
+  costReceiverIndex: number | null,
+): { sides: Record<Side, SideState>; outcome: Outcome } | BatchError | null {
+  const own = sides[mode.side];
+  const sums = sumPlayerMarked(own.pool, mode.marked);
+  if (!sums.hasBase) return 'no-base';
+  if (own.resources < sums.resourceCost) return 'insufficient';
+  const effectTotal = sums.baseAmount + sums.modifierAmount;
+  const markedSet = new Set(mode.marked);
+
+  let ownPool = own.pool.filter((_, i) => !markedSet.has(i));
+  let ownUpgrades = own.upgrades;
+  const ownResources = own.resources - sums.resourceCost;
+  const ownDamage = own.characters.map((_, i) => own.damage[i] ?? 0);
+  const ownShields = own.characters.map((_, i) => own.shields[i] ?? 0);
+
+  const opp = opposite(mode.side);
+  const target = sides[opp];
+  const next: Record<Side, SideState> = { ...sides };
+  next[opp] = { ...target, resources: Math.max(0, target.resources - effectTotal) };
+
+  // Coste de daño indirecto propio (escudos del receptor lo absorben, SPEC-005) — sin relación con
+  // el efecto de arriba, igual que en resolvePlayerBatch.
+  if (sums.indirectCost > 0) {
+    if (costReceiverIndex === null) return null;
+    const rc = own.characters[costReceiverIndex];
+    if (!rc || isKO(rc, ownDamage[costReceiverIndex])) return null;
+    const { shieldsRemaining, healthDamage } = resolveShieldedDamage(
+      ownShields[costReceiverIndex],
+      sums.indirectCost,
+    );
+    ownShields[costReceiverIndex] = shieldsRemaining;
+    ownDamage[costReceiverIndex] = Math.min(rc.health, ownDamage[costReceiverIndex] + healthDamage);
+    if (isKO(rc, ownDamage[costReceiverIndex])) {
+      ownPool = ownPool.filter((d) => d.characterIndex !== costReceiverIndex);
+      ownUpgrades = ownUpgrades.map((codes, i) => (i === costReceiverIndex ? [] : codes));
+      persistUpgrades(mode.side, ownUpgrades);
+    }
+  }
+
+  next[mode.side] = {
+    ...own,
+    pool: ownPool,
+    upgrades: ownUpgrades,
+    resources: ownResources,
+    damage: ownDamage,
+    shields: ownShields,
+  };
+  return { sides: next, outcome: computeOutcome(next) };
+}
+
+/**
+ * Resuelve una tanda de descarte (símbolo `Dc`, SPEC-029): el bando CONTRARIO descarta valor cartas
+ * **al azar** de su mano a su pila de descarte (si su mano tiene menos, descarta todas las que
+ * tenga). Devuelve también los códigos descartados (para nombrarlos en el aviso). Coste de recurso
+ * propio y coste de daño indirecto propio se pagan igual que en `resolvePlayerBatch`.
+ */
+function applyDiscard(
+  sides: Record<Side, SideState>,
+  mode: { side: Side; symbol: DieSymbol; marked: number[] },
+  costReceiverIndex: number | null,
+): { sides: Record<Side, SideState>; outcome: Outcome; discarded: string[] } | BatchError | null {
+  const own = sides[mode.side];
+  const sums = sumPlayerMarked(own.pool, mode.marked);
+  if (!sums.hasBase) return 'no-base';
+  if (own.resources < sums.resourceCost) return 'insufficient';
+  const effectTotal = sums.baseAmount + sums.modifierAmount;
+  const markedSet = new Set(mode.marked);
+
+  let ownPool = own.pool.filter((_, i) => !markedSet.has(i));
+  let ownUpgrades = own.upgrades;
+  const ownResources = own.resources - sums.resourceCost;
+  const ownDamage = own.characters.map((_, i) => own.damage[i] ?? 0);
+  const ownShields = own.characters.map((_, i) => own.shields[i] ?? 0);
+
+  const opp = opposite(mode.side);
+  const target = sides[opp];
+  const hand = target.hand.slice();
+  const discarded: string[] = [];
+  const count = Math.min(effectTotal, hand.length);
+  for (let i = 0; i < count; i++) {
+    const idx = Math.floor(Math.random() * hand.length);
+    discarded.push(...hand.splice(idx, 1));
+  }
+  persistHand(opp, hand);
+  const discardPile = [...target.discardPile, ...discarded];
+  persistDiscardPile(opp, discardPile);
+  const next: Record<Side, SideState> = { ...sides };
+  next[opp] = { ...target, hand, discardPile };
+
+  if (sums.indirectCost > 0) {
+    if (costReceiverIndex === null) return null;
+    const rc = own.characters[costReceiverIndex];
+    if (!rc || isKO(rc, ownDamage[costReceiverIndex])) return null;
+    const { shieldsRemaining, healthDamage } = resolveShieldedDamage(
+      ownShields[costReceiverIndex],
+      sums.indirectCost,
+    );
+    ownShields[costReceiverIndex] = shieldsRemaining;
+    ownDamage[costReceiverIndex] = Math.min(rc.health, ownDamage[costReceiverIndex] + healthDamage);
+    if (isKO(rc, ownDamage[costReceiverIndex])) {
+      ownPool = ownPool.filter((d) => d.characterIndex !== costReceiverIndex);
+      ownUpgrades = ownUpgrades.map((codes, i) => (i === costReceiverIndex ? [] : codes));
+      persistUpgrades(mode.side, ownUpgrades);
+    }
+  }
+
+  next[mode.side] = {
+    ...own,
+    pool: ownPool,
+    upgrades: ownUpgrades,
+    resources: ownResources,
+    damage: ownDamage,
+    shields: ownShields,
+  };
+  return { sides: next, outcome: computeOutcome(next), discarded };
+}
+
+/**
  * Prepara el ataque de daño indirecto del AUTÓMATA (SPEC-028): a diferencia de
  * `applyIndirectDamage` (SPEC-026, el jugador ataca y el autómata reparte solo), aquí es el jugador
  * quien reparte el valor total clic a clic (`distributeIndirect`). Esta función solo consume los
@@ -821,6 +947,15 @@ interface GameState {
    * no hay reparto pendiente, la partida terminó, o el índice no es válido/está KO. Al agotar el
    * valor, completa la acción del autómata (cierra su turno, pasa al jugador con normalidad). */
   distributeIndirect: (characterIndex: number) => void;
+  /** SPEC-029: resuelve los dados de disrupt marcados (sin elegir objetivo): el bando contrario
+   * pierde recursos = valor total, sin bajar de 0 (quien resuelve no gana nada). No-op si no hay
+   * dado base marcado. */
+  resolveDisrupt: () => void;
+  /** SPEC-029: resuelve los dados de descarte marcados (sin elegir objetivo): el bando contrario
+   * descarta esa cantidad de cartas al azar de su mano (todas las que tenga si son menos). Deja el
+   * nombre de la(s) carta(s) descartada(s) en `resolveError` (aviso genérico, no error). No-op si no
+   * hay dado base marcado. */
+  resolveDiscard: () => void;
   /** Selecciona una mejora de la mano para jugar, a la espera de elegir personaje objetivo
    * (SPEC-020). No-op si `code` no es una carta de tipo mejora. */
   selectUpgradeCard: (side: Side, code: string) => void;
@@ -1193,14 +1328,17 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       // Recurso/especial se resuelven con su propio botón; focus/reroll con sus propias acciones
       // de elegir dado objetivo (SPEC-023); indirecto también con su propio botón, sin elegir
-      // objetivo (SPEC-026: lo reparte el defensor, no quien ataca) — ninguno de los cinco usa el
-      // clic sobre un personaje.
+      // objetivo (SPEC-026: lo reparte el defensor, no quien ataca); disrupt/descarte también, sin
+      // objetivo de personaje (SPEC-029: afectan al bando rival entero) — ninguno de estos siete
+      // usa el clic sobre un personaje.
       if (
         cur.symbol === 'resource' ||
         cur.symbol === 'special' ||
         cur.symbol === 'focus' ||
         cur.symbol === 'reroll' ||
-        cur.symbol === 'indirect'
+        cur.symbol === 'indirect' ||
+        cur.symbol === 'disrupt' ||
+        cur.symbol === 'discard'
       ) {
         return state;
       }
@@ -1441,6 +1579,55 @@ export const useGameStore = create<GameState>((set, get) => ({
         return { sides, outcome, indirectDistribution: null, turn: 'player', passStreak: 0 };
       }
       return { sides, outcome, indirectDistribution: { pending } };
+    }),
+
+  // Disrupt (SPEC-029): sin objetivo de personaje, afecta al bando contrario entero. Quien resuelve
+  // no gana nada (los recursos del rival solo desaparecen, no es "robar").
+  resolveDisrupt: () =>
+    set((state) => {
+      const cur = state.resolve;
+      if (state.outcome !== null || cur === null || cur.symbol !== 'disrupt') return state;
+      if (cur.marked.length === 0) return state;
+      const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
+      if (!sums.hasBase) return { resolveError: 'Necesitas un dado base del mismo símbolo (un modificador solo no se resuelve).' };
+      if (state.sides[cur.side].resources < sums.resourceCost) {
+        return { resolveError: 'Recursos insuficientes para pagar el coste.' };
+      }
+      const costReceiverIndex =
+        sums.indirectCost > 0 ? indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost) : null;
+      const res = applyDisrupt(state.sides, cur, costReceiverIndex);
+      if (res === null || res === 'no-base' || res === 'insufficient') return state;
+      return {
+        sides: res.sides,
+        outcome: res.outcome,
+        resolveError: null,
+        ...afterApply(cur, res),
+      };
+    }),
+
+  // Descarte (SPEC-029): sin objetivo de personaje, afecta al bando contrario entero. Aleatoriedad
+  // real (Math.random), tanto si lo sufre el jugador como el autómata.
+  resolveDiscard: () =>
+    set((state) => {
+      const cur = state.resolve;
+      if (state.outcome !== null || cur === null || cur.symbol !== 'discard') return state;
+      if (cur.marked.length === 0) return state;
+      const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
+      if (!sums.hasBase) return { resolveError: 'Necesitas un dado base del mismo símbolo (un modificador solo no se resuelve).' };
+      if (state.sides[cur.side].resources < sums.resourceCost) {
+        return { resolveError: 'Recursos insuficientes para pagar el coste.' };
+      }
+      const costReceiverIndex =
+        sums.indirectCost > 0 ? indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost) : null;
+      const res = applyDiscard(state.sides, cur, costReceiverIndex);
+      if (res === null || res === 'no-base' || res === 'insufficient') return state;
+      const names = res.discarded.map((code) => readCache(code)?.name ?? code);
+      return {
+        sides: res.sides,
+        outcome: res.outcome,
+        resolveError: names.length > 0 ? `El rival descarta: ${names.join(', ')}.` : null,
+        ...afterApply(cur, res),
+      };
     }),
 
   selectUpgradeCard: (side: Side, code: string) =>
@@ -1697,6 +1884,39 @@ export const useGameStore = create<GameState>((set, get) => ({
             sides: res.sides,
             outcome: res.outcome,
             lastEnemyAction: `El enemigo resuelve ${label} (+${total} recurso).`,
+          };
+        });
+        set({ turn: 'player', passStreak: 0 });
+        return;
+      }
+      case 'disrupt': {
+        const total = batchTotal(action.dieIndices);
+        const label = batchLabel(action.dieIndices);
+        set((s) => {
+          const res = applyDisrupt(s.sides, { side: 'enemy', symbol: 'disrupt', marked: action.dieIndices }, action.costReceiverIndex);
+          if (res === null || res === 'no-base' || res === 'insufficient') return s;
+          return {
+            sides: res.sides,
+            outcome: res.outcome,
+            lastEnemyAction: `El enemigo resuelve ${label} (quitas ${total} de recursos).`,
+          };
+        });
+        set({ turn: 'player', passStreak: 0 });
+        return;
+      }
+      case 'discard': {
+        const label = batchLabel(action.dieIndices);
+        set((s) => {
+          const res = applyDiscard(s.sides, { side: 'enemy', symbol: 'discard', marked: action.dieIndices }, action.costReceiverIndex);
+          if (res === null || res === 'no-base' || res === 'insufficient') return s;
+          const names = res.discarded.map((code) => readCache(code)?.name ?? code);
+          return {
+            sides: res.sides,
+            outcome: res.outcome,
+            lastEnemyAction:
+              names.length > 0
+                ? `El enemigo resuelve ${label}: te descarta ${names.join(', ')}.`
+                : `El enemigo resuelve ${label} (tu mano ya estaba vacía).`,
           };
         });
         set({ turn: 'player', passStreak: 0 });

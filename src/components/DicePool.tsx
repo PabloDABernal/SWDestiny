@@ -20,6 +20,8 @@ export function DicePool({ side }: { side: Side }) {
   const resolveResources = useGameStore((s) => s.resolveResources);
   const resolveSpecial = useGameStore((s) => s.resolveSpecial);
   const resolveIndirect = useGameStore((s) => s.resolveIndirect);
+  const resolveDisrupt = useGameStore((s) => s.resolveDisrupt);
+  const resolveDiscard = useGameStore((s) => s.resolveDiscard);
   const pickFocusTarget = useGameStore((s) => s.pickFocusTarget);
   const chooseFocusFace = useGameStore((s) => s.chooseFocusFace);
   const confirmFocus = useGameStore((s) => s.confirmFocus);
@@ -80,6 +82,16 @@ export function DicePool({ side }: { side: Side }) {
           {mode.symbol === 'indirect' && (
             <button onClick={resolveIndirect} disabled={mode.marked.length === 0}>
               Resolver indirecto
+            </button>
+          )}
+          {mode.symbol === 'disrupt' && (
+            <button onClick={resolveDisrupt} disabled={mode.marked.length === 0}>
+              Resolver disrupt
+            </button>
+          )}
+          {mode.symbol === 'discard' && (
+            <button onClick={resolveDiscard} disabled={mode.marked.length === 0}>
+              Resolver descarte
             </button>
           )}
           {mode.symbol === 'focus' && mode.focusFaceChoice == null && (
@@ -232,6 +244,10 @@ function symbolLabel(s: string): string {
       return 'reroll de dado';
     case 'special':
       return 'especial';
+    case 'disrupt':
+      return 'disrupt';
+    case 'discard':
+      return 'descarte';
     default:
       return s;
   }
@@ -240,6 +256,6 @@ function symbolLabel(s: string): string {
 function symbolClass(s: string): string {
   if (s === 'shield') return 'shield';
   if (s === 'resource') return 'resource';
-  if (s === 'focus' || s === 'reroll' || s === 'special') return 'utility';
+  if (s === 'focus' || s === 'reroll' || s === 'special' || s === 'disrupt' || s === 'discard') return 'utility';
   return 'damage';
 }

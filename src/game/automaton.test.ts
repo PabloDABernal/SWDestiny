@@ -488,6 +488,57 @@ describe('nextAutomatonAction — recurso', () => {
   });
 });
 
+describe('nextAutomatonAction — disrupt y descarte (SPEC-029)', () => {
+  it('con un dado de disrupt y nada mejor que hacer, lo resuelve (sin objetivo)', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [die(0, '2Dr')] });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toEqual({
+      type: 'disrupt',
+      dieIndices: [0],
+      costReceiverIndex: null,
+    });
+  });
+
+  it('con un dado de descarte y nada mejor que hacer, lo resuelve (sin objetivo)', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [die(0, '1Dc')] });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toEqual({
+      type: 'discard',
+      dieIndices: [0],
+      costReceiverIndex: null,
+    });
+  });
+
+  it('disrupt tiene prioridad sobre descarte si hay tanda combinable de ambos', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [die(0, '2Dr'), die(1, '1Dc')] });
+    expect(next(enemy, playerSide(), noRerollsUsed).type).toBe('disrupt');
+  });
+
+  it('recurso tiene prioridad sobre disrupt/descarte', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [die(0, '1R'), die(1, '2Dr')] });
+    expect(next(enemy, playerSide(), noRerollsUsed).type).toBe('resource');
+  });
+
+  it('disrupt/descarte tienen prioridad sobre focus', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [die(0, '2Dr'), die(1, '1F')] });
+    expect(next(enemy, playerSide(), noRerollsUsed).type).toBe('disrupt');
+  });
+
+  it('combina modificador +X en la misma tanda de disrupt', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [die(0, '1Dr'), die(0, '+1Dr')] });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toMatchObject({ type: 'disrupt', dieIndices: [0, 1] });
+  });
+
+  it('coste de daño indirecto propio en descarte: aplica el coste a un aliado propio', () => {
+    const enemy = enemySide({
+      activated: [true, true],
+      pool: [die(0, '2Dci1')],
+      characters: [ch('A', 10), ch('B', 10)],
+      damage: [0, 0],
+      shields: [0, 0],
+    });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toMatchObject({ type: 'discard', dieIndices: [0], costReceiverIndex: 0 });
+  });
+});
+
 describe('nextAutomatonAction — focus, reroll de dado y especial (SPEC-023)', () => {
   it('focus gira el mejor dado propio disponible a su mejor cara (daño > escudo > recurso)', () => {
     const enemy = enemySide({

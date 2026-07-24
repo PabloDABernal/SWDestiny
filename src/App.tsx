@@ -172,7 +172,9 @@ export function App() {
                   : 'Dado de Focus marcado. Pulsa un dado propio en tu pool para elegir su nueva cara.'
                 : resolve.symbol === 'reroll'
                   ? 'Dado de Reroll marcado. Pulsa un dado (de cualquier pool) para rerollearlo.'
-                  : 'Dado de daño marcado. Pulsa un personaje enemigo para aplicarlo.';
+                  : resolve.symbol === 'disrupt' || resolve.symbol === 'discard'
+                    ? null
+                    : 'Dado de daño marcado. Pulsa un personaje enemigo para aplicarlo.';
 
   return (
     <main className="app">

@@ -15,8 +15,16 @@ export function parseDamage(face: string): number | null {
 export type DamageKind = 'melee' | 'ranged' | 'indirect';
 
 /** Símbolo resoluble de una cara sin coste ni modificador (SPEC-008a; focus/reroll/especial desde
- * SPEC-023). */
-export type DieSymbol = DamageKind | 'shield' | 'resource' | 'focus' | 'reroll' | 'special';
+ * SPEC-023; disrupt/descarte desde SPEC-029). */
+export type DieSymbol =
+  | DamageKind
+  | 'shield'
+  | 'resource'
+  | 'focus'
+  | 'reroll'
+  | 'special'
+  | 'disrupt'
+  | 'discard';
 
 /** Distingue el símbolo de daño y su cantidad, o null si no es cara de daño (sin coste). */
 export function parseDamageDie(face: string): { kind: DamageKind; amount: number } | null {
@@ -67,6 +75,10 @@ export function parseCostedFace(
  * modificador de símbolo fijo de arriba (`+2RD`), no está atado a ningún símbolo — `symbol` es
  * `null` y `isGenericModifier` marca el caso. Vale para cualquier símbolo base salvo especial (los
  * llamadores deciden eso, aquí solo se reconoce el formato).
+ *
+ * Disrupt (`Dr`) y descarte (`Dc`), SPEC-029: ninguno tiene objetivo de personaje (afectan al bando
+ * rival entero), mismo formato con valor que el resto (confirmado contra cartas reales: Snoke,
+ * Chewbacca, Lando Calrissian).
  */
 export function parsePlayerFace(face: string): {
   symbol: DieSymbol | null;
@@ -98,7 +110,7 @@ export function parsePlayerFace(face: string): {
       isGenericModifier: true,
     };
   }
-  const m = /^(\+)?(\d+)(MD|RD|ID|Sh|Re|R|F)(i)?(\d+)?$/.exec(face);
+  const m = /^(\+)?(\d+)(MD|RD|ID|Sh|Re|R|F|Dr|Dc)(i)?(\d+)?$/.exec(face);
   if (!m) return null;
   const token = m[3];
   const symbol: DieSymbol =
@@ -114,7 +126,11 @@ export function parsePlayerFace(face: string): {
               ? 'resource'
               : token === 'F'
                 ? 'focus'
-                : 'reroll';
+                : token === 'Re'
+                  ? 'reroll'
+                  : token === 'Dr'
+                    ? 'disrupt'
+                    : 'discard';
   const cost = m[5] ? Number(m[5]) : 0;
   const indirect = m[4] === 'i';
   return {
@@ -135,7 +151,8 @@ export function isGenericModifier(face: string): boolean {
 
 /**
  * Símbolo resoluble de una cara para el "modo resolver" del jugador (008a/008b/010, ampliado con
- * focus/reroll/especial en SPEC-023), o null si no es seleccionable (blanco, disrupt, descarte).
+ * focus/reroll/especial en SPEC-023 y disrupt/descarte en SPEC-029), o null si no es seleccionable
+ * (blanco, activar, mejora/apoyo sin dado).
  */
 export function dieSymbol(face: string): DieSymbol | null {
   return parsePlayerFace(face)?.symbol ?? null;

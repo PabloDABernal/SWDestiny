@@ -85,6 +85,18 @@ export type AutomatonAction =
   | { type: 'shield'; dieIndices: number[]; targetIndex: number; costReceiverIndex: number | null }
   | { type: 'activate'; index: number }
   | { type: 'resource'; dieIndices: number[]; costReceiverIndex: number | null }
+  | {
+      /** Disrupt (SPEC-029): sin objetivo de personaje, afecta al bando contrario entero. */
+      type: 'disrupt';
+      dieIndices: number[];
+      costReceiverIndex: number | null;
+    }
+  | {
+      /** Descarte (SPEC-029): sin objetivo de personaje, afecta al bando contrario entero. */
+      type: 'discard';
+      dieIndices: number[];
+      costReceiverIndex: number | null;
+    }
   | { type: 'focus'; dieIndices: number[]; targets: FocusTarget[]; costReceiverIndex: number | null }
   | { type: 'rerollDice'; dieIndices: number[]; targets: RerollDieTarget[]; costReceiverIndex: number | null }
   | { type: 'special'; dieIndices: number[]; costReceiverIndex: number | null }
@@ -270,6 +282,8 @@ const isMeleeRangedSymbol = (s: DieSymbol | null) => s === 'melee' || s === 'ran
 const isIndirectSymbol = (s: DieSymbol | null) => s === 'indirect';
 const isShieldSymbol = (s: DieSymbol | null) => s === 'shield';
 const isResourceSymbol = (s: DieSymbol | null) => s === 'resource';
+const isDisruptSymbol = (s: DieSymbol | null) => s === 'disrupt';
+const isDiscardSymbol = (s: DieSymbol | null) => s === 'discard';
 const isFocusSymbol = (s: DieSymbol | null) => s === 'focus';
 const isRerollDieSymbol = (s: DieSymbol | null) => s === 'reroll';
 const isSpecialSymbol = (s: DieSymbol | null) => s === 'special';
@@ -481,7 +495,23 @@ export function nextAutomatonAction(
     return { type: 'resource', dieIndices: resourceBatch.dieIndices, costReceiverIndex };
   }
 
-  // 5. Focus combinado (SPEC-023): gira, hasta el valor combinado disponible, sus propios dados sin
+  // 5. Disrupt/descarte combinados (SPEC-029): sin objetivo de personaje, afectan al bando contrario
+  // entero. Disrupt se comprueba primero si hay tanda combinable de ambos a la vez (decisión del
+  // usuario, mismo espíritu que indirecto/melee-ranged en la fila 1).
+  const disruptBatch = combineAutomatonBatch(enemy.pool, isDisruptSymbol, enemy.resources, hasNonKoAlly);
+  if (disruptBatch !== null) {
+    const costReceiverIndex =
+      disruptBatch.indirectCost > 0 ? indirectCostReceiverIndex(enemy, disruptBatch.indirectCost) : null;
+    return { type: 'disrupt', dieIndices: disruptBatch.dieIndices, costReceiverIndex };
+  }
+  const discardBatch = combineAutomatonBatch(enemy.pool, isDiscardSymbol, enemy.resources, hasNonKoAlly);
+  if (discardBatch !== null) {
+    const costReceiverIndex =
+      discardBatch.indirectCost > 0 ? indirectCostReceiverIndex(enemy, discardBatch.indirectCost) : null;
+    return { type: 'discard', dieIndices: discardBatch.dieIndices, costReceiverIndex };
+  }
+
+  // 6. Focus combinado (SPEC-023): gira, hasta el valor combinado disponible, sus propios dados sin
   // resolver a su mejor cara (misma prioridad daño > escudo > recurso). Si ningún dado propio mejora
   // girándolo, no es una acción legal (se prueba la siguiente fila).
   const focusBatch = combineAutomatonBatch(enemy.pool, isFocusSymbol, enemy.resources, hasNonKoAlly);
@@ -495,7 +525,7 @@ export function nextAutomatonAction(
     }
   }
 
-  // 6. Reroll de dado combinado (SPEC-023): re-tira, hasta el valor combinado disponible, los dados
+  // 7. Reroll de dado combinado (SPEC-023): re-tira, hasta el valor combinado disponible, los dados
   // de daño sin resolver del jugador que más le convenga anular (mayor cantidad primero). Si el
   // jugador no tiene ningún dado de daño pendiente, no es acción legal (se prueba la siguiente fila).
   const rerollDieBatch = combineAutomatonBatch(enemy.pool, isRerollDieSymbol, enemy.resources, hasNonKoAlly);
@@ -511,7 +541,7 @@ export function nextAutomatonAction(
     }
   }
 
-  // 7. Especial combinado (SPEC-023): placeholder sin efecto real, se "resuelve" igual que el
+  // 8. Especial combinado (SPEC-023): placeholder sin efecto real, se "resuelve" igual que el
   // jugador (mismo aviso/consumo) si no queda ninguna acción de prioridad más alta disponible.
   // El modificador genérico +X* no vale con especial (valor fijo, no modificable — SPEC-027).
   const specialBatch = combineAutomatonBatch(enemy.pool, isSpecialSymbol, enemy.resources, hasNonKoAlly, false);

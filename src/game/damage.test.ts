@@ -73,12 +73,17 @@ describe('dieSymbol (SPEC-008a/008b/010)', () => {
     expect(dieSymbol('2F')).toBe('focus'); // SPEC-023
     expect(dieSymbol('1Re')).toBe('reroll'); // SPEC-023
     expect(dieSymbol('Sp')).toBe('special'); // SPEC-023
+    expect(dieSymbol('1Dr')).toBe('disrupt'); // SPEC-029
+    expect(dieSymbol('1Dc')).toBe('discard'); // SPEC-029
   });
 
-  it('null para no resolubles (blanco, disrupt, descarte)', () => {
-    for (const face of ['-', 'Dr', 'Dc']) {
-      expect(dieSymbol(face)).toBeNull();
-    }
+  it('null para no resolubles (blanco)', () => {
+    expect(dieSymbol('-')).toBeNull();
+  });
+
+  it('Dr/Dc sin valor no son un formato válido (siempre llevan valor, SPEC-029)', () => {
+    expect(dieSymbol('Dr')).toBeNull();
+    expect(dieSymbol('Dc')).toBeNull();
   });
 });
 
@@ -128,10 +133,31 @@ describe('parsePlayerFace (SPEC-010)', () => {
     expect(parsePlayerFace('Sp2')).toMatchObject({ symbol: 'special', amount: 0, resourceCost: 2 });
   });
 
-  it('null para no resolubles', () => {
+  it('null para no resolubles (blanco, Dr/Dc sin valor)', () => {
     for (const face of ['-', 'Dr', 'Dc']) {
       expect(parsePlayerFace(face)).toBeNull();
     }
+  });
+
+  it('disrupt y descarte (SPEC-029): sin objetivo de personaje, mismo formato que el resto', () => {
+    expect(parsePlayerFace('1Dr')).toEqual({
+      symbol: 'disrupt',
+      amount: 1,
+      resourceCost: 0,
+      indirectCost: 0,
+      isModifier: false,
+      isGenericModifier: false,
+    });
+    expect(parsePlayerFace('1Dc')).toEqual({
+      symbol: 'discard',
+      amount: 1,
+      resourceCost: 0,
+      indirectCost: 0,
+      isModifier: false,
+      isGenericModifier: false,
+    });
+    expect(parsePlayerFace('2Dr1')).toMatchObject({ symbol: 'disrupt', amount: 2, resourceCost: 1 });
+    expect(parsePlayerFace('+1Dc')).toMatchObject({ symbol: 'discard', amount: 1, isModifier: true });
   });
 
   it('modificador genérico +X* (SPEC-027): sin símbolo fijo, vale para cualquier tanda', () => {
