@@ -157,13 +157,17 @@ function combineAutomatonBatch(
 }
 
 /**
- * Receptor del coste de daño indirecto propio (SPEC-013, GDD §4): de los personajes no-KO,
- * prioriza los que sobrevivirían al coste (escudos absorbiendo primero); entre esos, el que ya
- * tenga escudos (empate: más vida); si ninguno tiene escudos, el de más vida entre los que
- * sobrevivirían; si el coste mataría a cualquiera, el de más vida como última opción. Desempates
- * deterministas (menor índice), igual que el resto del autómata. -1 si no hay ningún no-KO.
+ * Receptor del coste de daño indirecto propio: de los personajes no-KO, prioriza los que
+ * sobrevivirían al coste (escudos absorbiendo primero); entre esos, el que ya tenga escudos
+ * (empate: más vida); si ninguno tiene escudos, el de más vida entre los que sobrevivirían; si el
+ * coste mataría a cualquiera, el de más vida como última opción. Desempates deterministas (menor
+ * índice), igual que el resto del autómata. -1 si no hay ningún no-KO.
+ *
+ * Usado originalmente solo por el autómata (SPEC-013, GDD §4); reutilizado también para el propio
+ * jugador (corrección de SPEC-010, 2026-07-24): "indirecto" significa que el propio jugador no
+ * elige el receptor, se determina solo, igual que ya hacía el autómata consigo mismo.
  */
-function indirectCostReceiverIndex(side: AutomatonSide, cost: number): number {
+export function indirectCostReceiverIndex(side: AutomatonSide, cost: number): number {
   let bestSurvivorWithShield = -1;
   let bestSurvivor = -1;
   let bestAny = -1;

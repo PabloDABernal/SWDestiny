@@ -35,16 +35,13 @@ export function DicePool({ side }: { side: Side }) {
   // SPEC-023: mientras se resuelve un Reroll de dado del jugador, CUALQUIER pool (incluido el
   // rival, aquí "enemy") acepta clics para elegir dados objetivo — única vía por la que el pool
   // enemigo deja de ser puramente estático.
-  const rerollMode =
-    resolve && resolve.side === 'player' && resolve.symbol === 'reroll' && !resolve.pendingEffect
-      ? resolve
-      : null;
+  const rerollMode = resolve && resolve.side === 'player' && resolve.symbol === 'reroll' ? resolve : null;
   const rerollBudget = rerollMode
     ? budgetTotal(playerPool, rerollMode.marked) - (rerollMode.rerollTargets?.length ?? 0)
     : 0;
 
   const focusBudget =
-    mode && mode.symbol === 'focus' && !mode.pendingEffect
+    mode && mode.symbol === 'focus'
       ? budgetTotal(pool, mode.marked) - (mode.focusPicks?.length ?? 0)
       : 0;
   const focusFaceChoiceDie =
@@ -59,13 +56,8 @@ export function DicePool({ side }: { side: Side }) {
       </div>
 
       {interactive && mode && (
-        <div className={`pool__mode${mode.pendingEffect ? ' pool__mode--cost' : ''}`}>
-          {mode.pendingEffect ? (
-            <span className="pool__mode-label">
-              ✔ Efecto asignado. Paso 2/2: elige el aliado que recibe el coste indirecto (
-              {indirectTotal(pool, mode.marked)} de daño).
-            </span>
-          ) : mode.symbol === 'focus' && mode.focusFaceChoice != null ? (
+        <div className="pool__mode">
+          {mode.symbol === 'focus' && mode.focusFaceChoice != null ? (
             <span className="pool__mode-label">Elige la nueva cara para el dado girado.</span>
           ) : (
             <span className="pool__mode-label">
@@ -74,22 +66,22 @@ export function DicePool({ side }: { side: Side }) {
               {mode.symbol === 'reroll' && ` · presupuesto restante para rerollear: ${rerollBudget}`}
             </span>
           )}
-          {mode.symbol === 'resource' && !mode.pendingEffect && (
+          {mode.symbol === 'resource' && (
             <button onClick={resolveResources} disabled={mode.marked.length === 0}>
               Resolver recursos
             </button>
           )}
-          {mode.symbol === 'special' && !mode.pendingEffect && (
+          {mode.symbol === 'special' && (
             <button onClick={resolveSpecial} disabled={mode.marked.length === 0}>
               Resolver especial
             </button>
           )}
-          {mode.symbol === 'focus' && !mode.pendingEffect && mode.focusFaceChoice == null && (
+          {mode.symbol === 'focus' && mode.focusFaceChoice == null && (
             <button onClick={confirmFocus} disabled={(mode.focusPicks?.length ?? 0) === 0}>
               Confirmar focus
             </button>
           )}
-          {mode.symbol === 'reroll' && !mode.pendingEffect && (
+          {mode.symbol === 'reroll' && (
             <button onClick={confirmReroll} disabled={(mode.rerollTargets?.length ?? 0) === 0}>
               Confirmar reroll
             </button>
@@ -145,7 +137,6 @@ export function DicePool({ side }: { side: Side }) {
               interactive &&
               mode !== null &&
               mode.symbol === 'focus' &&
-              !mode.pendingEffect &&
               mode.focusFaceChoice == null &&
               symbol !== 'focus' &&
               !isMarked &&
@@ -170,7 +161,7 @@ export function DicePool({ side }: { side: Side }) {
               interactive &&
               turn === 'player' &&
               symbol !== null &&
-              (mode === null || (mode.symbol === symbol && !mode.pendingEffect && mode.focusFaceChoice == null));
+              (mode === null || (mode.symbol === symbol && mode.focusFaceChoice == null));
 
             const onClick = canPickFocusTarget
               ? () => pickFocusTarget(i)
@@ -235,13 +226,4 @@ function symbolClass(s: string): string {
   if (s === 'resource') return 'resource';
   if (s === 'focus' || s === 'reroll' || s === 'special') return 'utility';
   return 'damage';
-}
-
-/** Suma el coste de daño indirecto de los dados marcados (para el mensaje del paso 2, SPEC-010). */
-function indirectTotal(pool: { face: string }[], marked: number[]): number {
-  return marked.reduce((acc, i) => {
-    const die = pool[i];
-    const p = die ? parsePlayerFace(die.face) : null;
-    return acc + (p ? p.indirectCost : 0);
-  }, 0);
 }

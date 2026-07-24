@@ -20,6 +20,7 @@ import { computeOutcome as computeOutcomePure, type Outcome } from '../game/outc
 import {
   applyEnemyHealthMultiplier,
   nextAutomatonAction,
+  indirectCostReceiverIndex,
   DEFAULT_DIFFICULTY,
   DIFFICULTY_SETTINGS,
   type AutomatonOpponent,
@@ -554,10 +555,6 @@ interface ResolveMode {
   side: Side;
   symbol: DieSymbol;
   marked: number[];
-  /** SPEC-010: si != null, el efecto ya tiene objetivo y se espera el receptor del coste indirecto.
-   * `effectIndex` es el objetivo del efecto (null para recurso, que no tiene objetivo). Mientras
-   * está activo, selectDie/activate quedan bloqueados (resolución atómica). */
-  pendingEffect?: { effectIndex: number | null } | null;
   /** SPEC-023 (symbol === 'focus'): dados propios ya girados en esta resolución (poolIndex del
    * dado objetivo + cara elegida), acumulados hasta `confirmFocus`. */
   focusPicks?: { poolIndex: number; face: string }[];
@@ -586,9 +583,7 @@ function nextResolveAfterApply(
     const p = parsePlayerFace(d.face);
     return p !== null && p.symbol === mode.symbol && !p.isModifier;
   });
-  return hasBaseOfSymbol
-    ? { side: mode.side, symbol: mode.symbol, marked: [], pendingEffect: null }
-    : null;
+  return hasBaseOfSymbol ? { side: mode.side, symbol: mode.symbol, marked: [] } : null;
 }
 
 /** Tras aplicar una tanda con éxito (SPEC-025): calcula el próximo `resolve` (arriba) y, si el modo
@@ -884,9 +879,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((state) => {
       // Bloqueado si la partida ya terminó (SPEC-025: ninguna acción de turno tiene efecto).
       if (state.outcome !== null) return state;
-      // Bloqueado mientras se espera el receptor del coste indirecto (SPEC-010, resolución atómica)
-      // o se elige la cara de un dado en una resolución de Focus en curso (SPEC-023, ídem).
-      if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
+      // Bloqueado mientras se elige la cara de un dado en una resolución de Focus en curso
+      // (SPEC-023).
+      if (state.resolve?.focusFaceChoice != null) return state;
       // Bloqueado mientras se elige objetivo para jugar una mejora (SPEC-020) o hay un mulligan
       // pendiente de confirmar (SPEC-024).
       if (state.playUpgrade !== null || state.mulligan !== null) return state;
@@ -977,9 +972,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   selectDie: (side: Side, poolIndex: number) =>
     set((state) => {
       if (state.outcome !== null) return state;
-      // Bloqueado mientras se espera el receptor del coste indirecto (SPEC-010) o se elige la cara
-      // de un dado en una resolución de Focus en curso (SPEC-023).
-      if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
+      // Bloqueado mientras se elige la cara de un dado en una resolución de Focus en curso
+      // (SPEC-023).
+      if (state.resolve?.focusFaceChoice != null) return state;
       // Bloqueado mientras se elige objetivo para jugar una mejora (SPEC-020) o hay un mulligan
       // pendiente de confirmar (SPEC-024).
       if (state.playUpgrade !== null || state.mulligan !== null) return state;
@@ -1007,30 +1002,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     }),
 
   // Aplica los dados marcados (daño/escudo) a un objetivo, sumando base + modificadores y pagando
-  // costes (SPEC-008b/010). Si hay coste indirecto, primero el objetivo del efecto y luego, en un
-  // segundo clic (sobre un aliado propio), el receptor del coste (paso atómico).
+  // costes (SPEC-008b/010). El receptor del coste de daño indirecto propio, si lo hay, se determina
+  // solo (corrección de SPEC-010, 2026-07-24): "indirecto" significa que el propio jugador no elige
+  // a quién le toca, igual que ya hacía el autómata consigo mismo — un único clic resuelve todo.
   applyDieTo: (targetSide: Side, index: number) =>
     set((state) => {
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.marked.length === 0) return state;
-
-      // Paso 3: ya hay objetivo del efecto; este clic es el receptor del coste indirecto (bando propio).
-      if (cur.pendingEffect) {
-        if (targetSide !== cur.side) return state;
-        const res =
-          cur.symbol === 'focus'
-            ? applyFocus(state.sides, cur.side, cur.marked, cur.focusPicks ?? [], index)
-            : cur.symbol === 'reroll'
-              ? applyRerollDice(state.sides, cur.side, cur.marked, cur.rerollTargets ?? [], index)
-              : resolvePlayerBatch(state.sides, cur, cur.pendingEffect.effectIndex, index);
-        if (res === null || res === 'no-base' || res === 'insufficient') return state; // no debería
-        return {
-          sides: res.sides,
-          outcome: res.outcome,
-          resolveError: null,
-          ...afterApply(cur, res),
-        };
-      }
 
       // Recurso/especial se resuelven con su propio botón; focus/reroll con sus propias acciones
       // de elegir dado objetivo (SPEC-023) — ninguno de los cuatro usa el clic sobre un personaje.
@@ -1043,7 +1021,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         return state;
       }
 
-      // Paso 2: elegir objetivo del efecto (daño → contrario; escudo → propio).
+      // Elegir objetivo del efecto (daño → contrario; escudo → propio).
       const wantSide = cur.symbol === 'shield' ? cur.side : opposite(cur.side);
       if (targetSide !== wantSide) return state;
       const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
@@ -1051,12 +1029,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.sides[cur.side].resources < sums.resourceCost) {
         return { resolveError: 'Recursos insuficientes para pagar el coste.' };
       }
-      if (sums.indirectCost > 0) {
-        // Falta el receptor del coste indirecto: pasa a paso 3 (atómico).
-        return { resolve: { ...cur, pendingEffect: { effectIndex: index } }, resolveError: null };
-      }
-      // Sin coste indirecto: resolver ya.
-      const res = resolvePlayerBatch(state.sides, cur, index, null);
+      const costReceiverIndex =
+        sums.indirectCost > 0 ? indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost) : null;
+      const res = resolvePlayerBatch(state.sides, cur, index, costReceiverIndex);
       if (res === null || res === 'no-base' || res === 'insufficient') return state;
       return {
         sides: res.sides,
@@ -1072,16 +1047,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((state) => {
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.symbol !== 'resource') return state;
-      if (cur.marked.length === 0 || cur.pendingEffect) return state;
+      if (cur.marked.length === 0) return state;
       const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
       if (!sums.hasBase) return { resolveError: 'Necesitas un dado base del mismo símbolo (un modificador solo no se resuelve).' };
       if (state.sides[cur.side].resources < sums.resourceCost) {
         return { resolveError: 'Recursos insuficientes para pagar el coste.' };
       }
-      if (sums.indirectCost > 0) {
-        return { resolve: { ...cur, pendingEffect: { effectIndex: null } }, resolveError: null };
-      }
-      const res = resolvePlayerBatch(state.sides, cur, null, null);
+      // Receptor del coste indirecto determinado solo (corrección de SPEC-010, ver applyDieTo).
+      const costReceiverIndex =
+        sums.indirectCost > 0 ? indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost) : null;
+      const res = resolvePlayerBatch(state.sides, cur, null, costReceiverIndex);
       if (res === null || res === 'no-base' || res === 'insufficient') return state;
       return {
         sides: res.sides,
@@ -1103,7 +1078,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Bloqueado fuera de tu turno (SPEC-025): compara contra quién abrió la resolución, no contra
       // un `side` propio de esta acción (no lo tiene, el objetivo es un dado, no un bando).
       if (state.turn !== cur.side) return state;
-      if (cur.pendingEffect || cur.focusFaceChoice != null) return state;
+      if (cur.focusFaceChoice != null) return state;
       if (cur.marked.length === 0 || cur.marked.includes(poolIndex)) return state;
       const picks = cur.focusPicks ?? [];
       if (picks.some((p) => p.poolIndex === poolIndex)) return state;
@@ -1132,7 +1107,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((state) => {
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.symbol !== 'focus') return state;
-      if (cur.pendingEffect || cur.focusFaceChoice != null) return state;
+      if (cur.focusFaceChoice != null) return state;
       const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
       // Recorta a la suma de valores ACTUAL de los marcados (defensivo: si se desmarcó algún dado
       // de Focus fuente después de elegir objetivos, el presupuesto pudo haber bajado).
@@ -1141,13 +1116,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.sides[cur.side].resources < sums.resourceCost) {
         return { resolveError: 'Recursos insuficientes para pagar el coste.' };
       }
-      if (sums.indirectCost > 0) {
-        return {
-          resolve: { ...cur, focusPicks: picks, pendingEffect: { effectIndex: null } },
-          resolveError: null,
-        };
-      }
-      const res = applyFocus(state.sides, cur.side, cur.marked, picks, null);
+      // Receptor del coste indirecto determinado solo (corrección de SPEC-010, ver applyDieTo).
+      const costReceiverIndex =
+        sums.indirectCost > 0 ? indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost) : null;
+      const res = applyFocus(state.sides, cur.side, cur.marked, picks, costReceiverIndex);
       if (res === null || res === 'no-base' || res === 'insufficient') return state;
       return {
         sides: res.sides,
@@ -1167,7 +1139,6 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Bloqueado fuera de tu turno (SPEC-025): compara contra quién abrió la resolución
       // (`cur.side`), NO contra `targetSide` — a propósito puede ser el pool rival (SPEC-023).
       if (state.turn !== cur.side) return state;
-      if (cur.pendingEffect) return state;
       if (targetSide === cur.side && cur.marked.includes(poolIndex)) return state;
       if (!state.sides[targetSide].pool[poolIndex]) return state;
       const targets = cur.rerollTargets ?? [];
@@ -1184,7 +1155,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((state) => {
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.symbol !== 'reroll') return state;
-      if (cur.pendingEffect) return state;
       const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
       // Recorta a la suma de valores ACTUAL de los marcados (mismo defensivo que confirmFocus).
       const targets = (cur.rerollTargets ?? []).slice(0, sums.baseAmount + sums.modifierAmount);
@@ -1192,13 +1162,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.sides[cur.side].resources < sums.resourceCost) {
         return { resolveError: 'Recursos insuficientes para pagar el coste.' };
       }
-      if (sums.indirectCost > 0) {
-        return {
-          resolve: { ...cur, rerollTargets: targets, pendingEffect: { effectIndex: null } },
-          resolveError: null,
-        };
-      }
-      const res = applyRerollDice(state.sides, cur.side, cur.marked, targets, null);
+      // Receptor del coste indirecto determinado solo (corrección de SPEC-010, ver applyDieTo).
+      const costReceiverIndex =
+        sums.indirectCost > 0 ? indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost) : null;
+      const res = applyRerollDice(state.sides, cur.side, cur.marked, targets, costReceiverIndex);
       if (res === null || res === 'no-base' || res === 'insufficient') return state;
       return {
         sides: res.sides,
@@ -1214,15 +1181,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((state) => {
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.symbol !== 'special') return state;
-      if (cur.marked.length === 0 || cur.pendingEffect) return state;
+      if (cur.marked.length === 0) return state;
       const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
       if (state.sides[cur.side].resources < sums.resourceCost) {
         return { resolveError: 'Recursos insuficientes para pagar el coste.' };
       }
-      if (sums.indirectCost > 0) {
-        return { resolve: { ...cur, pendingEffect: { effectIndex: null } }, resolveError: null };
-      }
-      const res = resolvePlayerBatch(state.sides, cur, null, null);
+      // Receptor del coste indirecto determinado solo (corrección de SPEC-010, ver applyDieTo).
+      const costReceiverIndex =
+        sums.indirectCost > 0 ? indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost) : null;
+      const res = resolvePlayerBatch(state.sides, cur, null, costReceiverIndex);
       if (res === null || res === 'no-base' || res === 'insufficient') return state;
       return {
         sides: res.sides,
@@ -1235,9 +1202,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   selectUpgradeCard: (side: Side, code: string) =>
     set((state) => {
       if (state.outcome !== null) return state;
-      // Bloqueado mientras se espera el receptor del coste indirecto (SPEC-010) o se elige la cara
-      // de un dado en una resolución de Focus en curso (SPEC-023).
-      if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
+      // Bloqueado mientras se elige la cara de un dado en una resolución de Focus en curso
+      // (SPEC-023).
+      if (state.resolve?.focusFaceChoice != null) return state;
       // Bloqueado mientras hay un mulligan pendiente de confirmar (SPEC-024).
       if (state.mulligan !== null) return state;
       // Bloqueado fuera de tu turno, o si ya tienes un dado marcado sin resolver (SPEC-025).
@@ -1288,7 +1255,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((state) => {
       if (state.outcome !== null) return state;
       // Mismos guards de exclusión mutua que jugar una mejora (SPEC-020/021/023/024).
-      if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
+      if (state.resolve?.focusFaceChoice != null) return state;
       if (state.playUpgrade !== null || state.mulligan !== null) return state;
       // Bloqueado fuera de tu turno, o si ya tienes un dado marcado sin resolver (SPEC-025).
       if (state.turn !== side) return state;
@@ -1322,7 +1289,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Bloqueado si la partida ya terminó (SPEC-025: ninguna acción de turno tiene efecto).
       if (state.outcome !== null) return state;
       // Mismos guards de exclusión mutua que activar un personaje (SPEC-020/021/023/024).
-      if (state.resolve?.pendingEffect || state.resolve?.focusFaceChoice != null) return state;
+      if (state.resolve?.focusFaceChoice != null) return state;
       if (state.playUpgrade !== null || state.mulligan !== null) return state;
       // Bloqueado fuera de tu turno, o si ya tienes un dado marcado sin resolver (SPEC-025).
       if (state.turn !== side) return state;

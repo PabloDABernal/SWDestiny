@@ -29,25 +29,20 @@ Cara de jugador = `[+]<valor><SÍMBOLO>[i]<coste>`:
 
 ### Coste de daño indirecto propio (`…i<n>`)
 - La cara es seleccionable; su coste indirecto total (Σ de los marcados) lo recibe **un personaje
-  propio no-KO que elige el jugador**, **después** de elegir el objetivo del efecto.
+  propio no-KO**, determinado automáticamente (ver "Corrección 2026-07-24" más abajo — inicialmente
+  esta spec dejaba que el jugador lo eligiera con un clic; se corrigió después de jugarla).
 - Es daño indirecto normal: los **escudos del receptor lo absorben** primero (SPEC-005); el sobrante
   baja vida y puede dejar KO.
 
 ### Flujo de resolución (con todo integrado)
 1. Marcas la(s) cara(s) del mismo símbolo (base, modificadores y/o con coste).
-2. Clic en el **objetivo del efecto** (enemigo para daño; aliado para escudo). Aquí se comprueba:
+2. Clic en el **objetivo del efecto** (enemigo para daño; aliado para escudo; recurso/especial con
+   su propio botón; focus/reroll de dado con sus propias acciones, SPEC-023). Aquí se comprueba:
    - que haya ≥1 dado base (si solo hay modificadores → no-op, aviso);
    - que se pueda pagar el **coste de recurso** total (SPEC-008b); si no, aviso, no se resuelve.
-3. Si el total de **coste indirecto** > 0 → se pide el **receptor del coste**: clic en un aliado
-   propio no-KO. Si es 0, se resuelve directamente en el paso 2.
-4. Se aplica todo a la vez: efecto (base + modificadores) al objetivo, coste de recurso descontado,
-   coste indirecto al receptor; los dados marcados se consumen.
-
-**Bloqueo durante el paso 3 (fijado con el usuario):** mientras se espera el receptor del coste
-indirecto, la resolución es **atómica**: NO se puede marcar/desmarcar dados ni **Activar**; solo
-vale clicar un aliado propio no-KO (el receptor) o **Cancelar**. Cancelar descarta toda la tanda
-(no se aplica nada, los dados siguen marcados). Clic en enemigo o en aliado KO durante el paso 3 =
-no-op.
+3. Se aplica todo a la vez: efecto (base + modificadores) al objetivo, coste de recurso descontado,
+   coste indirecto (si lo hay) al receptor determinado automáticamente; los dados marcados se
+   consumen. Un único clic (o pulsación de botón) resuelve la tanda entera.
 
 ## Criterios de aceptación
 
@@ -60,16 +55,13 @@ Verificables jugando. Formato: acción → resultado observable.
 - [ ] Un modificador de recurso `+1R` marcado junto a `1R` y **Resolver recursos** → suma **2** al
       contador; `+1R` solo (sin base) no hace nada.
 - [ ] Una cara con coste indirecto `3Shi1` es **seleccionable** (modo escudo); al aplicarla: elijo el
-      aliado del **escudo (3)**, luego elijo el aliado que **recibe 1 de daño indirecto** (sus escudos
-      lo absorben primero); ambos pasos, y el dado se consume.
-- [ ] El receptor del coste indirecto puede quedar **KO** si no tiene escudos (sale KO, sus dados del
-      pool se retiran).
+      aliado del **escudo (3)** y con ese único clic se resuelve todo, incluido el daño indirecto
+      (1) al receptor que se determina automáticamente (sus escudos lo absorben primero).
+- [ ] El receptor del coste indirecto, determinado automáticamente, puede quedar **KO** si no tiene
+      escudos suficientes (sale KO, sus dados del pool se retiran).
 - [ ] Combinar coste de recurso + coste indirecto en la misma tanda: se paga el recurso del contador
-      **y** se aplica el daño indirecto al aliado elegido; sin recursos suficientes, la tanda no se
-      resuelve (aviso) y **no** se pide receptor.
-- [ ] Durante el paso "elige receptor del coste indirecto" aparece el hint **"Elige el personaje de
-      tu bando que recibe el coste indirecto."**; los dados y Activar no responden; **Cancelar**
-      descarta toda la tanda sin aplicar nada (los dados siguen marcados).
+      **y** se aplica el daño indirecto al receptor automático; sin recursos suficientes, la tanda
+      no se resuelve (aviso) y no se aplica nada.
 - [ ] El **autómata** sigue ignorando modificadores y caras con coste (inertes en su pool).
 
 ## Fuera de alcance (explícito)
@@ -84,12 +76,10 @@ Verificables jugando. Formato: acción → resultado observable.
 - **Modificador de un símbolo distinto al modo activo** → como cualquier otra cara de otro símbolo:
   clicarlo reemplaza el modo (008a). Un `+2RD` no se mezcla con melee.
 - **Tanda con base + modificador + coste de recurso + coste indirecto** a la vez → se resuelve todo
-  en el flujo (paso 2 y 3): total efecto = base+modificadores; se cobra recurso; se pide receptor
-  del coste indirecto.
-- **Cancelar** en mitad del paso 3 (tras elegir objetivo, antes del receptor) → cancela toda la
-  resolución, no se aplica nada, los dados siguen marcados. (Botón Cancelar.)
+  de un clic: total efecto = base+modificadores; se cobra recurso; se aplica el coste indirecto al
+  receptor automático.
 - **Receptor del coste indirecto = mismo personaje** que el objetivo del efecto (p. ej. darse escudo
-  y el coste) → permitido.
+  y el coste) → permitido, si el algoritmo automático lo determina así.
 - **Sin aliado válido** para el coste indirecto (todos KO) → no puede pasar si el bando sigue en
   juego; si ocurriera, la tanda no se resuelve.
 - **Modificador con su propio coste** (p. ej. hipotético `+2RDi1`) → se trata igual (suma su valor y
@@ -103,20 +93,26 @@ Verificables jugando. Formato: acción → resultado observable.
   `parseDamage`/`parseShield`/`parseResource` (aislamiento del autómata, SPEC-008b).
 - `sumMarked` pasa a devolver `{ baseAmount, modifierAmount, resourceCost, indirectCost, hasBase }`.
   El efecto total = `baseAmount + modifierAmount` (solo si `hasBase`).
-- El modo `resolve` gana un paso pendiente para el receptor del coste indirecto: p. ej.
-  `pendingEffect: { targetSide, targetIndex } | null`. Con `pendingEffect` activo, el siguiente clic
-  en un aliado no-KO es el **receptor del coste** y finaliza la resolución; `selectDie` y `activate`
-  quedan bloqueados mientras `pendingEffect !== null` (paso atómico). `cancelResolve` limpia también
-  `pendingEffect` (ya pone `resolve: null`; confirmarlo).
 - **Dos avisos distintos** en `resolveError`: "Recursos insuficientes…" (008b) y uno nuevo tipo
   "Necesitas un dado base del mismo símbolo" cuando se aplica una tanda de solo modificadores.
-- **`App.tsx`** (`targetableSide`/`hint` en `BattleSide`) cambia: con `pendingEffect` activo, el
-  objetivo clicable pasa a ser el **propio bando** (receptor del coste), y el hint indica "elige el
-  personaje que recibe el coste indirecto", sea el efecto original daño o escudo.
 - Reutilizar `resolveShieldedDamage` para el coste indirecto (escudos absorben). Reutilizar el
   descuento de recurso de 008b. No duplicar KO ni absorción.
 - Path de recurso (botón "Resolver recursos"): también admite modificadores (`+1R`) y, si hay coste
-  indirecto, pide receptor tras el botón.
+  indirecto, se aplica al receptor automático en el mismo clic.
+
+### Corrección 2026-07-24 (tras jugar SPEC-025)
+
+Esta spec, tal como se jugó originalmente (2026-07-20), dejaba que **el jugador eligiera** con un
+clic quién recibía el coste indirecto (paso 3 atómico, `pendingEffect`). Jugando ya con turnos
+reales (SPEC-025), el usuario señaló que esto contradice el propio nombre de la mecánica: si el
+jugador elige el receptor, el coste deja de ser "indirecto". Decisión del usuario: el receptor debe
+determinarse **solo**, igual que ya hacía el autómata consigo mismo desde SPEC-013
+(`indirectCostReceiverIndex`, `src/game/automaton.ts` — ahora exportada y reutilizada también para
+el jugador). El paso 3 (clic en el receptor) y el estado `pendingEffect` desaparecen del todo: una
+tanda con coste indirecto se resuelve en el mismo clic que el resto (efecto + recurso + indirecto,
+todo junto). Afecta a `applyDieTo`, `resolveResources`, `resolveSpecial`, `confirmFocus` y
+`confirmReroll` en `src/store/gameStore.ts`. El autómata no cambia: seguía haciendo esto desde
+SPEC-013, la corrección solo alinea al jugador con lo que ya hacía el autómata.
 
 ## Nota de tamaño (regla 4 CLAUDE.md)
 
@@ -133,3 +129,9 @@ modificadores +X suman a un dado base (modificador solo = aviso), coste indirect
 modificador con "Resolver recursos". Tras iterar la UX: el bar del pool muestra en rojo el "Paso
 2/2: elige el aliado que recibe el coste indirecto (N)". revisor-codigo: CUMPLE. Confirmado por el
 usuario.
+
+2026-07-24: corrección jugando SPEC-025 (ver "Corrección 2026-07-24" arriba) — el receptor del coste
+indirecto pasa a determinarse automáticamente, sin el paso 3 de elegirlo a mano. Probado en
+navegador (Playwright): un dado `2MDi1` resuelto de un solo clic aplica 2 de daño al objetivo elegido
+y 1 de daño indirecto al personaje propio con más vida (mismo criterio que ya usaba el autómata),
+sin pedir ningún clic adicional. Confirmado por el usuario.

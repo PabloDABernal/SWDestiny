@@ -24,17 +24,15 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
   const cancelPlayUpgrade = useGameStore((st) => st.cancelPlayUpgrade);
   const confirmMulligan = useGameStore((st) => st.confirmMulligan);
 
-  // Objetivo válido de un PERSONAJE. Con pendingEffect (SPEC-010) se elige el receptor del coste
-  // indirecto: SIEMPRE el propio bando. Si no, daño → bando contrario, escudo → propio; recurso,
-  // focus, reroll de dado y especial no usan objetivo de personaje (recurso/especial resuelven con
-  // su botón; focus/reroll de dado eligen dado objetivo en el propio DicePool, SPEC-023).
+  // Objetivo válido de un PERSONAJE: daño → bando contrario, escudo → propio; recurso, focus,
+  // reroll de dado y especial no usan objetivo de personaje (recurso/especial resuelven con su
+  // botón; focus/reroll de dado eligen dado objetivo en el propio DicePool, SPEC-023). El receptor
+  // del coste indirecto ya no lo elige el jugador (corrección de SPEC-010): se determina solo.
   const active = outcome === null && resolve !== null && resolve.marked.length > 0;
   const noCharacterTarget = (s: string) => s === 'resource' || s === 'special' || s === 'focus' || s === 'reroll';
   const targetableSide = active
-    ? resolve!.pendingEffect
-      ? resolve!.side === side
-      : !noCharacterTarget(resolve!.symbol) &&
-        (resolve!.symbol === 'shield' ? resolve!.side === side : opposite(resolve!.side) === side)
+    ? !noCharacterTarget(resolve!.symbol) &&
+      (resolve!.symbol === 'shield' ? resolve!.side === side : opposite(resolve!.side) === side)
     : false;
   // Eligiendo objetivo para una mejora (SPEC-020): siempre el propio bando de quien la juega.
   const upgradeTargetableSide = outcome === null && playUpgrade !== null && playUpgrade.side === side;
@@ -150,9 +148,7 @@ export function App() {
   const hint =
     resolve === null || outcome !== null || resolve.marked.length === 0
       ? null
-      : resolve.pendingEffect
-        ? 'Elige el personaje de tu bando que recibe el coste indirecto.'
-        : resolve.symbol === 'shield'
+      : resolve.symbol === 'shield'
           ? 'Dado de escudo marcado. Pulsa un personaje de tu propio bando para aplicarlo.'
           : resolve.symbol === 'resource'
             ? null
@@ -186,10 +182,9 @@ export function App() {
         <button onClick={resetAll}>Reset total</button>
         <button
           onClick={() => pass('player')}
-          // Bloqueado con cualquier dado marcado sin aplicar (no solo pendingEffect, SPEC-023), con
-          // una mejora seleccionada, o con un mulligan pendiente de confirmar (SPEC-024/025): no
-          // tiene sentido pasar con una acción a medio construir, hay que cancelarla primero. Y,
-          // claro, solo se puede pasar en tu propio turno.
+          // Bloqueado con cualquier dado marcado sin aplicar, con una mejora seleccionada, o con un
+          // mulligan pendiente de confirmar (SPEC-024/025): no tiene sentido pasar con una acción a
+          // medio construir, hay que cancelarla primero. Y, claro, solo se puede pasar en tu turno.
           disabled={
             outcome !== null ||
             turn !== 'player' ||
@@ -202,8 +197,10 @@ export function App() {
         </button>
       </div>
 
-      <BattleSide side="enemy" label="Enemigo" />
-      <BattleSide side="player" label="Jugador" />
+      <div className="battle-sides">
+        <BattleSide side="enemy" label="Enemigo" />
+        <BattleSide side="player" label="Jugador" />
+      </div>
     </main>
   );
 }
