@@ -42,7 +42,9 @@ símbolos (melee, ranged, indirecto, escudo, recurso, disrupt, descarte, focus, 
 blanco), recursos, mano/mazo/descarte, fases de acción y mantenimiento, condiciones de victoria.
 
 **Resolución de dados:** desde SPEC-008a el jugador puede resolver **varios dados del mismo
-símbolo** en una acción (melee, ranged e indirecto son símbolos distintos y no se mezclan). Pagar
+símbolo** en una acción (melee, ranged e indirecto son símbolos distintos y no se mezclan) —
+excepto **indirecto**, que desde SPEC-026 se resuelve **de un dado base a la vez**, sin combinar
+dos en un total mayor (ver más abajo). Pagar
 el coste de recurso de las caras (SPEC-008b), y los modificadores `+X` junto al coste de daño
 indirecto propio (SPEC-010), llegan después. Desde SPEC-011 se pueden mandar dados de **melee o
 ranged** a **objetivos distintos** (cada dado a un enemigo), aunque no se puede dividir el daño de

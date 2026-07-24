@@ -90,11 +90,16 @@ dos mecánicas distintas que comparten nombre.
   innecesarios cuando sea posible (reutilizar la lógica de `pickTargetAndBatch`/`capBatchToMargin`
   ya usada para repartir sin overkill, adaptada de "elegir tanda propia a resolver" a "repartir un
   valor recibido").
-- En `src/store/gameStore.ts`: nuevo camino de resolución para symbol `'indirect'` (parecido a
-  `resolveResources`/`resolveSpecial`: botón sin elegir objetivo), que en vez de aplicar el efecto a
-  un `effectIndex` fijo, llama a la nueva función de reparto automático sobre `state.sides.enemy`
-  (el bando contrario a quien resuelve, siempre el autómata en esta spec) y aplica el resultado a
-  varios personajes a la vez (no solo uno, a diferencia de `resolvePlayerBatch` hoy).
+- En `src/store/gameStore.ts`: nueva acción pública del store, p. ej. `resolveIndirect()` (misma
+  forma que `resolveResources`/`resolveSpecial` en la interfaz `GameState`: botón sin elegir
+  objetivo), que en vez de aplicar el efecto a un `effectIndex` fijo, llama a la nueva función de
+  reparto automático sobre `state.sides.enemy` (el bando contrario a quien resuelve, siempre el
+  autómata en esta spec) y aplica el resultado a varios personajes a la vez (no solo uno, a
+  diferencia de `resolvePlayerBatch` hoy).
+- `applyDieTo` excluye hoy los símbolos `'resource' | 'special' | 'focus' | 'reroll'` del camino de
+  "clic sobre un personaje" (no usan ese clic). Añadir `'indirect'` a esa lista explícitamente: sin
+  este cambio, un dado indirecto marcado seguiría cayendo en el camino viejo de "elegir objetivo con
+  un clic" (tratándolo igual que melee/ranged), que es justo lo que esta spec corrige.
 - El flip de turno (SPEC-025) ocurre en el mismo clic que resuelve (no hay pasos intermedios en esta
   spec, al ser automático el reparto) — mismo patrón que `resolveResources`/`resolveSpecial`.
 
