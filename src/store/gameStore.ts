@@ -1597,10 +1597,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         sums.indirectCost > 0 ? indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost) : null;
       const res = applyDisrupt(state.sides, cur, costReceiverIndex);
       if (res === null || res === 'no-base' || res === 'insufficient') return state;
+      const effectTotal = sums.baseAmount + sums.modifierAmount;
       return {
         sides: res.sides,
         outcome: res.outcome,
-        resolveError: null,
+        resolveError: `El rival pierde ${effectTotal} de recursos.`,
         ...afterApply(cur, res),
       };
     }),
@@ -1898,7 +1899,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           return {
             sides: res.sides,
             outcome: res.outcome,
-            lastEnemyAction: `El enemigo resuelve ${label} (quitas ${total} de recursos).`,
+            lastEnemyAction: `El enemigo resuelve ${label}: te quita ${total} de recursos.`,
           };
         });
         set({ turn: 'player', passStreak: 0 });
