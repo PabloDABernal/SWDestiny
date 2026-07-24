@@ -699,4 +699,20 @@ describe('nextAutomatonAction — modificador genérico +X* (SPEC-027, Lure of P
       dieIndices: [0],
     });
   });
+
+  it('dos +X* junto al mismo dado base se combinan ambos (sin límite de cuántos genéricos)', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [die(0, '1R'), die(0, '+2*'), die(1, '+1*')] });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toMatchObject({
+      type: 'resource',
+      dieIndices: expect.arrayContaining([0, 1, 2]),
+    });
+  });
+
+  it('se combina junto a un modificador específico del mismo símbolo y a un dado base (criterio 2)', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [die(0, '1R'), die(0, '+1R'), die(0, '+2*')] });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toMatchObject({
+      type: 'resource',
+      dieIndices: expect.arrayContaining([0, 1, 2]),
+    });
+  });
 });

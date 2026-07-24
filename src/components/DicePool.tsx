@@ -139,25 +139,30 @@ export function DicePool({ side }: { side: Side }) {
             // ya marcados (fuente) o ya girados, mientras quede presupuesto y no haya una elección
             // de cara pendiente. Un dado que él mismo muestra Focus se marca como fuente adicional
             // (más presupuesto, `canSelect`) en vez de elegirse como objetivo, para no ambiguar el
-            // clic entre "sumar presupuesto" y "girar este dado".
+            // clic entre "sumar presupuesto" y "girar este dado". Un modificador genérico +X* sin
+            // marcar (SPEC-027) tiene el mismo trato: puede sumarse como fuente a la tanda de Focus
+            // en curso, así que tampoco cuenta como objetivo a elegir (si no, el clic sería ambiguo
+            // y nunca se podría marcar como modificador mientras Focus está abierto).
             const canPickFocusTarget =
               interactive &&
               mode !== null &&
               mode.symbol === 'focus' &&
               mode.focusFaceChoice == null &&
               symbol !== 'focus' &&
+              !isGeneric &&
               !isMarked &&
               !isFocusPick &&
               focusBudget > 0;
 
             // Elegir dado objetivo de Reroll de dado (SPEC-023): CUALQUIER dado sin resolver, de
             // cualquier pool, salvo los propios dados de Reroll marcados (fuente). Mismo criterio
-            // que Focus para un dado que él mismo muestra Reroll (se suma como fuente, no objetivo).
-            // Un dado ya elegido se puede volver a clicar para quitarlo (toggle).
+            // que Focus para un dado que él mismo muestra Reroll (se suma como fuente, no objetivo);
+            // un modificador genérico +X* sin marcar (SPEC-027) también queda excluido por el mismo
+            // motivo. Un dado ya elegido se puede volver a clicar para quitarlo (toggle).
             const canPickRerollTarget =
               rerollMode !== null &&
               !(side === 'player' && rerollMode.marked.includes(i)) &&
-              (isRerollTarget || (symbol !== 'reroll' && rerollBudget > 0));
+              (isRerollTarget || (symbol !== 'reroll' && !isGeneric && rerollBudget > 0));
 
             // Arrancar un modo nuevo, o seguir marcando/desmarcando dados del MISMO símbolo ya en
             // curso (incluye sumar más presupuesto de Focus/Reroll, SPEC-008a/023): mismo `selectDie`
