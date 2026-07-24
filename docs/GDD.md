@@ -278,8 +278,9 @@ Tres símbolos de dado nuevos, resolubles tanto por el jugador como por el autó
   **placeholder**: al pulsarla se muestra un aviso genérico ("habilidad especial de la carta,
   pendiente de implementar") y el dado se consume, sin ningún efecto real de juego.
 
-El autómata amplía su tabla de prioridades: daño → escudo → activar → recurso → **focus →
-reroll(dado) → especial** → reroll de blancos → pasar. Focus automático gira el dado a su mejor
+El autómata amplía su tabla de prioridades: daño → escudo → activar → recurso → **disrupt/descarte**
+(SPEC-029, disrupt primero si hay tanda de ambos) → **focus → reroll(dado) → especial** → reroll de
+blancos → pasar. Focus automático gira el dado a su mejor
 cara disponible siguiendo esa misma prioridad (daño > escudo > recurso; si ninguna aplica, no lo
 gasta). Reroll(dado) automático apunta a los dados ya tirados del jugador que más le convenga
 anular. Especial automático también se "resuelve" (mismo placeholder) si no le queda ninguna acción

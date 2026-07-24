@@ -24,10 +24,14 @@ autómata (paridad con el resto de símbolos, SPEC-013).
   cantidad de cartas **al azar** de su mano (aleatoriedad real, no determinista) a su pila de
   descarte. Si su mano tiene menos cartas que el valor, descarta todas las que tenga y ya está (sin
   aviso de error).
-- [ ] Cuando el **autómata** resuelve `Dr`/`Dc` contra el jugador (misma tabla de prioridades,
-  combinando base+modificadores y pagando coste igual que el resto de símbolos, SPEC-013), el
-  resultado se aplica igual: recursos del jugador bajan (sin bajar de 0) o su mano pierde cartas al
-  azar a la pila de descarte.
+- [ ] Cuando el **autómata** resuelve `Dr`/`Dc` contra el jugador (combinando base+modificadores y
+  pagando coste igual que el resto de símbolos, SPEC-013), el resultado se aplica igual: recursos del
+  jugador bajan (sin bajar de 0) o su mano pierde cartas al azar a la pila de descarte.
+- [ ] **Posición en la tabla de prioridades** (decisión del usuario, corrige GDD §4): disrupt y
+  descarte se comprueban **justo después de recurso, antes de focus** (daño → escudo → activar →
+  recurso → **disrupt/descarte** → focus → reroll(dado) → especial → reroll de blancos → pasar).
+  Disrupt y descarte comparten el mismo puesto entre sí; si el autómata tiene tanda combinable de
+  ambos a la vez, se comprueba **disrupt primero**.
 - [ ] Al descartar una carta (por cualquiera de los dos bandos) con `Dc`, el aviso de "última acción"
   muestra el **nombre** de la carta descartada, aunque sea de la mano oculta del rival (se revela al
   pasar a la pila de descarte, zona pública).
@@ -63,13 +67,21 @@ autómata (paridad con el resto de símbolos, SPEC-013).
 - `parsePlayerFace` (`src/game/damage.ts`): añadir `Dr`→`disrupt` y `Dc`→`discard` al regex/token
   map existente (mismo patrón `[+]<valor><TOKEN>[i]<coste>` que ya soporta MD/RD/ID/Sh/R/F/Re). Los
   dos símbolos nuevos se suman al union type `DieSymbol`.
-- `dieSymbol`: pasa a reconocer `disrupt`/`discard` en vez de devolver `null` para esas caras (hoy
-  los tests de `damage.test.ts` esperan `null` para `'Dr'`/`'Dc'` sin valor — revisar si esas caras
-  "sin valor" son reales o si ARH DB siempre trae un valor prefijo; si no hay valor real conocido sin
-  prefijo, esos tests quedan obsoletos y hay que actualizarlos).
+- `dieSymbol`: pasa a reconocer `disrupt`/`discard` en vez de devolver `null` para esas caras. Los
+  tests actuales de `damage.test.ts` (líneas 41, 55, 79, 132, 175, 203, 243) usan `'Dr'`/`'Dc'` **sin
+  prefijo numérico** como ejemplos de "no resoluble" — como el formato real confirmado siempre trae
+  valor (`1Dr`/`1Dc`), esos casos concretos seguirán devolviendo `null` igual (por formato inválido,
+  no por símbolo no soportado), así que no quedan "obsoletos" tal cual, pero SÍ hay que añadir casos
+  nuevos con valor (`'1Dr'` → `'disrupt'`, `'1Dc'` → `'discard'`) resolviendo correctamente, y
+  actualizar los comentarios que dicen "blanco, disrupt, descarte" como símbolos no soportados (ya no
+  lo son).
 - Nueva acción en `src/store/gameStore.ts`, p. ej. `resolveDisrupt()`/`resolveDiscard()` (misma forma
   que `resolveResources`/`resolveSpecial`): aplican el efecto al bando **contrario** a quien resuelve
   (a diferencia de recurso/especial, que son sobre el propio bando).
+- Aviso cuando es el **jugador** quien resuelve (no el autómata): no existe hoy ningún canal
+  equivalente a `lastEnemyAction` para acciones del jugador. Reutilizar `resolveError` como aviso
+  genérico no-error (mismo patrón que ya usa `resolveSpecial`), mostrando qué carta se descartó o
+  cuántos recursos perdió el rival.
 - Descarte al azar: usar `Math.random()` sobre el array `hand` del bando rival para elegir índices
   sin repetir hasta agotar el valor o la mano; mover los códigos elegidos a `discardPile` (reutilizar
   el patrón ya existente de `persistDiscardPile`, SPEC-022) y persistir also la mano resultante.
