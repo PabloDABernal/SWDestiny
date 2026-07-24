@@ -489,6 +489,58 @@ function applyIndirectDamage(
   return { sides: next, outcome: computeOutcome(next) };
 }
 
+/**
+ * Prepara el ataque de daño indirecto del AUTÓMATA (SPEC-028): a diferencia de
+ * `applyIndirectDamage` (SPEC-026, el jugador ataca y el autómata reparte solo), aquí es el jugador
+ * quien reparte el valor total clic a clic (`distributeIndirect`). Esta función solo consume los
+ * dados marcados, paga el coste de recurso y aplica el coste de daño indirecto propio del autómata
+ * (si lo hay, igual que `resolvePlayerBatch`) — NO aplica ningún daño al jugador, devuelve el valor
+ * total pendiente de repartir.
+ */
+function prepareEnemyIndirectAttack(
+  sides: Record<Side, SideState>,
+  marked: number[],
+  costReceiverIndex: number | null,
+): { sides: Record<Side, SideState>; outcome: Outcome; pendingValue: number } | BatchError | null {
+  const own = sides.enemy;
+  const sums = sumPlayerMarked(own.pool, marked);
+  if (!sums.hasBase) return 'no-base';
+  if (own.resources < sums.resourceCost) return 'insufficient';
+  const effectTotal = sums.baseAmount + sums.modifierAmount;
+  const markedSet = new Set(marked);
+
+  let ownPool = own.pool.filter((_, i) => !markedSet.has(i));
+  let ownUpgrades = own.upgrades;
+  const ownResources = own.resources - sums.resourceCost;
+  const ownDamage = own.characters.map((_, i) => own.damage[i] ?? 0);
+  const ownShields = own.characters.map((_, i) => own.shields[i] ?? 0);
+
+  // Coste de daño indirecto propio (escudos del receptor lo absorben, SPEC-005) — sin relación con
+  // el valor a repartir sobre el jugador, calculado arriba.
+  if (sums.indirectCost > 0) {
+    if (costReceiverIndex === null) return null;
+    const rc = own.characters[costReceiverIndex];
+    if (!rc || isKO(rc, ownDamage[costReceiverIndex])) return null;
+    const { shieldsRemaining, healthDamage } = resolveShieldedDamage(
+      ownShields[costReceiverIndex],
+      sums.indirectCost,
+    );
+    ownShields[costReceiverIndex] = shieldsRemaining;
+    ownDamage[costReceiverIndex] = Math.min(rc.health, ownDamage[costReceiverIndex] + healthDamage);
+    if (isKO(rc, ownDamage[costReceiverIndex])) {
+      ownPool = ownPool.filter((d) => d.characterIndex !== costReceiverIndex);
+      ownUpgrades = ownUpgrades.map((codes, i) => (i === costReceiverIndex ? [] : codes));
+      persistUpgrades('enemy', ownUpgrades);
+    }
+  }
+
+  const next: Record<Side, SideState> = {
+    ...sides,
+    enemy: { ...own, pool: ownPool, upgrades: ownUpgrades, resources: ownResources, damage: ownDamage, shields: ownShields },
+  };
+  return { sides: next, outcome: computeOutcome(next), pendingValue: effectTotal };
+}
+
 // --- Focus, reroll de dado y especial (SPEC-023): el objetivo es un DADO (posición en un `pool`),
 // no un personaje/bando, así que no encajan en `resolvePlayerBatch`. Comparten con él el pago del
 // coste de daño indirecto propio (mismo receptor determinista propio, SPEC-005/010). ---
@@ -696,6 +748,13 @@ interface GameState {
    * partida, igual que `resolve`/`playUpgrade`/`mulligan`). Siempre `'player'` al empezar cada
    * ronda (sin campo de batalla implementado). */
   turn: Side;
+  /** Reparto pendiente del jugador cuando el autómata ataca con daño indirecto (SPEC-028): `pending`
+   * es el valor que aún queda por repartir clic a clic sobre los propios personajes del jugador. Es
+   * un paso obligatorio de la acción del autómata, no una acción del jugador: mientras no sea `null`,
+   * `turn` sigue en `'enemy'` (no se persiste, igual que `resolve`/`playUpgrade`/`mulligan`), así que
+   * los guards existentes de turno (SPEC-025) ya bloquean el resto de acciones del jugador sin
+   * necesidad de tocarlos uno a uno; no hay forma de cancelar este reparto. */
+  indirectDistribution: { pending: number } | null;
   /** Pases consecutivos sin ninguna acción real entre medias (SPEC-025). Al llegar a 2 dispara el
    * mantenimiento automático y se reinicia a 0. Cualquier acción real lo reinicia a 0. */
   passStreak: number;
@@ -757,6 +816,11 @@ interface GameState {
    * recurso/especial): el bando contrario reparte el valor solo entre sus personajes no-KO,
    * evitando KOs innecesarios cuando sea posible. No-op si no hay dado marcado. */
   resolveIndirect: () => void;
+  /** SPEC-028: aplica 1 punto del valor pendiente en `indirectDistribution` (ataque de indirecto del
+   * autómata) al personaje propio no-KO `characterIndex`, con escudos absorbiendo primero. No-op si
+   * no hay reparto pendiente, la partida terminó, o el índice no es válido/está KO. Al agotar el
+   * valor, completa la acción del autómata (cierra su turno, pasa al jugador con normalidad). */
+  distributeIndirect: (characterIndex: number) => void;
   /** Selecciona una mejora de la mano para jugar, a la espera de elegir personaje objetivo
    * (SPEC-020). No-op si `code` no es una carta de tipo mejora. */
   selectUpgradeCard: (side: Side, code: string) => void;
@@ -842,6 +906,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   playUpgrade: null,
   mulligan: null,
   turn: 'player',
+  indirectDistribution: null,
   passStreak: 0,
   outcome: null,
   lastEnemyAction: null,
@@ -881,8 +946,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Pila de descarte vacía en cada (re)importación (SPEC-022).
       persistDiscardPile(side, []);
       // Reinicia el estado de partida de ESTE bando (vida completa) y recalcula el fin. Limpia
-      // también playUpgrade/mulligan (SPEC-024) y turn/passStreak (SPEC-025): reimportar a mitad de
-      // partida no debe dejar esos modos/turno abiertos apuntando a un estado que ya no corresponde.
+      // también playUpgrade/mulligan (SPEC-024), turn/passStreak (SPEC-025) e indirectDistribution
+      // (SPEC-028): reimportar a mitad de partida no debe dejar esos modos/turno abiertos apuntando a
+      // un estado que ya no corresponde.
       set((state) => {
         const sides = { ...state.sides, [side]: freshSide(characters, drawPile) };
         return {
@@ -892,6 +958,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           playUpgrade: null,
           mulligan: null,
           turn: 'player',
+          indirectDistribution: null,
           passStreak: 0,
           outcome: computeOutcome(sides),
         };
@@ -1049,6 +1116,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         playUpgrade: null,
         mulligan: null,
         turn: 'player',
+        indirectDistribution: null,
         passStreak: 0,
         lastEnemyAction: null,
         outcome: computeOutcome(sides),
@@ -1339,6 +1407,42 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
     }),
 
+  distributeIndirect: (characterIndex: number) =>
+    set((state) => {
+      if (state.outcome !== null || state.indirectDistribution === null) return state;
+      const player = state.sides.player;
+      const ch = player.characters[characterIndex];
+      if (!ch || isKO(ch, player.damage[characterIndex] ?? 0)) return state;
+
+      const shields = player.characters.map((_, i) => player.shields[i] ?? 0);
+      const damage = player.characters.map((_, i) => player.damage[i] ?? 0);
+      const { shieldsRemaining, healthDamage } = resolveShieldedDamage(shields[characterIndex], 1);
+      shields[characterIndex] = shieldsRemaining;
+      damage[characterIndex] = Math.min(ch.health, damage[characterIndex] + healthDamage);
+
+      let pool = player.pool;
+      let upgrades = player.upgrades;
+      if (isKO(ch, damage[characterIndex])) {
+        pool = pool.filter((d) => d.characterIndex !== characterIndex);
+        upgrades = upgrades.map((codes, i) => (i === characterIndex ? [] : codes));
+        persistUpgrades('player', upgrades);
+      }
+
+      const sides: Record<Side, SideState> = {
+        ...state.sides,
+        player: { ...player, shields, damage, pool, upgrades },
+      };
+      const outcome = computeOutcome(sides);
+      const pending = state.indirectDistribution.pending - 1;
+      // Al agotar el valor (o si la partida termina a mitad de repartir) se completa la acción del
+      // autómata: cierra su turno y pasa al jugador con normalidad, igual que el resto de acciones
+      // del autómata (SPEC-025).
+      if (pending <= 0 || outcome !== null) {
+        return { sides, outcome, indirectDistribution: null, turn: 'player', passStreak: 0 };
+      }
+      return { sides, outcome, indirectDistribution: { pending } };
+    }),
+
   selectUpgradeCard: (side: Side, code: string) =>
     set((state) => {
       if (state.outcome !== null) return state;
@@ -1463,6 +1567,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const state = get();
     if (state.outcome !== null) return;
     if (state.turn !== 'enemy') return;
+    // Mientras el jugador tenga un reparto de indirecto pendiente (SPEC-028), la acción del autómata
+    // que lo generó sigue en curso: no evaluar una acción nueva hasta que termine de repartir.
+    if (state.indirectDistribution !== null) return;
     const enemy = state.sides.enemy;
     const player = state.sides.player;
     if (enemy.characters.length === 0) return;
@@ -1499,6 +1606,30 @@ export const useGameStore = create<GameState>((set, get) => ({
       dieIndices.map((i) => enemy.pool[i]?.face).join('+');
 
     switch (action.type) {
+      case 'indirectAttack': {
+        // Daño indirecto (◎, SPEC-028): el autómata no elige objetivo — consume sus dados, paga
+        // coste de recurso/coste indirecto propio, y dispara el reparto interactivo del jugador
+        // (distributeIndirect). Mientras haya valor pendiente, el turno sigue en 'enemy' (esta
+        // acción del autómata no se da por completa hasta que el jugador termine de repartir).
+        const total = batchTotal(action.dieIndices);
+        const label = batchLabel(action.dieIndices);
+        let prepared = false;
+        set((s) => {
+          const res = prepareEnemyIndirectAttack(s.sides, action.dieIndices, action.costReceiverIndex);
+          if (res === null || res === 'no-base' || res === 'insufficient') return s;
+          prepared = true;
+          return {
+            sides: res.sides,
+            outcome: res.outcome,
+            indirectDistribution: res.outcome === null ? { pending: res.pendingValue } : null,
+            lastEnemyAction: `El enemigo ataca con ${label} (${total} de daño indirecto): reparte tú el daño entre tus personajes.`,
+          };
+        });
+        // Si no se pudo preparar la tanda (no debería pasar, nextAutomatonAction ya la valida), no
+        // deja el turno colgado: se cierra igual que el resto de acciones fallidas del autómata.
+        if (!prepared) set({ turn: 'player', passStreak: 0 });
+        return;
+      }
       case 'attack': {
         const target = player.characters[action.targetIndex];
         const total = batchTotal(action.dieIndices);

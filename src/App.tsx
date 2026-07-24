@@ -16,9 +16,11 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
   const mulligan = useGameStore((st) => st.mulligan);
   const turn = useGameStore((st) => st.turn);
   const outcome = useGameStore((st) => st.outcome);
+  const indirectDistribution = useGameStore((st) => st.indirectDistribution);
   const activate = useGameStore((st) => st.activate);
   const applyDieTo = useGameStore((st) => st.applyDieTo);
   const playUpgradeOn = useGameStore((st) => st.playUpgradeOn);
+  const distributeIndirect = useGameStore((st) => st.distributeIndirect);
   const activateSupport = useGameStore((st) => st.activateSupport);
   const toggleMulliganCard = useGameStore((st) => st.toggleMulliganCard);
   const cancelPlayUpgrade = useGameStore((st) => st.cancelPlayUpgrade);
@@ -36,6 +38,9 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
     : false;
   // Eligiendo objetivo para una mejora (SPEC-020): siempre el propio bando de quien la juega.
   const upgradeTargetableSide = outcome === null && playUpgrade !== null && playUpgrade.side === side;
+  // Reparto de daño indirecto del autómata (SPEC-028): el jugador reparte clic a clic sobre sus
+  // PROPIOS personajes, aunque no sea su turno (la acción sigue siendo del autómata).
+  const distributingIndirect = outcome === null && indirectDistribution !== null && side === 'player';
   const isPlayer = side === 'player';
 
   return (
@@ -86,12 +91,18 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
                   health={currentHealth(c, dmg)}
                   shields={s.shields[i] ?? 0}
                   ko={ko}
-                  targetable={(targetableSide || upgradeTargetableSide) && !ko}
+                  targetable={(targetableSide || upgradeTargetableSide || distributingIndirect) && !ko}
                   showActivate={isPlayer}
                   upgrades={upgradeCards}
                   activateDisabled={outcome !== null || playUpgrade !== null || mulligan !== null || turn !== side}
                   onActivate={() => activate(side, i)}
-                  onTarget={() => (upgradeTargetableSide ? playUpgradeOn(i) : applyDieTo(side, i))}
+                  onTarget={() =>
+                    distributingIndirect
+                      ? distributeIndirect(i)
+                      : upgradeTargetableSide
+                        ? playUpgradeOn(i)
+                        : applyDieTo(side, i)
+                  }
                   key={`${c.code}-${i}`}
                 />
               );
@@ -117,6 +128,7 @@ export function App() {
   const playUpgrade = useGameStore((s) => s.playUpgrade);
   const mulligan = useGameStore((s) => s.mulligan);
   const turn = useGameStore((s) => s.turn);
+  const indirectDistribution = useGameStore((s) => s.indirectDistribution);
   const startGame = useGameStore((s) => s.startGame);
   const pass = useGameStore((s) => s.pass);
   const resetAll = useGameStore((s) => s.resetAll);
@@ -172,7 +184,15 @@ export function App() {
         </div>
       )}
       {hint && <p className="app__hint">{hint}</p>}
-      {turn === 'enemy' && outcome === null && <p className="app__hint">Turno del enemigo...</p>}
+      {indirectDistribution && outcome === null && (
+        <p className="app__hint">
+          El enemigo te ataca con daño indirecto: reparte {indirectDistribution.pending} punto(s)
+          pulsando tus propios personajes (puedes concentrarlo todo en uno solo).
+        </p>
+      )}
+      {turn === 'enemy' && outcome === null && !indirectDistribution && (
+        <p className="app__hint">Turno del enemigo...</p>
+      )}
       {lastEnemyAction && <p className="app__hint">{lastEnemyAction}</p>}
 
       <div className="controls">

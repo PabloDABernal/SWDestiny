@@ -71,14 +71,24 @@ describe('nextAutomatonAction — prioridad 1: atacar', () => {
     });
   });
 
-  it('combina TODOS los dados base de daño en una sola tanda si caben sin overkill', () => {
-    const enemy = enemySide({ pool: [die(0, '1MD'), die(1, '3RD'), die(0, '2ID')] });
-    const player = playerSide(); // objetivo B: 6 vida, total tanda 1+3+2=6, cabe justo
+  it('combina TODOS los dados base de melee/ranged en una sola tanda si caben sin overkill', () => {
+    const enemy = enemySide({ pool: [die(0, '1MD'), die(1, '3RD')] });
+    const player = playerSide(); // objetivo B: 6 vida, total tanda 1+3=4, cabe
     const action = next(enemy, player, noRerollsUsed);
     expect(action).toEqual({
       type: 'attack',
-      dieIndices: [1, 2, 0], // orden de mayor a menor valor: 3RD, 2ID, 1MD
+      dieIndices: [1, 0], // orden de mayor a menor valor: 3RD, 1MD
       targetIndex: 1,
+      costReceiverIndex: null,
+    });
+  });
+
+  it('indirecto se separa de melee/ranged (SPEC-028): no se combina, se resuelve aparte y primero', () => {
+    const enemy = enemySide({ pool: [die(0, '1MD'), die(1, '3RD'), die(0, '2ID')] });
+    const action = next(enemy, playerSide(), noRerollsUsed);
+    expect(action).toEqual({
+      type: 'indirectAttack',
+      dieIndices: [2],
       costReceiverIndex: null,
     });
   });
@@ -236,7 +246,7 @@ describe('nextAutomatonAction — coste de daño indirecto propio', () => {
       shields: [1, 0],
     });
     const action = next(enemy, playerSide(), noRerollsUsed);
-    expect(action).toMatchObject({ type: 'attack', dieIndices: [0], costReceiverIndex: 0 });
+    expect(action).toMatchObject({ type: 'indirectAttack', dieIndices: [0], costReceiverIndex: 0 });
   });
 
   it('sin escudos en ningún aliado, elige al superviviente de más vida', () => {
@@ -247,7 +257,7 @@ describe('nextAutomatonAction — coste de daño indirecto propio', () => {
       shields: [0, 0],
     });
     const action = next(enemy, playerSide(), noRerollsUsed);
-    expect(action).toMatchObject({ type: 'attack', costReceiverIndex: 0 });
+    expect(action).toMatchObject({ type: 'indirectAttack', costReceiverIndex: 0 });
   });
 
   it('si el coste mataría a cualquiera, se aplica igualmente al de más vida (inevitable)', () => {
@@ -258,7 +268,7 @@ describe('nextAutomatonAction — coste de daño indirecto propio', () => {
       shields: [0, 0],
     });
     const action = next(enemy, playerSide(), noRerollsUsed);
-    expect(action).toMatchObject({ type: 'attack', costReceiverIndex: 0 });
+    expect(action).toMatchObject({ type: 'indirectAttack', costReceiverIndex: 0 });
   });
 
   it('sin ningún aliado no-KO, el dado con coste indirecto se descarta de la tanda de daño', () => {
@@ -271,6 +281,48 @@ describe('nextAutomatonAction — coste de daño indirecto propio', () => {
     // debe seguir siendo pura y no romperse: excluye el dado con coste indirecto de la tanda.
     const action = next(enemy, playerSide(), noRerollsUsed);
     expect(action).toMatchObject({ type: 'attack', dieIndices: [1], costReceiverIndex: null });
+  });
+});
+
+describe('nextAutomatonAction — indirectAttack del autómata (SPEC-028: el jugador reparte)', () => {
+  it('con un solo dado indirecto, no elige objetivo (sin targetIndex)', () => {
+    const enemy = enemySide({ pool: [die(0, '2ID')] });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toEqual({
+      type: 'indirectAttack',
+      dieIndices: [0],
+      costReceiverIndex: null,
+    });
+  });
+
+  it('combina varios dados indirecto en un único total (a diferencia del jugador, SPEC-026)', () => {
+    const enemy = enemySide({ pool: [die(0, '4ID'), die(1, '2ID')] });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toEqual({
+      type: 'indirectAttack',
+      dieIndices: [0, 1], // orden de mayor a menor valor
+      costReceiverIndex: null,
+    });
+  });
+
+  it('coste de recurso en la cara de indirecto: se paga igual que en melee/ranged', () => {
+    const enemy = enemySide({ pool: [die(0, '2ID3')], resources: 3 });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toMatchObject({
+      type: 'indirectAttack',
+      dieIndices: [0],
+    });
+  });
+
+  it('sin recursos para pagar el único dado indirecto, esa prioridad no aplica (cae a melee/ranged)', () => {
+    const enemy = enemySide({ pool: [die(0, '2ID3'), die(0, '1MD')], resources: 0 });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toMatchObject({ type: 'attack', dieIndices: [1] });
+  });
+
+  it('un modificador +X junto al dado base de indirecto suma su valor a la tanda', () => {
+    const enemy = enemySide({ pool: [die(0, '2ID'), die(0, '+1ID')] });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toEqual({
+      type: 'indirectAttack',
+      dieIndices: [0, 1],
+      costReceiverIndex: null,
+    });
   });
 });
 

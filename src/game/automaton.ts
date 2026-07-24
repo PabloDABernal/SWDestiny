@@ -75,6 +75,13 @@ export type AutomatonAction =
       /** Receptor del coste de daño indirecto propio (SPEC-013), o null si la tanda no tiene coste. */
       costReceiverIndex: number | null;
     }
+  | {
+      /** Ataque de daño indirecto (◎) del autómata (SPEC-028): a diferencia de 'attack', no elige
+       * objetivo — el jugador reparte el valor resultante clic a clic entre sus propios personajes. */
+      type: 'indirectAttack';
+      dieIndices: number[];
+      costReceiverIndex: number | null;
+    }
   | { type: 'shield'; dieIndices: number[]; targetIndex: number; costReceiverIndex: number | null }
   | { type: 'activate'; index: number }
   | { type: 'resource'; dieIndices: number[]; costReceiverIndex: number | null }
@@ -255,6 +262,12 @@ export function distributeIncomingDamage(
 }
 
 const isDamageSymbol = (s: DieSymbol | null) => s === 'melee' || s === 'ranged' || s === 'indirect';
+// SPEC-028: fila 1 de la tabla de prioridades separa indirecto (el jugador reparte) de melee/ranged
+// (el propio autómata elige objetivo, sin cambios). `isDamageSymbol` de arriba sigue agrupando los
+// tres para los demás usos que no cambian con esta spec (mejor cara de Focus, candidatos de Reroll
+// de dado sobre el jugador).
+const isMeleeRangedSymbol = (s: DieSymbol | null) => s === 'melee' || s === 'ranged';
+const isIndirectSymbol = (s: DieSymbol | null) => s === 'indirect';
 const isShieldSymbol = (s: DieSymbol | null) => s === 'shield';
 const isResourceSymbol = (s: DieSymbol | null) => s === 'resource';
 const isFocusSymbol = (s: DieSymbol | null) => s === 'focus';
@@ -396,9 +409,19 @@ export function nextAutomatonAction(
 ): AutomatonAction {
   const hasNonKoAlly = enemy.characters.some((c, i) => !isKO(c, enemy.damage[i] ?? 0));
 
-  // 1. Daño combinado (base + modificadores, pagando coste de recurso), repartido sin overkill entre
-  // los jugadores de menos vida si hace falta más de una pulsación (SPEC-013/014).
-  const damageBatch = combineAutomatonBatch(enemy.pool, isDamageSymbol, enemy.resources, hasNonKoAlly);
+  // 1. Daño combinado (base + modificadores, pagando coste de recurso). Indirecto (◎) se comprueba
+  // PRIMERO (SPEC-028, decisión del usuario): si hay una tanda combinable de indirecto, no elige
+  // objetivo el propio autómata — el jugador reparte el valor resultante (store). Si no hay tanda de
+  // indirecto, sigue con melee/ranged como hasta ahora (reparto sin overkill entre los jugadores de
+  // menos vida si hace falta más de una pulsación, SPEC-013/014).
+  const indirectBatch = combineAutomatonBatch(enemy.pool, isIndirectSymbol, enemy.resources, hasNonKoAlly);
+  if (indirectBatch !== null) {
+    const costReceiverIndex =
+      indirectBatch.indirectCost > 0 ? indirectCostReceiverIndex(enemy, indirectBatch.indirectCost) : null;
+    return { type: 'indirectAttack', dieIndices: indirectBatch.dieIndices, costReceiverIndex };
+  }
+
+  const damageBatch = combineAutomatonBatch(enemy.pool, isMeleeRangedSymbol, enemy.resources, hasNonKoAlly);
   if (damageBatch !== null) {
     const candidates = ascendingHealthCandidates(player.characters, player.damage, () => true);
     const picked = pickTargetAndBatch(enemy.pool, damageBatch.dieIndices, candidates, (i) => {
