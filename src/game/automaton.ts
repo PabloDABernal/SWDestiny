@@ -117,25 +117,29 @@ interface AutomatonBatch {
 }
 
 /**
- * Junta los dados del pool cuyo símbolo cumple `matchesSymbol` (base + modificadores `+X`),
- * ordenados de mayor a menor valor, incluyendo cada uno mientras el coste de recurso acumulado siga
- * siendo pagable con `resources`; el primero que no quepa se salta (sigue probando el resto) y
- * queda fuera de la tanda (SPEC-013). Si `allowIndirect` es false, los candidatos con coste de daño
- * indirecto propio (`…i<n>`) no se consideran en absoluto (fuera de alcance para escudo/recurso).
+ * Junta los dados del pool cuyo símbolo cumple `matchesSymbol` (base + modificadores `+X`, más los
+ * modificadores genéricos `+X*` si `allowGeneric` es true — SPEC-027), ordenados de mayor a menor
+ * valor, incluyendo cada uno mientras el coste de recurso acumulado siga siendo pagable con
+ * `resources`; el primero que no quepa se salta (sigue probando el resto) y queda fuera de la tanda
+ * (SPEC-013). Si `allowIndirect` es false, los candidatos con coste de daño indirecto propio
+ * (`…i<n>`) no se consideran en absoluto (fuera de alcance para escudo/recurso).
  * Devuelve `null` si no queda ningún dado **base** en la tanda resultante (un modificador solo no
  * se resuelve, igual que en la regla del jugador desde SPEC-010).
  */
 function combineAutomatonBatch(
   pool: PooledDie[],
-  matchesSymbol: (symbol: DieSymbol) => boolean,
+  matchesSymbol: (symbol: DieSymbol | null) => boolean,
   resources: number,
   allowIndirect: boolean,
+  allowGeneric = true,
 ): AutomatonBatch | null {
   const candidates = pool
     .map((die, i) => ({ i, face: parsePlayerFace(die.face) }))
     .filter(
       (c): c is { i: number; face: NonNullable<ReturnType<typeof parsePlayerFace>> } =>
-        c.face !== null && matchesSymbol(c.face.symbol) && (allowIndirect || c.face.indirectCost === 0),
+        c.face !== null &&
+        (c.face.isGenericModifier ? allowGeneric : matchesSymbol(c.face.symbol)) &&
+        (allowIndirect || c.face.indirectCost === 0),
     )
     .sort((a, b) => b.face.amount - a.face.amount);
 
@@ -250,12 +254,12 @@ export function distributeIncomingDamage(
   return assignments;
 }
 
-const isDamageSymbol = (s: DieSymbol) => s === 'melee' || s === 'ranged' || s === 'indirect';
-const isShieldSymbol = (s: DieSymbol) => s === 'shield';
-const isResourceSymbol = (s: DieSymbol) => s === 'resource';
-const isFocusSymbol = (s: DieSymbol) => s === 'focus';
-const isRerollDieSymbol = (s: DieSymbol) => s === 'reroll';
-const isSpecialSymbol = (s: DieSymbol) => s === 'special';
+const isDamageSymbol = (s: DieSymbol | null) => s === 'melee' || s === 'ranged' || s === 'indirect';
+const isShieldSymbol = (s: DieSymbol | null) => s === 'shield';
+const isResourceSymbol = (s: DieSymbol | null) => s === 'resource';
+const isFocusSymbol = (s: DieSymbol | null) => s === 'focus';
+const isRerollDieSymbol = (s: DieSymbol | null) => s === 'reroll';
+const isSpecialSymbol = (s: DieSymbol | null) => s === 'special';
 
 /** Mejor cara disponible de un dado candidato para Focus (SPEC-023): sigue la misma prioridad que
  * el resto de la tabla (daño > escudo > recurso). null si ninguna de sus 6 caras mejora nada. */
@@ -486,7 +490,8 @@ export function nextAutomatonAction(
 
   // 7. Especial combinado (SPEC-023): placeholder sin efecto real, se "resuelve" igual que el
   // jugador (mismo aviso/consumo) si no queda ninguna acción de prioridad más alta disponible.
-  const specialBatch = combineAutomatonBatch(enemy.pool, isSpecialSymbol, enemy.resources, hasNonKoAlly);
+  // El modificador genérico +X* no vale con especial (valor fijo, no modificable — SPEC-027).
+  const specialBatch = combineAutomatonBatch(enemy.pool, isSpecialSymbol, enemy.resources, hasNonKoAlly, false);
   if (specialBatch !== null) {
     const costReceiverIndex =
       specialBatch.indirectCost > 0 ? indirectCostReceiverIndex(enemy, specialBatch.indirectCost) : null;

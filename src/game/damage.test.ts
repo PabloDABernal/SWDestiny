@@ -5,6 +5,7 @@ import {
   parseCostedFace,
   parsePlayerFace,
   dieSymbol,
+  isGenericModifier,
   currentHealth,
   isKO,
   parseShield,
@@ -89,6 +90,7 @@ describe('parsePlayerFace (SPEC-010)', () => {
       resourceCost: 0,
       indirectCost: 0,
       isModifier: true,
+      isGenericModifier: false,
     });
     expect(parsePlayerFace('+1R')).toMatchObject({ symbol: 'resource', amount: 1, isModifier: true });
   });
@@ -100,6 +102,7 @@ describe('parsePlayerFace (SPEC-010)', () => {
       resourceCost: 0,
       indirectCost: 1,
       isModifier: false,
+      isGenericModifier: false,
     });
   });
 
@@ -120,6 +123,7 @@ describe('parsePlayerFace (SPEC-010)', () => {
       resourceCost: 0,
       indirectCost: 0,
       isModifier: false,
+      isGenericModifier: false,
     });
     expect(parsePlayerFace('Sp2')).toMatchObject({ symbol: 'special', amount: 0, resourceCost: 2 });
   });
@@ -127,6 +131,30 @@ describe('parsePlayerFace (SPEC-010)', () => {
   it('null para no resolubles', () => {
     for (const face of ['-', 'Dr', 'Dc']) {
       expect(parsePlayerFace(face)).toBeNull();
+    }
+  });
+
+  it('modificador genérico +X* (SPEC-027): sin símbolo fijo, vale para cualquier tanda', () => {
+    expect(parsePlayerFace('+2*')).toEqual({
+      symbol: null,
+      amount: 2,
+      resourceCost: 0,
+      indirectCost: 0,
+      isModifier: true,
+      isGenericModifier: true,
+    });
+  });
+});
+
+describe('isGenericModifier (SPEC-027)', () => {
+  it('reconoce +<n>* y nada más', () => {
+    expect(isGenericModifier('+2*')).toBe(true);
+    expect(isGenericModifier('+1*')).toBe(true);
+  });
+
+  it('false para modificadores de símbolo fijo y caras normales', () => {
+    for (const face of ['+2MD', '2MD', '2*', 'Sp', '-']) {
+      expect(isGenericModifier(face)).toBe(false);
     }
   });
 });

@@ -668,3 +668,35 @@ describe('distributeIncomingDamage (SPEC-026: reparto del daño indirecto que re
     expect(distributeIncomingDamage(side, 3)).toEqual([{ targetIndex: 0, amount: 3 }]);
   });
 });
+
+describe('nextAutomatonAction — modificador genérico +X* (SPEC-027, Lure of Power)', () => {
+  it('se combina en la tanda de recurso junto a un dado base', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [die(0, '1R'), die(0, '+2*')] });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toMatchObject({
+      type: 'resource',
+      dieIndices: [1, 0],
+    });
+  });
+
+  it('se combina en la tanda de daño junto a un dado base', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [die(0, '2MD'), die(0, '+2*')] });
+    // Empate de valor (2 y 2): mantiene el orden de aparición en el pool (sort estable).
+    expect(next(enemy, playerSide(), noRerollsUsed)).toMatchObject({
+      type: 'attack',
+      dieIndices: [0, 1],
+    });
+  });
+
+  it('no se resuelve solo (sin dado base) igual que un modificador de símbolo fijo', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [die(0, '+2*')] });
+    expect(next(enemy, playerSide(), noRerollsUsed).type).toBe('pass');
+  });
+
+  it('no vale para especial (valor fijo, no modificable)', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [die(0, 'Sp'), die(0, '+2*')] });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toMatchObject({
+      type: 'special',
+      dieIndices: [0],
+    });
+  });
+});

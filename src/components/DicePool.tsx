@@ -1,5 +1,5 @@
 import { useGameStore, type Side } from '../store/gameStore';
-import { dieSymbol, parsePlayerFace } from '../game/damage';
+import { dieSymbol, parsePlayerFace, isGenericModifier } from '../game/damage';
 import { readCache } from '../import/resolveCards';
 
 /** Suma de valores (base + modificador) de los dados marcados de `pool` (SPEC-023: presupuesto de
@@ -128,6 +128,7 @@ export function DicePool({ side }: { side: Side }) {
         <div className="pool__dice">
           {pool.map((d, i) => {
             const symbol = dieSymbol(d.face);
+            const isGeneric = isGenericModifier(d.face);
             const isMarked = mode !== null && mode.marked.includes(i);
             const isFocusPick =
               mode !== null && mode.symbol === 'focus' && (mode.focusPicks ?? []).some((p) => p.poolIndex === i);
@@ -163,11 +164,15 @@ export function DicePool({ side }: { side: Side }) {
             // genérico de siempre. Arrancar un modo nuevo exige además que sea tu turno (SPEC-025);
             // si el modo ya está abierto, por invariante turn === 'player' desde que se abrió, así
             // que el chequeo no cambia el comportamiento de seguir marcando/desmarcando.
+            // Modificador genérico +X* (SPEC-027): no tiene símbolo propio (no puede abrir modo por
+            // sí solo), pero cuenta como "del símbolo del modo abierto" para cualquier símbolo salvo
+            // especial (valor fijo, no modificable).
             const canSelect =
               interactive &&
               turn === 'player' &&
-              symbol !== null &&
-              (mode === null || (mode.symbol === symbol && mode.focusFaceChoice == null));
+              (mode === null
+                ? symbol !== null
+                : mode.focusFaceChoice == null && (mode.symbol === symbol || (isGeneric && mode.symbol !== 'special')));
 
             const onClick = canPickFocusTarget
               ? () => pickFocusTarget(i)
@@ -181,7 +186,7 @@ export function DicePool({ side }: { side: Side }) {
             const dimmed = mode !== null && symbol !== null && symbol !== mode.symbol && !canPickRerollTarget;
             const cls =
               'pool-die' +
-              (symbol ? ` pool-die--${symbolClass(symbol)}` : '') +
+              (symbol ? ` pool-die--${symbolClass(symbol)}` : isGeneric ? ' pool-die--generic' : '') +
               (marked ? ' pool-die--selected' : '') +
               (dimmed ? ' pool-die--dimmed' : '') +
               (canPickFocusTarget || canPickRerollTarget ? ' pool-die--pickable' : '');

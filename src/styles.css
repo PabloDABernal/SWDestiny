@@ -435,6 +435,11 @@ button:disabled {
   border-color: #b197fc;
 }
 
+.pool-die--generic {
+  cursor: pointer;
+  border-color: #ff8787;
+}
+
 .pool-die--selected {
   border-color: #ffd479;
   box-shadow: 0 0 0 2px rgba(255, 212, 121, 0.45);

@@ -62,13 +62,19 @@ export function parseCostedFace(
  * Focus (`F`) y reroll de dado (`Re`), ambos confirmados contra un mazo real el 2026-07-23, siguen
  * el mismo formato con valor (SPEC-023, RR pg 12). Especial (`Sp`) tiene valor fijo 0 (no
  * modificable) y se reconoce aparte: formato `Sp[coste]`, sin modificador ni coste indirecto.
+ *
+ * Modificador genérico `+<n>*` (SPEC-027, ejemplo real: Lure of Power `+2*`): a diferencia del
+ * modificador de símbolo fijo de arriba (`+2RD`), no está atado a ningún símbolo — `symbol` es
+ * `null` y `isGenericModifier` marca el caso. Vale para cualquier símbolo base salvo especial (los
+ * llamadores deciden eso, aquí solo se reconoce el formato).
  */
 export function parsePlayerFace(face: string): {
-  symbol: DieSymbol;
+  symbol: DieSymbol | null;
   amount: number;
   resourceCost: number;
   indirectCost: number;
   isModifier: boolean;
+  isGenericModifier: boolean;
 } | null {
   const special = /^Sp(\d+)?$/.exec(face);
   if (special) {
@@ -78,6 +84,18 @@ export function parsePlayerFace(face: string): {
       resourceCost: special[1] ? Number(special[1]) : 0,
       indirectCost: 0,
       isModifier: false,
+      isGenericModifier: false,
+    };
+  }
+  const generic = /^\+(\d+)\*$/.exec(face);
+  if (generic) {
+    return {
+      symbol: null,
+      amount: Number(generic[1]),
+      resourceCost: 0,
+      indirectCost: 0,
+      isModifier: true,
+      isGenericModifier: true,
     };
   }
   const m = /^(\+)?(\d+)(MD|RD|ID|Sh|Re|R|F)(i)?(\d+)?$/.exec(face);
@@ -105,7 +123,14 @@ export function parsePlayerFace(face: string): {
     resourceCost: indirect ? 0 : cost,
     indirectCost: indirect ? cost : 0,
     isModifier: m[1] === '+',
+    isGenericModifier: false,
   };
+}
+
+/** True si `face` es un modificador genérico `+<n>*` (SPEC-027). Atajo sobre `parsePlayerFace` para
+ * los llamadores que solo necesitan saber esto sin desempaquetar el resultado completo. */
+export function isGenericModifier(face: string): boolean {
+  return parsePlayerFace(face)?.isGenericModifier ?? false;
 }
 
 /**

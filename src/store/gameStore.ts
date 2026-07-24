@@ -9,7 +9,6 @@ import { ImportError } from '../import/errors';
 import { rollCharacter, rollDie, rollUpgradeDie, type PooledDie } from '../game/roll';
 import { readCache } from '../import/resolveCards';
 import {
-  dieSymbol,
   parsePlayerFace,
   addShields,
   resolveShieldedDamage,
@@ -1069,11 +1068,24 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.turn !== side) return state;
       const die = state.sides[side].pool[poolIndex];
       if (!die) return state;
-      const symbol = dieSymbol(die.face);
-      // Caras no seleccionables (blanco, especial, focus, disrupt, descarte).
-      if (symbol === null) return state;
+      const parsed = parsePlayerFace(die.face);
+      // Caras no seleccionables (blanco, disrupt, descarte).
+      if (parsed === null) return state;
 
       const cur = state.resolve;
+
+      // Modificador genérico +X* (SPEC-027): no tiene símbolo propio, no puede abrir modo por sí
+      // solo; solo se puede marcar/desmarcar mientras ya hay un modo abierto del propio bando que no
+      // sea especial (valor fijo, no modificable) — vale para cualquier símbolo del modo en curso.
+      if (parsed.isGenericModifier) {
+        if (cur === null || cur.side !== side || cur.symbol === 'special') return state;
+        const marked = cur.marked.includes(poolIndex)
+          ? cur.marked.filter((i) => i !== poolIndex)
+          : [...cur.marked, poolIndex];
+        return { resolve: { ...cur, marked }, resolveError: null };
+      }
+
+      const symbol = parsed.symbol as DieSymbol;
       // Ya hay un modo abierto de otro bando/símbolo (SPEC-025): no se reemplaza, hay que cancelarlo
       // primero con "Cancelar" (marcar un dado bloquea el resto de acciones hasta resolver/cancelar).
       if (cur !== null && (cur.side !== side || cur.symbol !== symbol)) return state;
