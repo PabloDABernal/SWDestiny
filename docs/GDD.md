@@ -42,14 +42,17 @@ símbolos (melee, ranged, indirecto, escudo, recurso, disrupt, descarte, focus, 
 blanco), recursos, mano/mazo/descarte, fases de acción y mantenimiento, condiciones de victoria.
 
 **Resolución de dados:** desde SPEC-008a el jugador puede resolver **varios dados del mismo
-símbolo** en una acción (melee, ranged e indirecto son símbolos distintos y no se mezclan, aunque
-en v1 los tres resten vida por igual). Pagar el coste de recurso de las caras (SPEC-008b), y los
-modificadores `+X` junto al coste de daño indirecto propio (SPEC-010), llegan después. Desde
-SPEC-011 se pueden mandar dados del mismo símbolo a **objetivos distintos** (cada dado a un enemigo),
-aunque no se puede dividir el daño de un solo dado. El receptor del coste de daño indirecto propio
-**no lo elige el jugador**: se determina automáticamente con el mismo criterio que ya usaba el
-autómata consigo mismo desde SPEC-013 (corrección de SPEC-010, 2026-07-24 — "indirecto" implica que
-no se elige a quién le toca).
+símbolo** en una acción (melee, ranged e indirecto son símbolos distintos y no se mezclan). Pagar
+el coste de recurso de las caras (SPEC-008b), y los modificadores `+X` junto al coste de daño
+indirecto propio (SPEC-010), llegan después. Desde SPEC-011 se pueden mandar dados de **melee o
+ranged** a **objetivos distintos** (cada dado a un enemigo), aunque no se puede dividir el daño de
+un solo dado de esos dos símbolos. El receptor del coste de daño indirecto propio **no lo elige el
+jugador**: se determina automáticamente con el mismo criterio que ya usaba el autómata consigo
+mismo desde SPEC-013 (corrección de SPEC-010, 2026-07-24 — "indirecto" implica que no se elige a
+quién le toca). El símbolo **daño indirecto** (◎) es distinto: desde SPEC-026, quien **ataca** con
+él no elige objetivo — es el **defensor** quien reparte ese valor entre sus propios personajes,
+como quiera, pudiendo dividirlo entre varios (regla real, RR pg 12); antes (SPEC-008a) se trataba
+igual que melee/ranged como simplificación temporal de v1.
 
 ## 4. El autómata enemigo
 
