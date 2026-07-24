@@ -49,10 +49,14 @@ ranged** a **objetivos distintos** (cada dado a un enemigo), aunque no se puede 
 un solo dado de esos dos símbolos. El receptor del coste de daño indirecto propio **no lo elige el
 jugador**: se determina automáticamente con el mismo criterio que ya usaba el autómata consigo
 mismo desde SPEC-013 (corrección de SPEC-010, 2026-07-24 — "indirecto" implica que no se elige a
-quién le toca). El símbolo **daño indirecto** (◎) es distinto: desde SPEC-026, quien **ataca** con
-él no elige objetivo — es el **defensor** quien reparte ese valor entre sus propios personajes,
-como quiera, pudiendo dividirlo entre varios (regla real, RR pg 12); antes (SPEC-008a) se trataba
-igual que melee/ranged como simplificación temporal de v1.
+quién le toca). El símbolo **daño indirecto** (◎) es distinto: quien **ataca** con él no elige
+objetivo — es el **defensor** quien reparte ese valor entre sus propios personajes, como quiera,
+pudiendo dividirlo entre varios (regla real, RR pg 12); antes (SPEC-008a) se trataba igual que
+melee/ranged como simplificación temporal de v1. Se corrige en dos piezas: SPEC-026 cubre que **el
+jugador ataque** con indirecto (el autómata, como defensor, reparte solo); la dirección contraria
+(**el enemigo ataca**, el jugador reparte interactivamente) queda para una spec posterior — hasta
+entonces, si el autómata ataca con un dado indirecto, sigue tratándose igual que melee/ranged (el
+propio autómata elige el objetivo), simplificación explícita mientras esa pieza no exista.
 
 ## 4. El autómata enemigo
 
