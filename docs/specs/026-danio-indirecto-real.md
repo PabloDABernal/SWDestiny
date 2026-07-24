@@ -1,6 +1,6 @@
 # SPEC-026: Daño indirecto (◎) real — el jugador ataca, el autómata reparte
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** §3 (símbolos de dado), corrige la simplificación de v1 de SPEC-008a ("melee,
 ranged e indirecto... en v1 los tres restan vida por igual").
 **Depende de:** SPEC-008a (resolver por símbolo), SPEC-013 (autómata paga costes), SPEC-025 (turnos
@@ -105,4 +105,6 @@ dos mecánicas distintas que comparten nombre.
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+2026-07-24: playtest manual OK. El dado indirecto se resuelve con "Resolver indirecto" sin elegir
+objetivo, el autómata reparte el daño solo entre sus personajes, un solo dado base marcable a la vez,
+y el turno cierra al resolver. Confirmado por el usuario ("todo bien").
