@@ -62,6 +62,21 @@ sea cual sea el símbolo base marcado (menos especial, que tiene valor fijo no m
   especial), sumando su valor si `hasBase`.
 - No tocar `parseDamage`/`parseShield`/`parseResource` (parsers aislados del autómata "viejo", SPEC-
   008b) — el camino del autómata ya usa `parsePlayerFace` vía `combineAutomatonBatch`.
+- **Otros puntos con igualdad estricta de símbolo que también hay que relajar** (detectado por
+  revisor-specs): no son solo `selectDie`/`canSelect` y `combineAutomatonBatch`, hay al menos un
+  tercer sitio: `nextResolveAfterApply` (src/store/gameStore.ts, ~línea 659-670), que decide si el
+  modo de resolución sigue abierto comprobando `p.symbol === mode.symbol && !p.isModifier` — con un
+  modificador genérico ese chequeo en sí sigue siendo correcto tal cual (mira dados **base**, no
+  genéricos, y un genérico nunca es base), pero conviene revisarlo igual al tocar los otros dos
+  puntos para confirmar que no haya una tercera comparación estricta oculta ahí.
+- El criterio de aceptación 1 incluye focus y reroll de dado como símbolos base válidos (coherente
+  con SPEC-010/023: `budgetTotal` en DicePool.tsx y el `batchAmountTotal` equivalente del autómata
+  quedan afectados), pero no hay ninguna carta real conocida con `+X*` combinada con esos dos
+  símbolos — solo Lure of Power (daño) está confirmada. Ese sub-caso queda cubierto por el criterio
+  general, pero sin dato real para probarlo en el playtest (mismo espíritu que "Fuera de alcance" ya
+  usa para otros combos hipotéticos).
+- **Carta a usar en el playtest:** Lure of Power (cara `+2*`), única carta real conocida con este
+  modificador — fijarla de antemano en el guion QA en vez de buscar otra.
 
 ## Resultado del playtest
 
