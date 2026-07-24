@@ -46,7 +46,10 @@ símbolo** en una acción (melee, ranged e indirecto son símbolos distintos y n
 excepto **indirecto**, que desde SPEC-026 se resuelve **de un dado base a la vez**, sin combinar
 dos en un total mayor (ver más abajo). Pagar
 el coste de recurso de las caras (SPEC-008b), y los modificadores `+X` junto al coste de daño
-indirecto propio (SPEC-010), llegan después. Desde SPEC-011 se pueden mandar dados de **melee o
+indirecto propio (SPEC-010), llegan después. Desde SPEC-027 existe además un modificador **genérico**
+`+X*` (ejemplo real: Lure of Power, `+2*`), que no está atado a un símbolo: suma su valor a la tanda
+que se resuelva sea cual sea el símbolo base (menos especial, de valor fijo). El autómata lo suma
+igual que los modificadores específicos (SPEC-013). Desde SPEC-011 se pueden mandar dados de **melee o
 ranged** a **objetivos distintos** (cada dado a un enemigo), aunque no se puede dividir el daño de
 un solo dado de esos dos símbolos. El receptor del coste de daño indirecto propio **no lo elige el
 jugador**: se determina automáticamente con el mismo criterio que ya usaba el autómata consigo
