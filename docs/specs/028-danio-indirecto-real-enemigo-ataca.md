@@ -1,6 +1,6 @@
 # SPEC-028: Daño indirecto (◎) real, segunda pieza — el enemigo ataca, el jugador reparte
 
-**Estado:** Pendiente
+**Estado:** ✅ Completada (jugada)
 **Sección del GDD:** §3 (símbolos de dado), completa la corrección de SPEC-026 (que solo cubrió
 "el jugador ataca, el autómata reparte solo").
 **Depende de:** SPEC-026 (daño indirecto real, primera pieza), SPEC-013 (autómata combina
@@ -110,4 +110,8 @@ SPEC-026) — no cambia respecto a cómo combina hoy melee/ranged.
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+2026-07-24: playtest manual OK. El enemigo ataca con daño indirecto sin elegir objetivo; el jugador
+reparte clic a clic sobre sus propios personajes con libertad total; "Pasar"/"Activar" quedan
+bloqueados durante el reparto (sin botón cancelar); el turno vuelve al jugador al terminar. SPEC-026
+(jugador ataca con indirecto) y el resto de melee/ranged del autómata siguen sin cambios. Confirmado
+por el usuario.
