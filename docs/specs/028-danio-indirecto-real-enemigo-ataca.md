@@ -35,6 +35,11 @@ SPEC-026) — no cambia respecto a cómo combina hoy melee/ranged.
 - [ ] El autómata sigue pudiendo combinar varios dados indirecto propios en un único total al atacar
   (sin cambios respecto a cómo combina hoy melee/ranged, SPEC-013/014); lo único que cambia es que el
   reparto del total resultante lo hace el jugador, no un algoritmo.
+- [ ] **Prioridad en la tabla del autómata** (decisión del usuario, corrige GDD §4): la fila 1 (daño)
+  comprueba primero si hay una tanda combinable de indirecto; si la hay, se resuelve esa (el jugador
+  reparte); si no, sigue con melee/ranged como hasta ahora. Es decir, indirecto y melee/ranged
+  comparten el mismo puesto (fila 1) de la tabla, pero indirecto se prueba primero en caso de que el
+  autómata tenga dados sin resolver de ambos tipos a la vez.
 - [ ] Si el reparto deja KO a uno o más personajes del jugador, sus dados del pool se retiran (mismo
   patrón que cualquier KO); si deja al jugador entero KO, dispara Derrota igual que cualquier otro caso
   de KO total.
@@ -76,10 +81,16 @@ SPEC-026) — no cambia respecto a cómo combina hoy melee/ranged.
 
 - `isDamageSymbol` (`src/game/automaton.ts`) agrupa hoy melee+ranged+indirecto en una sola tanda que
   el propio autómata combina y aplica a un objetivo que él mismo elige. Hay que separar indirecto de
-  esa agrupación: el autómata sigue combinando sus propios dados indirecto entre sí (mismo mecanismo
-  de `combineAutomatonBatch`/`capBatchToMargin` que ya usa para melee/ranged), pero el resultado
-  (dieIndices + valor total, tras coste de recurso) ya no se aplica solo — se ofrece al jugador para
-  repartir.
+  esa agrupación en un predicado propio (p. ej. `isIndirectSymbol`) y comprobarlo primero, antes de
+  melee/ranged (ver criterio de prioridad arriba). El autómata sigue combinando sus propios dados
+  indirecto entre sí reutilizando **solo** `combineAutomatonBatch` (agrupar base + modificadores,
+  pagando el coste de recurso mientras alcance) — **no** `capBatchToMargin`/`pickTargetAndBatch`: esa
+  maquinaria sirve para "elegir un objetivo propio y no pasarse de margen" (sin overkill), que no
+  aplica aquí porque el autómata no elige objetivo y el jugador reparte con libertad total, sin
+  ningún límite de overkill (decisión ya tomada). El resultado (dieIndices + valor total, tras coste
+  de recurso) no se aplica solo — se ofrece al jugador para repartir.
+- GDD §4 (tabla de prioridades) ya está actualizado con la fila 1 corregida (indirecto se comprueba
+  antes que melee/ranged) como parte de esta spec — no hace falta tocarlo de nuevo al implementar.
 - Nuevo sub-modo de resolución en `src/store/gameStore.ts` (análogo a como Reroll de dado, SPEC-023,
   permite clicar cualquier pool aunque no sea el turno de quien clica): mientras esté activo, el
   jugador puede clicar sus propios personajes (no dados) aunque el `turn` siga siendo `'enemy'`; cada

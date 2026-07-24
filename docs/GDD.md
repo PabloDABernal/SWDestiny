@@ -69,10 +69,13 @@ sigue siendo del autómata mientras tanto.
 Evalúa, en su turno, una tabla de prioridades de arriba abajo y ejecuta la primera acción legal
 (ver SPEC-004b y SPEC-007 para el detalle definitivo):
 
-1. Si tiene dados de daño en su pool, resuelve una **tanda combinada** (base + modificadores `+X`,
-   de mayor a menor valor, mientras el coste de recurso le sea pagable — SPEC-013) dirigida al
-   personaje del jugador con menos vida restante (desempate determinista, mismo criterio existente
-   desde SPEC-007).
+1. Si tiene dados de daño en su pool, primero comprueba si tiene una tanda combinable de
+   **indirecto** (SPEC-028): si la hay, no elige objetivo él mismo — el jugador reparte ese valor
+   clic a clic entre sus propios personajes, con libertad total, bloqueando el resto de sus acciones
+   hasta terminar. Si no hay tanda de indirecto, resuelve la tanda combinada de **melee/ranged** (base
+   + modificadores `+X`, de mayor a menor valor, mientras el coste de recurso le sea pagable —
+   SPEC-013) dirigida al personaje del jugador con menos vida restante (desempate determinista, mismo
+   criterio existente desde SPEC-007).
 2. Si tiene un dado de **escudo**, resuelve su tanda combinada (igual que el daño) sobre su aliado
    no-KO con menos vida restante (SPEC-007/013).
 3. Si tiene personajes sin activar, activa el de más vida restante.
