@@ -49,7 +49,12 @@ el coste de recurso de las caras (SPEC-008b), y los modificadores `+X` junto al 
 indirecto propio (SPEC-010), llegan después. Desde SPEC-027 existe además un modificador **genérico**
 `+X*` (ejemplo real: Lure of Power, `+2*`), que no está atado a un símbolo: suma su valor a la tanda
 que se resuelva sea cual sea el símbolo base (menos especial, de valor fijo). El autómata lo suma
-igual que los modificadores específicos (SPEC-013). Desde SPEC-011 se pueden mandar dados de **melee o
+igual que los modificadores específicos (SPEC-013). Desde SPEC-029 existen además **disrupt** (`Dr`)
+y **descarte** (`Dc`): ninguno tiene objetivo de personaje (afectan al bando rival entero), se
+resuelven con botón propio sin elegir objetivo. Disrupt quita recursos al rival (sin bajar de 0, sin
+que quien resuelve gane nada); descarte hace que el rival descarte esa cantidad de cartas al azar de
+su mano a su pila de descarte (revelando su nombre al pasar a zona pública). El autómata los usa
+igual que el resto de símbolos (SPEC-013). Desde SPEC-011 se pueden mandar dados de **melee o
 ranged** a **objetivos distintos** (cada dado a un enemigo), aunque no se puede dividir el daño de
 un solo dado de esos dos símbolos. El receptor del coste de daño indirecto propio **no lo elige el
 jugador**: se determina automáticamente con el mismo criterio que ya usaba el autómata consigo
