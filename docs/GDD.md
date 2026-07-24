@@ -59,9 +59,10 @@ objetivo — es el **defensor** quien reparte ese valor entre sus propios person
 pudiendo dividirlo entre varios (regla real, RR pg 12); antes (SPEC-008a) se trataba igual que
 melee/ranged como simplificación temporal de v1. Se corrige en dos piezas: SPEC-026 cubre que **el
 jugador ataque** con indirecto (el autómata, como defensor, reparte solo); la dirección contraria
-(**el enemigo ataca**, el jugador reparte interactivamente) queda para una spec posterior — hasta
-entonces, si el autómata ataca con un dado indirecto, sigue tratándose igual que melee/ranged (el
-propio autómata elige el objetivo), simplificación explícita mientras esa pieza no exista.
+(el enemigo ataca, el jugador reparte) la cubre SPEC-028: el jugador reparte clic a clic sobre sus
+propios personajes, con libertad total (puede concentrar todo en uno solo, sin ayuda automática ni
+restricción de overkill), bloqueando el resto de sus acciones hasta terminar de repartir — el turno
+sigue siendo del autómata mientras tanto.
 
 ## 4. El autómata enemigo
 
