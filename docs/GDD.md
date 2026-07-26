@@ -335,6 +335,15 @@ El textarea de importar acepta dos formatos, detectados automáticamente:
   la base de datos local de cartas (ver abajo); el text file no aporta datos de juego, solo qué
   cartas y cuántas.
 
+### Sección "DB" (SPEC-032)
+
+Una segunda pantalla, accesible con un conmutador "Jugar | DB" arriba, con dos partes: un
+**navegador de cartas** (lista/busca/filtra todas las cartas del snapshot con su ficha: facción,
+set, coste, vida, caras de dado, texto) y una **biblioteca de mazos** (guardar con nombre los mazos
+importados y volver a cargarlos en un bando, además de los precargados). Todo offline. Para el
+navegador, el snapshot se enriquece con facción/set/coste/texto. No incluye deck-builder carta a
+carta ni imágenes de carta (fases futuras).
+
 ### Mazos precargados (SPEC-031)
 
 El juego trae **3 mazos de ejemplo** listos para jugar (el héroe de referencia Unduli + 2 villanos,
