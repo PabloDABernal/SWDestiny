@@ -1,6 +1,6 @@
 # SPEC-030: Snapshot local de cartas (importar sin depender de la API en vivo)
 
-**Estado:** Pendiente
+**Estado:** Completada
 **Sección del GDD:** §1/§7 (mazos de ARH DB) + nota nueva "Base de datos local de cartas"
 **Depende de:** SPEC-001 (resolveCards, modelo ArhCard, caché), SPEC-017 (parseTextDeck)
 
@@ -107,4 +107,7 @@ Media: un asset de datos generado + un módulo de carga + reordenar la fuente en
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+Completada tras playtest 2026-07-26. Import offline (DevTools Network → Offline) funciona: mazo
+"Unduli" importa con personajes y "Mazo: N" sin error de red; 0 peticiones a `/api/public/card/`;
+nombres de mano offline; el snapshot gana a una caché de localStorage alterada; `npm run
+cards:snapshot` regenera el JSON (2977 cartas) y el build sigue verde.
