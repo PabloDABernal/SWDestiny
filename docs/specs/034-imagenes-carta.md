@@ -1,6 +1,6 @@
 # SPEC-034: Imágenes de carta en la ficha (on-demand + cache IndexedDB + fallback)
 
-**Estado:** Pendiente
+**Estado:** Completada
 **Sección del GDD:** §7 (nota "Sección DB" / imágenes)
 **Depende de:** SPEC-030 (snapshot: `code` de cada carta), SPEC-032 (ficha del navegador en
 `DbSection`)
@@ -127,4 +127,9 @@ carga/cancelación, y un script de dev. Sin gameplay. Cabe en una rebanada.
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+Completada tras playtest 2026-07-26. La ficha del navegador muestra la imagen de la carta con
+placeholder; cartas sin imagen (404, dos caras) caen a texto. Con el Service Worker activo, las
+imágenes ya vistas se sirven offline (Network→Offline sin recargar) desde Cache Storage; las no
+vistas caen a texto. Bug corregido durante el playtest: `loading="lazy"` + `display:none` dejaba el
+`<img>` colgado en "Cargando…" (quitado lazy + red de seguridad de 15s). Aclarado que recargar la
+app estando offline no funciona (app shell no cacheado) — PWA offline queda en BACKLOG.
