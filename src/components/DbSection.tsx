@@ -49,6 +49,15 @@ function norm(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
+/** Puntos de un personaje según `points` "normal/elite" (o "n"): usa elite si `isElite`. */
+function characterPoints(pointsStr: string | undefined, isElite: boolean): number {
+  if (!pointsStr) return 0;
+  const parts = pointsStr.split('/');
+  const raw = isElite && parts.length > 1 ? parts[1] : parts[0];
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function CardBrowser() {
   const all = getAllCards();
   const [query, setQuery] = useState('');
@@ -290,7 +299,13 @@ const ORIGIN_TAG: Record<DeckOrigin, string> = {
 /** Explorador de mazos (SPEC-036): todos los mazos (precargados + comunidad + guardados), buscador
  * único (nombre/personaje/carta) y vista de las cartas del mazo. Solo lectura (cargar a un bando se
  * hace en "Jugar → Elegir mazo"); los guardados se pueden borrar. */
-function DeckExplorer() {
+interface DeckActions {
+  onCreate: () => void;
+  onEdit: (d: DeckEntry) => void;
+  onDuplicate: (d: DeckEntry) => void;
+}
+
+function DeckExplorer({ onCreate, onEdit, onDuplicate }: DeckActions) {
   const library = useGameStore((s) => s.library);
   const deleteFromLibrary = useGameStore((s) => s.deleteFromLibrary);
   const [query, setQuery] = useState('');
@@ -323,7 +338,10 @@ function DeckExplorer() {
     <div className="db-explorer">
       <div className="db-explorer__head">
         <h3>Mazos</h3>
-        <DeckImportButton />
+        <span className="db-explorer__actions">
+          <button onClick={onCreate}>Crear mazo</button>
+          <DeckImportButton />
+        </span>
       </div>
       <input
         type="search"
@@ -350,9 +368,18 @@ function DeckExplorer() {
                 <span className="db-deck-row__name">{e.name}</span>
                 <em className="db-deck-row__tag">{ORIGIN_TAG[e.origin]}</em>
               </button>
-              {e.origin === 'saved' && (
-                <button className="db-deck-row__delete" onClick={() => deleteFromLibrary(e.id)}>
-                  Borrar
+              {e.origin === 'saved' ? (
+                <>
+                  <button className="db-deck-row__edit" onClick={() => onEdit(e)}>
+                    Editar
+                  </button>
+                  <button className="db-deck-row__delete" onClick={() => deleteFromLibrary(e.id)}>
+                    Borrar
+                  </button>
+                </>
+              ) : (
+                <button className="db-deck-row__edit" onClick={() => onDuplicate(e)}>
+                  Duplicar
                 </button>
               )}
             </li>
@@ -386,10 +413,201 @@ function DeckExplorer() {
   );
 }
 
+interface BuilderInit {
+  editingId: string | null;
+  name: string;
+  slots: Record<string, number>;
+}
+
+/** Constructor de mazos (SPEC-037): navegador de cartas con +/− y panel del mazo con contadores.
+ * Libre (no valida reglas). Guardar requiere nombre + ≥1 personaje. */
+function DeckBuilder({ init, onClose }: { init: BuilderInit; onClose: () => void }) {
+  const upsertLibraryDeck = useGameStore((s) => s.upsertLibraryDeck);
+  const all = getAllCards();
+  const [name, setName] = useState(init.name);
+  const [slots, setSlots] = useState<Record<string, number>>(init.slots);
+  const [query, setQuery] = useState('');
+  const [type, setType] = useState('');
+  const [faction, setFaction] = useState('');
+  const [set, setSet] = useState('');
+  const [limit, setLimit] = useState(80);
+
+  const types = useMemo(() => [...new Set(all.map((c) => c.type_code))].sort(), [all]);
+  const factions = useMemo(
+    () => [...new Set(all.map((c) => c.faction_code).filter(Boolean) as string[])].sort(),
+    [all],
+  );
+  const sets = useMemo(
+    () =>
+      [...new Map(all.filter((c) => c.set_code).map((c) => [c.set_code!, c.set_name ?? c.set_code!])).entries()].sort(
+        (a, b) => a[1].localeCompare(b[1]),
+      ),
+    [all],
+  );
+
+  const filtered = useMemo(() => {
+    const q = norm(query.trim());
+    return all.filter(
+      (c) =>
+        (q === '' || norm(c.name).includes(q)) &&
+        (type === '' || c.type_code === type) &&
+        (faction === '' || c.faction_code === faction) &&
+        (set === '' || c.set_code === set),
+    );
+  }, [all, query, type, faction, set]);
+  const shown = filtered.slice(0, limit);
+
+  const add = (code: string, delta: number) =>
+    setSlots((s) => {
+      const q = (s[code] ?? 0) + delta;
+      const next = { ...s };
+      if (q <= 0) delete next[code];
+      else next[code] = q;
+      return next;
+    });
+
+  // Agrupa el mazo en construcción y calcula contadores.
+  const entries = Object.entries(slots).map(([code, qty]) => {
+    const card = getCardFromSnapshot(code);
+    return { code, qty, card, kind: card?.type_code };
+  });
+  const chars = entries.filter((e) => e.kind === 'character');
+  const battlefields = entries.filter((e) => e.kind === 'battlefield');
+  const deckCards = entries.filter((e) => e.kind !== 'character' && e.kind !== 'battlefield');
+  const points = chars.reduce(
+    (n, e) => n + characterPoints(e.card?.points, !!e.card?.is_unique && e.qty >= 2) ,
+    0,
+  );
+  const deckCardCount = deckCards.reduce((n, e) => n + e.qty, 0);
+
+  const canSave = name.trim() !== '' && chars.length > 0;
+  const save = () => {
+    if (!canSave) return;
+    const deckSlots: DeckSlot[] = Object.entries(slots).map(([code, qty]) => ({ code, qty }));
+    upsertLibraryDeck({ id: init.editingId ?? undefined, name, slots: deckSlots });
+    onClose();
+  };
+
+  const row = (e: { code: string; qty: number; card: ArhCard | null }) => (
+    <li key={e.code} className={e.qty > 2 ? 'db-build__deckrow db-build__deckrow--over' : 'db-build__deckrow'}>
+      <span>
+        {e.qty}× {e.card?.name ?? e.code}
+      </span>
+      <span className="db-build__qty">
+        <button onClick={() => add(e.code, -1)} aria-label="Quitar una">−</button>
+        <button onClick={() => add(e.code, 1)} aria-label="Añadir una">+</button>
+      </span>
+    </li>
+  );
+
+  return (
+    <div className="db-build">
+      <div className="db-build__head">
+        <button onClick={onClose}>← Volver</button>
+        <input
+          type="text"
+          className="db-build__name"
+          placeholder="Nombre del mazo…"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          aria-label="Nombre del mazo"
+        />
+        <button disabled={!canSave} onClick={save} title={!canSave ? 'Pon nombre y al menos un personaje' : undefined}>
+          Guardar
+        </button>
+      </div>
+
+      <div className="db-build__body">
+        <div className="db-build__browser">
+          <div className="db-browser__filters">
+            <input
+              type="search"
+              placeholder="Buscar carta…"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setLimit(80);
+              }}
+              aria-label="Buscar carta"
+            />
+            <select value={type} onChange={(e) => setType(e.target.value)} aria-label="Tipo">
+              <option value="">Tipo</option>
+              {types.map((t) => (
+                <option key={t} value={t}>{TYPE_LABEL[t] ?? t}</option>
+              ))}
+            </select>
+            <select value={faction} onChange={(e) => setFaction(e.target.value)} aria-label="Facción">
+              <option value="">Facción</option>
+              {factions.map((f) => (
+                <option key={f} value={f}>{f}</option>
+              ))}
+            </select>
+            <select value={set} onChange={(e) => setSet(e.target.value)} aria-label="Set">
+              <option value="">Set</option>
+              {sets.map(([code, n]) => (
+                <option key={code} value={code}>{n}</option>
+              ))}
+            </select>
+          </div>
+          <ul className="db-build__cardlist">
+            {shown.map((c) => (
+              <li key={c.code} className="db-build__cardrow">
+                <button className="db-build__addbtn" onClick={() => add(c.code, 1)} aria-label={`Añadir ${c.name}`}>+</button>
+                <span className="db-build__cardname">{c.name}</span>
+                <span className="db-card-row__meta">
+                  {TYPE_LABEL[c.type_code] ?? c.type_code}
+                  {slots[c.code] ? ` · ×${slots[c.code]}` : ''}
+                </span>
+              </li>
+            ))}
+            {filtered.length > shown.length && (
+              <li>
+                <button className="db-browser__more" onClick={() => setLimit((n) => n + 80)}>
+                  Mostrar más ({filtered.length - shown.length})
+                </button>
+              </li>
+            )}
+          </ul>
+        </div>
+
+        <aside className="db-build__deck">
+          <p className="db-build__counters">
+            Personajes: {points} pts · Cartas: {deckCardCount}
+          </p>
+          {chars.length > 0 && <h4>Personajes</h4>}
+          <ul className="db-build__deckcards">{chars.map(row)}</ul>
+          {battlefields.length > 0 && <h4>Campo de batalla</h4>}
+          <ul className="db-build__deckcards">{battlefields.map(row)}</ul>
+          <h4>Mazo ({deckCardCount})</h4>
+          <ul className="db-build__deckcards">{deckCards.map(row)}</ul>
+          {Object.keys(slots).length === 0 && <p className="db-explorer__empty">Añade cartas con el botón +.</p>}
+        </aside>
+      </div>
+    </div>
+  );
+}
+
 export function DbSection() {
+  const [builder, setBuilder] = useState<BuilderInit | null>(null);
+
+  const fromSlots = (s: DeckSlot[]): Record<string, number> =>
+    Object.fromEntries(s.map((x) => [x.code, x.qty]));
+
+  if (builder) {
+    return (
+      <div className="db-section">
+        <DeckBuilder init={builder} onClose={() => setBuilder(null)} />
+      </div>
+    );
+  }
+
   return (
     <div className="db-section">
-      <DeckExplorer />
+      <DeckExplorer
+        onCreate={() => setBuilder({ editingId: null, name: '', slots: {} })}
+        onEdit={(d) => setBuilder({ editingId: d.id, name: d.name, slots: fromSlots(d.slots) })}
+        onDuplicate={(d) => setBuilder({ editingId: null, name: `Copia de ${d.name}`, slots: fromSlots(d.slots) })}
+      />
       <CardBrowser />
     </div>
   );

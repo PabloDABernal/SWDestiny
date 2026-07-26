@@ -59,7 +59,9 @@ ecosistema de componentes de tablero/dados ya hechos.)*
   DB es un **explorador de mazos** de solo lectura (todos los mazos: precargados+comunidad+guardados,
   buscador único por nombre/personaje/carta con índice memoizado, vista de cartas por mazo; cargar a
   un bando solo desde `DeckPicker`) + navegador de cartas con filtro por set; importar es un botón+
-  pop-up. Se retiró el "guardar mazo del bando" y su clave `swd:slots:<side>`. Desde SPEC-033 la UI de
+  pop-up. Se retiró el "guardar mazo del bando" y su clave `swd:slots:<side>`. Desde SPEC-037 la DB
+  tiene un **deck-builder** (crear/editar/duplicar mazos carta a carta, libre con contadores) que
+  guarda vía `upsertLibraryDeck({id?,name,slots})` en la misma biblioteca `swd:decklib`. Desde SPEC-033 la UI de
   import se reorganiza: en la pantalla de juego cada bando tiene un `DeckPicker` (buscador de
   precargados + biblioteca) en vez de textarea; pegar un mazo nuevo vive en la sección DB
   (`importToLibrary(raw, name)`, estado propio `libraryImportStatus`/`libraryImportError`, resuelve

@@ -908,6 +908,9 @@ interface GameState {
   loadDeckFromLibrary: (id: string, side: Side) => Promise<void>;
   /** Borra un mazo guardado de la biblioteca (los precargados no se borran). */
   deleteFromLibrary: (id: string) => void;
+  /** Crea o actualiza un mazo de la biblioteca (deck-builder, SPEC-037): con `id` existente lo
+   * reemplaza manteniendo el id; sin id (o id no encontrado) crea uno nuevo. Devuelve el id usado. */
+  upsertLibraryDeck: (deck: { id?: string; name: string; slots: DeckSlot[] }) => string;
   importDeck: (side: Side, raw: string) => Promise<void>;
   /** Importa un mazo ya en forma de slots (núcleo compartido por importDeck e importPreset). */
   importSlots: (side: Side, slots: DeckSlot[]) => Promise<void>;
@@ -1111,6 +1114,22 @@ export const useGameStore = create<GameState>((set, get) => ({
     const library = get().library.filter((d) => d.id !== id);
     persistLibrary(library);
     set({ library });
+  },
+
+  upsertLibraryDeck: (deck: { id?: string; name: string; slots: DeckSlot[] }) => {
+    const current = get().library;
+    const exists = deck.id !== undefined && current.some((d) => d.id === deck.id);
+    const id =
+      exists && deck.id !== undefined
+        ? deck.id
+        : typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : String(Date.now());
+    const entry = { id, name: deck.name.trim(), slots: deck.slots };
+    const library = exists ? current.map((d) => (d.id === id ? entry : d)) : [...current, entry];
+    persistLibrary(library);
+    set({ library });
+    return id;
   },
 
   importDeck: async (side: Side, raw: string) => {
