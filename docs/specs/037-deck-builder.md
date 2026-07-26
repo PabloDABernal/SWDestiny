@@ -1,6 +1,6 @@
 # SPEC-037: Deck-builder v1 — crear y editar mazos (libre + contadores)
 
-**Estado:** Pendiente
+**Estado:** Completada
 **Sección del GDD:** §7 (nota "Deck-builder")
 **Depende de:** SPEC-030 (snapshot/`getAllCards`), SPEC-032 (navegador de cartas), SPEC-036
 (explorador de mazos, biblioteca)
@@ -102,4 +102,7 @@ duplicar** a SPEC-038, avisando antes (no subdividir con sufijos).
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+Completada tras playtest 2026-07-27. Crear mazo (navegador +/− + panel con personajes/battlefield/
+cartas y contadores puntos/cartas/copias), guardar con nombre + ≥1 personaje a la biblioteca y cargar
+en "Jugar → Elegir mazo"; editar un guardado mantiene el id; duplicar un precargado/comunidad abre el
+constructor con "Copia de …" y crea uno nuevo; volver descarta. Libre, sin validar reglas. Todo OK.
