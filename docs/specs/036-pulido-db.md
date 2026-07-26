@@ -1,6 +1,6 @@
 # SPEC-036: Pulido de la sección DB (importar en pop-up, explorador de mazos, filtro por set)
 
-**Estado:** Pendiente
+**Estado:** Completada
 **Sección del GDD:** §7 (nota "Sección DB")
 **Depende de:** SPEC-032 (sección DB, navegador de cartas, biblioteca), SPEC-033 (`importToLibrary`,
 `DeckPicker`), SPEC-035 (`COMMUNITY_DECKS`)
@@ -102,4 +102,8 @@ explorador.
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+Completada tras playtest 2026-07-26. Importar es botón+pop-up (cierra al éxito, mantiene con error);
+el explorador lista todos los mazos (precargado/comunidad/guardado) con buscador único
+(nombre/personaje/carta) sin congelarse, clic muestra las cartas del mazo (personajes primero) y solo
+los guardados se borran; el navegador de cartas tiene filtro por set. Cargar a un bando queda solo en
+"Jugar → Elegir mazo". El usuario deja pendiente pulir usabilidad en el futuro (sin bloquear).
