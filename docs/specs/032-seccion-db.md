@@ -1,6 +1,6 @@
 # SPEC-032: Sección "DB" — navegador de cartas + biblioteca de mazos
 
-**Estado:** Pendiente
+**Estado:** Completada
 **Sección del GDD:** §7 (nota "Sección DB" a añadir)
 **Depende de:** SPEC-030 (snapshot local de cartas), SPEC-031 (mazos precargados, `importSlots`/
 `importPreset`, `PRESET_DECKS`)
@@ -132,4 +132,8 @@ reflejar que la biblioteca pasa a SPEC-033.
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+Completada tras playtest 2026-07-26. Conmutador Jugar|DB sin perder partida; navegador con búsqueda
+por nombre (sin acentos) + filtros tipo/facción y ficha con facción/set/coste/puntos/vida/caras/
+texto; funciona offline; biblioteca guarda mazos importados (nº de cartas), carga en Jugador/Enemigo
+y borra (precargados fijos no borrables); persiste tras recarga; nombres duplicados conviven. Cupo
+entera sin partir la biblioteca a SPEC-033.
