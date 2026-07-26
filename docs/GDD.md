@@ -332,7 +332,18 @@ El textarea de importar acepta dos formatos, detectados automáticamente:
 - **"Text file"** de ARH DB (el que genera el botón "Download"): listado legible tipo
   `2x Luminara Unduli, ... (Spirit of Rebellion #36)`, convertido a `slots` internamente
   (SPEC-017). En ambos casos las caras y el tipo de cada carta se resuelven por código contra
-  la API; el text file no aporta datos de juego, solo qué cartas y cuántas.
+  la base de datos local de cartas (ver abajo); el text file no aporta datos de juego, solo qué
+  cartas y cuántas.
+
+### Base de datos local de cartas (SPEC-030)
+
+El juego incluye un **snapshot local** de todas las cartas de ARH DB (descargado una vez de su
+endpoint masivo y versionado en el repo, recortado a los datos de juego). La resolución de cartas
+lee de ese snapshot primero, así que importar mazos y ver nombres de carta **funciona offline**, sin
+depender de que la web de ARH esté disponible (que puede caer). La API pública solo se usa como
+respaldo para códigos que aún no estén en el snapshot (p. ej. un set publicado después de la última
+regeneración). El snapshot se regenera con un script de desarrollo; refrescarlo desde dentro del
+juego y una sección "DB" para navegar cartas/mazos son features posteriores (SPEC-031/032).
 
 ## 8. Preguntas de diseño abiertas
 
