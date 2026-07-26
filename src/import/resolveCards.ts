@@ -1,6 +1,7 @@
 import type { ArhCard } from '../model/types';
 import type { DeckSlot } from './parseDeck';
 import { ImportError } from './errors';
+import { getCardFromSnapshot } from '../data/cards';
 
 const CARD_KEY = (code: string) => `swd:card:${code}`;
 // En dev la request va por el proxy /arh (ver vite.config.ts) para evitar CORS; en producción
@@ -9,8 +10,14 @@ const CARD_KEY = (code: string) => `swd:card:${code}`;
 const ARH_API_BASE = import.meta.env.DEV ? '/arh' : 'https://db.swdrenewedhope.com';
 const CARD_URL = (code: string) => `${ARH_API_BASE}/api/public/card/${code}`;
 
-/** Lectura síncrona de la caché de una carta ya resuelta (SPEC-018: nombres en la mano). */
+/**
+ * Lectura síncrona de los datos de una carta (SPEC-018: nombres en la mano). Desde SPEC-030 consulta
+ * primero el snapshot local (offline, gana a la caché) y solo si el código no está en él cae a la
+ * caché de localStorage de cartas resueltas por API.
+ */
 export function readCache(code: string): ArhCard | null {
+  const snap = getCardFromSnapshot(code);
+  if (snap) return snap;
   try {
     const raw = localStorage.getItem(CARD_KEY(code));
     return raw ? (JSON.parse(raw) as ArhCard) : null;
@@ -59,13 +66,20 @@ async function fetchCard(code: string): Promise<ArhCard> {
 }
 
 /**
- * Resuelve todas las cartas de los slots por código, usando caché de localStorage primero
- * y la API pública después. Persiste las cartas resueltas para permitir recarga/offline.
+ * Resuelve todas las cartas de los slots por código. Orden (SPEC-030): snapshot local → caché de
+ * localStorage → API pública. Para códigos del snapshot no se toca la red (import offline); solo un
+ * código que no esté en el snapshot ni en caché llega a la API (p. ej. un set más nuevo que el
+ * snapshot). Persiste en caché únicamente lo resuelto por API.
  */
 export async function resolveCards(slots: DeckSlot[]): Promise<Map<string, ArhCard>> {
   const cards = new Map<string, ArhCard>();
   for (const { code } of slots) {
     if (cards.has(code)) continue;
+    const snap = getCardFromSnapshot(code);
+    if (snap) {
+      cards.set(code, snap);
+      continue;
+    }
     const cached = readCache(code);
     if (cached) {
       cards.set(code, cached);

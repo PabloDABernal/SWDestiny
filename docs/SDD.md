@@ -41,7 +41,12 @@ ecosistema de componentes de tablero/dados ya hechos.)*
   personajes/cartas del juego. La entrada se detecta por formato (SPEC-017): empieza por `{` →
   `parseDeck` (JSON con `slots`); si no → `parseTextDeck` (el "text file" legible, con tabla fija
   nombre-de-set→código). Ambos producen el mismo `DeckSlot[]`, así que el resto del pipeline no
-  cambia. `resolveCards` resuelve **todas** las cartas del export contra la API (no solo personajes). `buildCharacters` sigue quedándose solo con las de
+  cambia. `resolveCards` resuelve **todas** las cartas del export por código (no solo personajes)
+  con orden **snapshot local → caché localStorage → API** (SPEC-030): el snapshot (`src/data/cards.json`,
+  regenerado con `npm run cards:snapshot`, cargado síncrono vía `src/data/cards.ts`) cubre offline
+  todo lo publicado hasta su fecha; la API solo se usa como respaldo para códigos que no estén en él.
+  `readCache` (lectura síncrona de nombres para la mano) consulta también el snapshot primero.
+  `buildCharacters` sigue quedándose solo con las de
   `type_code === 'character'`; desde SPEC-016, `buildDrawPile` construye además el mazo de robo
   (todo lo que no sea personaje, trama ni campo de batalla) con esas mismas cartas ya resueltas, sin
   llamadas nuevas a la API. Trama y campo de batalla, si el export las trae, no se guardan en
