@@ -18,19 +18,22 @@ pasa a ser "elegir mazo para cada lado", no "pegar dos veces".
 
 Verificables jugando. Formato: acción → resultado observable.
 
-### Pantalla de juego (selector por bando)
+### Pantalla de juego (elegir mazo por bando)
 
-- [ ] Cada bando (Jugador y Enemigo) muestra un **selector de mazo con buscador**: un campo de texto
-      que filtra por nombre y una lista con los **precargados** (SPEC-031) + los mazos **guardados**
-      en la biblioteca (SPEC-032). Orden: **precargados primero, luego los guardados en orden de
-      guardado** (mismo criterio que la lista de la biblioteca en SPEC-032), y los precargados se
-      distinguen visualmente (etiqueta "precargado").
-- [ ] Elegir un mazo en el selector del Jugador lo importa en el Jugador (personajes + "Mazo: N");
-      ídem en el Enemigo (con multiplicador de vida por dificultad, SPEC-015). Mismo efecto que hoy
-      tiene importar.
-- [ ] Ya **no** hay textarea de pegar mazo en la pantalla de juego (ni el `<select>` viejo): pegar
-      se hace solo en la sección DB.
-- [ ] Con la biblioteca vacía, el selector sigue mostrando al menos los 3 precargados.
+- [ ] Cada bando (Jugador y Enemigo) muestra un **botón "Elegir mazo"** (compacto, no ocupa media
+      pantalla). Al pulsarlo se abre un **pop-up/modal** con un **buscador** por nombre y la lista de
+      mazos: **precargados** (SPEC-031) primero, luego los **guardados** en la biblioteca (SPEC-032)
+      en orden de guardado; los precargados se distinguen (etiqueta "precargado").
+- [ ] Elegir un mazo en el modal lo **carga** en ese bando (personajes + "Mazo: N"; el Enemigo con
+      multiplicador de vida por dificultad, SPEC-015) y el modal se **cierra**. Cerrar el modal sin
+      elegir (botón cerrar / clic fuera) no cambia nada.
+- [ ] El botón "Elegir mazo" **solo está activo en fase de preparación** (no hay partida en curso:
+      manos vacías, sin resolución/mulligan/reparto pendiente y sin partida terminada). **Cambiar de
+      mazo a mitad de partida no es posible**: una vez repartidas las manos / empezada la partida, el
+      botón queda deshabilitado hasta un "Reset total".
+- [ ] Ya **no** hay textarea de pegar mazo en la pantalla de juego: pegar se hace solo en la sección
+      DB.
+- [ ] Con la biblioteca vacía, el modal sigue mostrando al menos los 3 precargados.
 
 ### Sección DB (importar a la biblioteca)
 
@@ -59,8 +62,10 @@ Verificables jugando. Formato: acción → resultado observable.
 
 - **Buscador sin resultados**: mensaje "sin resultados", sin error; vaciar el buscador vuelve a
   listar todo.
-- **Elegir en el selector un mazo ya cargado en ese bando**: lo reimporta (reinicia y rebaraja),
-  consistente con reimportar (SPEC-001/031).
+- **Elegir en el modal un mazo ya cargado en ese bando** (en preparación): lo reimporta (reinicia y
+  rebaraja), consistente con reimportar (SPEC-001/031).
+- **Botón "Elegir mazo" con partida en curso**: deshabilitado (no abre el modal); el gate es global
+  al estado de partida, no por bando (si se está jugando, ninguno de los dos se puede cambiar).
 - **Importar en la DB con nombre vacío**: no se acepta (avisa), no se añade a la biblioteca (mismo
   criterio que "Guardar en biblioteca" de SPEC-032).
 - **Importar en la DB mientras otro import está en curso**: el botón queda deshabilitado mientras el
@@ -74,9 +79,12 @@ Verificables jugando. Formato: acción → resultado observable.
 
 - **Quitar** el `ImportPanel` de `BattleSide` (`src/App.tsx`) y, con él, el textarea/`<select>` por
   bando. `ImportPanel.tsx` se reutiliza/renombra: su parte de **pegar** se mueve a la sección DB.
-- **Selector por bando**: nuevo componente (p. ej. `DeckPicker`) que combina `PRESET_DECKS` +
-  `library` (del store), con un input de búsqueda (normalizada, mismo `norm` que el navegador). Al
-  elegir: si es preset → `importPreset(side, id)`; si es guardado → `loadDeckFromLibrary(id, side)`.
+- **Selector por bando**: componente `DeckPicker` = un botón "Elegir mazo" que abre un **modal** con
+  el buscador (normalizado, mismo `norm` que el navegador) y la lista `PRESET_DECKS` + `library`. Al
+  elegir: si es preset → `importPreset(side, id)`; si es guardado → `loadDeckFromLibrary(id, side)`;
+  luego cierra el modal. El botón se deshabilita si hay **partida en curso** (gate global derivado
+  del estado: `outcome !== null` o `hand` no vacía en algún bando o `resolve`/`mulligan`/
+  `indirectDistribution` activos). El modal es un overlay simple (sin librería externa).
 - **Import a biblioteca**: nueva acción de store `importToLibrary(raw, name)` que parsea
   (`parseDeck`/`parseTextDeck`), resuelve (`resolveCards`, para validar/offline), y si va bien añade
   `{ id, name, slots }` a la biblioteca (reutiliza el guardado de SPEC-032). Reutiliza el manejo de

@@ -720,15 +720,52 @@ button:disabled {
   white-space: pre-wrap;
 }
 
-/* Selector de mazo por bando (SPEC-033) y panel de importar de la DB. */
+/* Selector de mazo por bando (SPEC-033): botón + modal. Y panel de importar de la DB. */
 .deck-picker {
-  flex: 1 1 320px;
-  max-width: 420px;
+  flex: 0 0 auto;
 }
-.deck-picker h3 {
-  margin: 0 0 6px;
-  font-size: 1rem;
+.deck-picker__open {
+  font-size: 0.85rem;
+  padding: 6px 14px;
 }
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 8vh 16px;
+}
+.modal__panel {
+  background: #1c1f28;
+  border: 1px solid #2a2e3a;
+  border-radius: 10px;
+  padding: 16px;
+  width: min(480px, 100%);
+  max-height: 76vh;
+  display: flex;
+  flex-direction: column;
+}
+.modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.modal__head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.modal__close {
+  background: none;
+  color: #b9becb;
+  padding: 2px 8px;
+}
+
 .deck-picker__search {
   width: 100%;
   box-sizing: border-box;
@@ -743,11 +780,10 @@ button:disabled {
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 180px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
 }
 .deck-picker__item {
   width: 100%;
