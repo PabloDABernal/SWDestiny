@@ -1,6 +1,6 @@
 # SPEC-029: Símbolos de dado Disrupt (quita recursos) y Descarte (descarta al azar)
 
-**Estado:** Pendiente
+**Estado:** Completada
 **Sección del GDD:** §3 (símbolos de dado)
 **Depende de:** SPEC-006/009 (recursos), SPEC-018/022 (mano y descarte real), SPEC-013 (autómata
 combina modificadores/costes)
@@ -93,4 +93,8 @@ autómata (paridad con el resto de símbolos, SPEC-013).
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+Completada tras playtest 2026-07-26. Probado con el mazo precargado Zuckuss (SPEC-031, dado con
+1Dr/1Dc): el jugador resuelve disrupt (recursos del rival bajan, sin bajar de 0, sin ganar nada) y
+descarte (rival descarta al azar de su mano, aviso con el nombre de la carta); casos de 0 recursos y
+mano vacía sin error; el autómata usa Dr/Dc contra el jugador; modificador sin dado base no se
+resuelve. Todo OK.
