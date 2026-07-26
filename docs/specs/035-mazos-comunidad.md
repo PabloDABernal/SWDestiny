@@ -1,6 +1,6 @@
 # SPEC-035: Mazos de la comunidad (bundle desde ARH DB)
 
-**Estado:** Pendiente
+**Estado:** Completada
 **Sección del GDD:** §7 (nota "Mazos de la comunidad")
 **Depende de:** SPEC-030 (snapshot: validar que los códigos existen), SPEC-031 (`importSlots`,
 mazos bundleados), SPEC-033 (`DeckPicker` con buscador)
@@ -108,5 +108,8 @@ de descarga del script, no líneas de código.
 
 ## Resultado del playtest
 
-(pendiente de jugar; implementación: **2107 mazos** bundleados de ARH, cobertura 512/572 personajes,
-60 sin mazo → target de SPEC-036; JSON 1.3 MB / ~160 KB gzip.)
+Completada tras playtest 2026-07-26. **2107 mazos** bundleados de ARH (JSON 1.2 MB), todos cargables
+offline; aparecen en el selector "Elegir mazo" (etiqueta "comunidad") con recuento, buscador y render
+50/tanda ("mostrar más"); cargar uno importa el bando sin congelar. Cobertura 512/572 personajes (60
+sin mazo → SPEC-036). Bug corregido durante el playtest: personajes salían duplicados porque el
+`slots` de ARH ya incluye a los `characters` (se combinaban) — ahora se usa solo `slots`.
