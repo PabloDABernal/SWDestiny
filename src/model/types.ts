@@ -27,4 +27,14 @@ export interface ArhCard {
   sides: string[];
   /** Coste de recursos para jugar la carta (mejoras/apoyos, SPEC-020). Ausente en personajes. */
   cost?: number;
+  // Campos de presentación para la sección DB (SPEC-032); opcionales, no los usa la lógica de juego.
+  faction_code?: string;
+  faction_name?: string;
+  set_code?: string;
+  set_name?: string;
+  affiliation_code?: string;
+  /** Puntos del personaje, string "normal/elite" (p. ej. "13/17"). Solo personajes. */
+  points?: string;
+  /** Texto de reglas de la carta. */
+  text?: string;
 }

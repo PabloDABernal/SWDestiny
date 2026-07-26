@@ -5,6 +5,7 @@ import { ImportPanel } from './components/ImportPanel';
 import { CharacterCard } from './components/CharacterCard';
 import { DicePool } from './components/DicePool';
 import { DifficultySelector } from './components/DifficultySelector';
+import { DbSection } from './components/DbSection';
 import { Hand } from './components/Hand';
 import { SupportList } from './components/SupportList';
 import { currentHealth, isKO } from './game/damage';
@@ -123,6 +124,8 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
 }
 
 export function App() {
+  const view = useGameStore((s) => s.view);
+  const setView = useGameStore((s) => s.setView);
   const outcome = useGameStore((s) => s.outcome);
   const resolve = useGameStore((s) => s.resolve);
   const playUpgrade = useGameStore((s) => s.playUpgrade);
@@ -180,6 +183,25 @@ export function App() {
     <main className="app">
       <h1>Star Wars Destiny — PVE</h1>
 
+      <div className="tabs" role="tablist">
+        <button
+          className={view === 'play' ? 'tabs__tab tabs__tab--active' : 'tabs__tab'}
+          onClick={() => setView('play')}
+        >
+          Jugar
+        </button>
+        <button
+          className={view === 'db' ? 'tabs__tab tabs__tab--active' : 'tabs__tab'}
+          onClick={() => setView('db')}
+        >
+          DB
+        </button>
+      </div>
+
+      {view === 'db' ? (
+        <DbSection />
+      ) : (
+        <>
       {outcome && (
         <div className={`outcome outcome--${outcome}`} role="status">
           {outcome === 'victory' ? '🏆 Victoria' : '💀 Derrota'}
@@ -223,6 +245,8 @@ export function App() {
         <BattleSide side="enemy" label="Enemigo" />
         <BattleSide side="player" label="Jugador" />
       </div>
+        </>
+      )}
     </main>
   );
 }

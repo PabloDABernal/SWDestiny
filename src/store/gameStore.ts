@@ -3,6 +3,7 @@ import type { Character } from '../model/types';
 import { parseDeck, type DeckSlot } from '../import/parseDeck';
 import { parseTextDeck } from '../import/parseTextDeck';
 import { getPresetDeck } from '../data/decks';
+import { loadLibrary, persistLibrary, type SavedDeck } from '../data/deckLibrary';
 import { resolveCards } from '../import/resolveCards';
 import { buildCharacters } from '../import/buildCharacters';
 import { buildDrawPile, shuffle } from '../import/buildDrawPile';
@@ -50,6 +51,32 @@ function loadPersistedDeck(side: Side): Character[] {
 function persistDeck(side: Side, characters: Character[]): void {
   try {
     localStorage.setItem(DECK_KEY(side), JSON.stringify(characters));
+  } catch {
+    // best-effort
+  }
+}
+
+// Slots de origen del último import por bando (SPEC-032): hacen falta para "Guardar en biblioteca"
+// (los characters/drawPile del estado ya no reconstruyen las cantidades originales).
+const SLOTS_KEY = (side: Side) => `swd:slots:${side}`;
+
+function loadPersistedSlots(side: Side): DeckSlot[] {
+  try {
+    const raw = localStorage.getItem(SLOTS_KEY(side));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) &&
+      parsed.every((s) => s && typeof s.code === 'string' && typeof s.qty === 'number')
+      ? (parsed as DeckSlot[])
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistSlots(side: Side, slots: DeckSlot[]): void {
+  try {
+    localStorage.setItem(SLOTS_KEY(side), JSON.stringify(slots));
   } catch {
     // best-effort
   }
@@ -892,6 +919,17 @@ interface GameState {
   difficulty: Difficulty;
   /** Solo afecta a la PRÓXIMA importación del enemigo (vida); el reroll extra aplica de inmediato. */
   setDifficulty: (difficulty: Difficulty) => void;
+  /** Pantalla activa (SPEC-032): tablero de juego o sección DB. No afecta al estado de partida. */
+  view: 'play' | 'db';
+  setView: (view: 'play' | 'db') => void;
+  /** Biblioteca de mazos guardados por el jugador (SPEC-032). */
+  library: SavedDeck[];
+  /** Guarda el mazo importado en `side` con un nombre. No-op si no hay mazo o el nombre está vacío. */
+  saveDeckToLibrary: (side: Side, name: string) => void;
+  /** Carga un mazo guardado (por id) en un bando, reusando importSlots. */
+  loadDeckFromLibrary: (id: string, side: Side) => Promise<void>;
+  /** Borra un mazo guardado de la biblioteca (los precargados no se borran). */
+  deleteFromLibrary: (id: string) => void;
   importDeck: (side: Side, raw: string) => Promise<void>;
   /** Importa un mazo ya en forma de slots (núcleo compartido por importDeck e importPreset). */
   importSlots: (side: Side, slots: DeckSlot[]) => Promise<void>;
@@ -1051,10 +1089,38 @@ export const useGameStore = create<GameState>((set, get) => ({
   outcome: null,
   lastEnemyAction: null,
   difficulty: loadPersistedDifficulty(),
+  view: 'play',
+  library: loadLibrary(),
 
   setDifficulty: (difficulty: Difficulty) => {
     persistDifficulty(difficulty);
     set({ difficulty });
+  },
+
+  setView: (view: 'play' | 'db') => set({ view }),
+
+  saveDeckToLibrary: (side: Side, name: string) => {
+    const trimmed = name.trim();
+    if (trimmed === '') return;
+    const slots = loadPersistedSlots(side);
+    if (slots.length === 0) return; // no hay mazo importado en ese bando
+    const id =
+      typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
+    const library = [...get().library, { id, name: trimmed, slots }];
+    persistLibrary(library);
+    set({ library });
+  },
+
+  loadDeckFromLibrary: async (id: string, side: Side) => {
+    const deck = get().library.find((d) => d.id === id);
+    if (!deck) return;
+    await get().importSlots(side, deck.slots);
+  },
+
+  deleteFromLibrary: (id: string) => {
+    const library = get().library.filter((d) => d.id !== id);
+    persistLibrary(library);
+    set({ library });
   },
 
   importDeck: async (side: Side, raw: string) => {
@@ -1086,6 +1152,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
     try {
       const cards = await resolveCards(slots);
+      // Guarda los slots de origen para poder guardar este mazo en la biblioteca (SPEC-032).
+      persistSlots(side, slots);
       const built = buildCharacters(slots, cards);
       // Trampa (GDD §4): la vida del bando enemigo se multiplica al importar, según la dificultad
       // vigente en ESE momento (SPEC-015; no retroactivo si se cambia después).

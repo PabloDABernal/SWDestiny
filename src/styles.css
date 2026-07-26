@@ -561,3 +561,161 @@ button:disabled {
   font-size: 0.7rem;
   margin-top: 4px;
 }
+
+/* Sección DB (SPEC-032): pestañas, navegador de cartas y biblioteca de mazos. */
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.tabs__tab {
+  padding: 6px 16px;
+  background: #171a22;
+  color: #b9becb;
+  border: 1px solid #2a2e3a;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.tabs__tab--active {
+  background: #2b6cb0;
+  color: #fff;
+  border-color: #2b6cb0;
+}
+
+.db-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.db-library {
+  border: 1px solid #2a2e3a;
+  border-radius: 8px;
+  padding: 14px;
+}
+.db-library__save {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.db-library__save input {
+  flex: 1 1 200px;
+  background: #0f1117;
+  color: #e6e8ee;
+  border: 1px solid #2a2e3a;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.db-library__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.db-deck-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  background: #12151c;
+  border-radius: 6px;
+}
+.db-deck-row--preset {
+  background: #161b24;
+}
+.db-deck-row__actions {
+  display: flex;
+  gap: 6px;
+}
+.db-deck-row__delete {
+  color: #f0a0a0;
+}
+
+.db-browser__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.db-browser__filters input,
+.db-browser__filters select {
+  background: #0f1117;
+  color: #e6e8ee;
+  border: 1px solid #2a2e3a;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.db-browser__count {
+  color: #8a90a0;
+  font-size: 0.85rem;
+}
+.db-browser__body {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.db-browser__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1 1 55%;
+  max-height: 70vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.db-card-row {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+  padding: 5px 10px;
+  background: #12151c;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #e6e8ee;
+  cursor: pointer;
+}
+.db-card-row--active {
+  border-color: #2b6cb0;
+}
+.db-card-row__meta {
+  color: #8a90a0;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+.db-browser__more {
+  width: 100%;
+  padding: 6px;
+}
+.db-browser__empty {
+  color: #8a90a0;
+  padding: 8px;
+}
+.db-card-detail {
+  flex: 1 1 45%;
+  position: sticky;
+  top: 10px;
+  border: 1px solid #2a2e3a;
+  border-radius: 8px;
+  padding: 14px;
+  background: #12151c;
+}
+.db-card-detail__line {
+  margin: 2px 0;
+  font-size: 0.9rem;
+}
+.db-card-detail__text {
+  margin-top: 10px;
+  font-size: 0.85rem;
+  color: #c8ccd8;
+  white-space: pre-wrap;
+}

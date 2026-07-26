@@ -32,6 +32,15 @@ function trim(card) {
     sides: Array.isArray(card.sides) ? card.sides : [], // null en cartas sin dado → []
   };
   if (typeof card.cost === 'number') out.cost = card.cost;
+  // Campos de presentación para el navegador de la sección DB (SPEC-032); opcionales, no los usa
+  // la lógica de juego. Se incluyen solo si vienen con valor útil.
+  if (card.faction_code) out.faction_code = card.faction_code;
+  if (card.faction_name) out.faction_name = card.faction_name;
+  if (card.set_code) out.set_code = card.set_code;
+  if (card.set_name) out.set_name = card.set_name;
+  if (card.affiliation_code) out.affiliation_code = card.affiliation_code;
+  if (card.points) out.points = card.points; // string "13/17" (elite/normal)
+  if (card.text) out.text = card.text;
   return out;
 }
 

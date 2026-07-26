@@ -49,6 +49,11 @@ ecosistema de componentes de tablero/dados ya hechos.)*
   El pipeline se comparte vía `importSlots(side, slots)`: `importDeck` parsea el texto pegado y
   delega; `importPreset(side, id)` importa uno de los mazos precargados de `src/data/decks.ts`
   (SPEC-031, elegibles desde un `<select>` por bando), reusando exactamente el mismo camino offline.
+  El snapshot se enriquece (SPEC-032) con facción/set/coste/puntos/texto (campos opcionales de
+  `ArhCard`, solo para mostrar) que consume la **sección DB**: un conmutador `view: 'play' | 'db'`
+  alterna tablero y sección DB (navegador de cartas vía `getAllCards()` + biblioteca de mazos en
+  `swd:decklib`, con los slots de origen persistidos por bando en `swd:slots:<side>` para poder
+  guardarlos). Cambiar de vista no toca el estado de partida del store.
   `buildCharacters` sigue quedándose solo con las de
   `type_code === 'character'`; desde SPEC-016, `buildDrawPile` construye además el mazo de robo
   (todo lo que no sea personaje, trama ni campo de batalla) con esas mismas cartas ya resueltas, sin

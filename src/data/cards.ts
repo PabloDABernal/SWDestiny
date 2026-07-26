@@ -22,3 +22,15 @@ export function getCardFromSnapshot(code: string): ArhCard | null {
   const card = raw[code];
   return card && 'code' in card ? (card as ArhCard) : null;
 }
+
+let allCards: ArhCard[] | null = null;
+
+/** Todas las cartas del snapshot (sin `_meta`), para el navegador de la sección DB (SPEC-032). */
+export function getAllCards(): ArhCard[] {
+  if (allCards === null) {
+    allCards = Object.entries(raw)
+      .filter(([code, c]) => code !== '_meta' && c && 'code' in c)
+      .map(([, c]) => c as ArhCard);
+  }
+  return allCards;
+}
