@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useGameStore, type Side } from '../store/gameStore';
-import { getAllCards } from '../data/cards';
+import { useGameStore } from '../store/gameStore';
+import { getAllCards, getCardFromSnapshot } from '../data/cards';
 import { cardImageUrl } from '../data/cardImages';
 import { PRESET_DECKS } from '../data/decks';
+import { COMMUNITY_DECKS } from '../data/communityDecks';
 import type { ArhCard } from '../model/types';
+import type { DeckSlot } from '../import/parseDeck';
+
+const PAGE = 50;
 
 /** Imagen de carta on-demand (SPEC-034): la muestra con <img> (el host no manda CORS); mientras
  * carga hay un placeholder; si falla (404/offline/no cacheada), se oculta y la ficha cae a texto.
@@ -11,8 +15,6 @@ import type { ArhCard } from '../model/types';
  * vistas para offline. */
 function CardImage({ code }: { code: string }) {
   const [state, setState] = useState<'loading' | 'loaded' | 'error'>('loading');
-  // Red de seguridad: si en 15s no hubo onLoad/onError (petición colgada/bloqueada), caer a texto en
-  // vez de quedarse en "Cargando…" para siempre.
   useEffect(() => {
     const t = setTimeout(() => setState((s) => (s === 'loading' ? 'error' : s)), 15000);
     return () => clearTimeout(t);
@@ -21,8 +23,6 @@ function CardImage({ code }: { code: string }) {
   return (
     <div className={`card-image card-image--${state}`}>
       {state === 'loading' && <span className="card-image__ph">Cargando imagen…</span>}
-      {/* Sin loading="lazy": un <img> oculto + lazy nunca entra en viewport y no se carga (ni onLoad
-          ni onError), quedándose colgado en "Cargando…". */}
       <img
         src={cardImageUrl(code)}
         alt={`Carta ${code}`}
@@ -54,14 +54,21 @@ function CardBrowser() {
   const [query, setQuery] = useState('');
   const [type, setType] = useState('');
   const [faction, setFaction] = useState('');
+  const [set, setSet] = useState('');
   const [selected, setSelected] = useState<ArhCard | null>(null);
-  // Con ~3000 cartas, limitar el render inicial (SPEC-032: "empezar simple").
   const [limit, setLimit] = useState(100);
 
-  // Valores de filtro presentes en el snapshot (no lista cerrada inventada).
+  // Valores de filtro presentes en el snapshot (siempre la lista completa, no acotada por otros).
   const types = useMemo(() => [...new Set(all.map((c) => c.type_code))].sort(), [all]);
   const factions = useMemo(
     () => [...new Set(all.map((c) => c.faction_code).filter(Boolean) as string[])].sort(),
+    [all],
+  );
+  const sets = useMemo(
+    () =>
+      [...new Map(all.filter((c) => c.set_code).map((c) => [c.set_code!, c.set_name ?? c.set_code!])).entries()].sort(
+        (a, b) => a[1].localeCompare(b[1]),
+      ),
     [all],
   );
 
@@ -71,14 +78,16 @@ function CardBrowser() {
       (c) =>
         (q === '' || norm(c.name).includes(q)) &&
         (type === '' || c.type_code === type) &&
-        (faction === '' || c.faction_code === faction),
+        (faction === '' || c.faction_code === faction) &&
+        (set === '' || c.set_code === set),
     );
-  }, [all, query, type, faction]);
+  }, [all, query, type, faction, set]);
 
   const shown = filtered.slice(0, limit);
 
   return (
     <div className="db-browser">
+      <h3>Cartas</h3>
       <div className="db-browser__filters">
         <input
           type="search"
@@ -103,6 +112,14 @@ function CardBrowser() {
           {factions.map((f) => (
             <option key={f} value={f}>
               {f}
+            </option>
+          ))}
+        </select>
+        <select value={set} onChange={(e) => setSet(e.target.value)} aria-label="Filtrar por set">
+          <option value="">Todos los sets</option>
+          {sets.map(([code, name]) => (
+            <option key={code} value={code}>
+              {name}
             </option>
           ))}
         </select>
@@ -166,8 +183,8 @@ function CardBrowser() {
 }
 
 /** Panel para pegar/importar un mazo nuevo a la biblioteca (SPEC-033). Autodetecta JSON o text file
- * (SPEC-017); resuelve offline vía snapshot; no carga en ningún bando. */
-function DeckImportPanel() {
+ * (SPEC-017); resuelve offline vía snapshot; no carga en ningún bando. Llama `onImported` al éxito. */
+function DeckImportPanel({ onImported }: { onImported?: () => void }) {
   const importToLibrary = useGameStore((s) => s.importToLibrary);
   const status = useGameStore((s) => s.libraryImportStatus);
   const error = useGameStore((s) => s.libraryImportError);
@@ -177,16 +194,15 @@ function DeckImportPanel() {
 
   const doImport = async () => {
     await importToLibrary(raw, name);
-    // Limpia solo si no quedó error (el store deja el error si falló).
     if (useGameStore.getState().libraryImportError === null) {
       setRaw('');
       setName('');
+      onImported?.();
     }
   };
 
   return (
     <div className="db-import">
-      <h3>Importar mazo a la biblioteca</h3>
       <input
         type="text"
         className="db-import__name"
@@ -215,68 +231,157 @@ function DeckImportPanel() {
   );
 }
 
-function DeckLibrary() {
-  const library = useGameStore((s) => s.library);
-  const loadDeckFromLibrary = useGameStore((s) => s.loadDeckFromLibrary);
-  const importPreset = useGameStore((s) => s.importPreset);
-  const deleteFromLibrary = useGameStore((s) => s.deleteFromLibrary);
-  const saveDeckToLibrary = useGameStore((s) => s.saveDeckToLibrary);
-  const playerHasDeck = useGameStore((s) => s.sides.player.characters.length > 0);
-  const enemyHasDeck = useGameStore((s) => s.sides.enemy.characters.length > 0);
-  const [name, setName] = useState('');
+/** Botón "Importar mazo" que abre el panel de importar en un pop-up (SPEC-036). */
+function DeckImportButton() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="db-import-launch">
+      <button onClick={() => setOpen(true)}>Importar mazo</button>
+      {open && (
+        <div className="modal" role="dialog" aria-modal="true" onClick={() => setOpen(false)}>
+          <div className="modal__panel" onClick={(e) => e.stopPropagation()}>
+            <div className="modal__head">
+              <h3>Importar mazo a la biblioteca</h3>
+              <button className="modal__close" onClick={() => setOpen(false)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <DeckImportPanel onImported={() => setOpen(false)} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
-  const save = (side: Side) => {
-    saveDeckToLibrary(side, name);
-    setName('');
-  };
+type DeckOrigin = 'preset' | 'community' | 'saved';
+interface DeckEntry {
+  id: string;
+  name: string;
+  origin: DeckOrigin;
+  slots: DeckSlot[];
+  search: string;
+}
+
+function buildEntry(d: { id: string; name: string; slots: DeckSlot[] }, origin: DeckOrigin): DeckEntry {
+  const cardNames = d.slots.map((s) => getCardFromSnapshot(s.code)?.name ?? s.code).join(' ');
+  return { id: d.id, name: d.name, origin, slots: d.slots, search: norm(`${d.name} ${cardNames}`) };
+}
+
+// Índice de búsqueda de los mazos bundleados (precargados + comunidad): estáticos, se calcula UNA
+// vez de forma perezosa (en el primer uso del explorador), no en el arranque de la app (SPEC-036).
+let bundledCache: DeckEntry[] | null = null;
+function bundledEntries(): DeckEntry[] {
+  if (bundledCache === null) {
+    bundledCache = [
+      ...PRESET_DECKS.map((d) => buildEntry(d, 'preset')),
+      ...COMMUNITY_DECKS.map((d) => buildEntry(d, 'community')),
+    ];
+  }
+  return bundledCache;
+}
+
+const ORIGIN_TAG: Record<DeckOrigin, string> = {
+  preset: 'precargado',
+  community: 'comunidad',
+  saved: 'guardado',
+};
+
+/** Explorador de mazos (SPEC-036): todos los mazos (precargados + comunidad + guardados), buscador
+ * único (nombre/personaje/carta) y vista de las cartas del mazo. Solo lectura (cargar a un bando se
+ * hace en "Jugar → Elegir mazo"); los guardados se pueden borrar. */
+function DeckExplorer() {
+  const library = useGameStore((s) => s.library);
+  const deleteFromLibrary = useGameStore((s) => s.deleteFromLibrary);
+  const [query, setQuery] = useState('');
+  const [limit, setLimit] = useState(PAGE);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const savedEntries = useMemo(() => library.map((d) => buildEntry(d, 'saved')), [library]);
+  const entries = useMemo(() => [...bundledEntries(), ...savedEntries], [savedEntries]);
+
+  const filtered = useMemo(() => {
+    const q = norm(query.trim());
+    return q === '' ? entries : entries.filter((e) => e.search.includes(q));
+  }, [entries, query]);
+
+  const shown = filtered.slice(0, limit);
+  const selected = selectedId === null ? null : entries.find((e) => e.id === selectedId) ?? null;
+
+  // Cartas del mazo seleccionado, personajes primero.
+  const cards = useMemo(() => {
+    if (!selected) return [];
+    return selected.slots
+      .map((s) => {
+        const card = getCardFromSnapshot(s.code);
+        return { name: card?.name ?? s.code, qty: s.qty, isCharacter: card?.type_code === 'character' };
+      })
+      .sort((a, b) => (a.isCharacter === b.isCharacter ? 0 : a.isCharacter ? -1 : 1));
+  }, [selected]);
 
   return (
-    <div className="db-library">
-      <h3>Biblioteca de mazos</h3>
-
-      <div className="db-library__save">
-        <input
-          type="text"
-          placeholder="Nombre del mazo…"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          aria-label="Nombre del mazo a guardar"
-        />
-        <button disabled={!playerHasDeck || name.trim() === ''} onClick={() => save('player')}>
-          Guardar mazo del Jugador
-        </button>
-        <button disabled={!enemyHasDeck || name.trim() === ''} onClick={() => save('enemy')}>
-          Guardar mazo del Enemigo
-        </button>
+    <div className="db-explorer">
+      <div className="db-explorer__head">
+        <h3>Mazos</h3>
+        <DeckImportButton />
       </div>
+      <input
+        type="search"
+        className="db-explorer__search"
+        placeholder="Buscar por nombre, personaje o carta…"
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setLimit(PAGE);
+        }}
+        aria-label="Buscar mazo"
+      />
+      <p className="db-explorer__count">{filtered.length} mazos</p>
 
-      <ul className="db-library__list">
-        {/* Precargados: fijos, no borrables (SPEC-031/032). */}
-        {PRESET_DECKS.map((d) => (
-          <li key={d.id} className="db-deck-row db-deck-row--preset">
-            <span className="db-deck-row__name">{d.name} <em>(precargado)</em></span>
-            <span className="db-deck-row__actions">
-              <button onClick={() => importPreset('player', d.id)}>→ Jugador</button>
-              <button onClick={() => importPreset('enemy', d.id)}>→ Enemigo</button>
-            </span>
-          </li>
-        ))}
-        {/* Guardados por el jugador, en orden de guardado. */}
-        {library.map((d) => (
-          <li key={d.id} className="db-deck-row">
-            <span className="db-deck-row__name">
-              {d.name} <em>({d.slots.reduce((n, s) => n + s.qty, 0)} cartas)</em>
-            </span>
-            <span className="db-deck-row__actions">
-              <button onClick={() => loadDeckFromLibrary(d.id, 'player')}>→ Jugador</button>
-              <button onClick={() => loadDeckFromLibrary(d.id, 'enemy')}>→ Enemigo</button>
-              <button className="db-deck-row__delete" onClick={() => deleteFromLibrary(d.id)}>
-                Borrar
+      <div className="db-explorer__body">
+        <ul className="db-explorer__list">
+          {filtered.length === 0 && <li className="db-explorer__empty">Sin resultados.</li>}
+          {shown.map((e) => (
+            <li key={`${e.origin}:${e.id}`} className="db-deck-row">
+              <button
+                className={selectedId === e.id ? 'db-deck-row__pick db-deck-row__pick--active' : 'db-deck-row__pick'}
+                onClick={() => setSelectedId(e.id)}
+              >
+                <span className="db-deck-row__name">{e.name}</span>
+                <em className="db-deck-row__tag">{ORIGIN_TAG[e.origin]}</em>
               </button>
-            </span>
-          </li>
-        ))}
-      </ul>
+              {e.origin === 'saved' && (
+                <button className="db-deck-row__delete" onClick={() => deleteFromLibrary(e.id)}>
+                  Borrar
+                </button>
+              )}
+            </li>
+          ))}
+          {filtered.length > shown.length && (
+            <li>
+              <button className="db-explorer__more" onClick={() => setLimit((n) => n + PAGE)}>
+                Mostrar más ({filtered.length - shown.length} restantes)
+              </button>
+            </li>
+          )}
+        </ul>
+
+        {selected && (
+          <aside className="db-deck-detail">
+            <h3>{selected.name}</h3>
+            <p className="db-deck-detail__meta">
+              {ORIGIN_TAG[selected.origin]} · {selected.slots.reduce((n, s) => n + s.qty, 0)} cartas
+            </p>
+            <ul className="db-deck-detail__cards">
+              {cards.map((c, i) => (
+                <li key={i} className={c.isCharacter ? 'db-deck-detail__card db-deck-detail__card--char' : 'db-deck-detail__card'}>
+                  {c.qty}× {c.name}
+                </li>
+              ))}
+            </ul>
+          </aside>
+        )}
+      </div>
     </div>
   );
 }
@@ -284,8 +389,7 @@ function DeckLibrary() {
 export function DbSection() {
   return (
     <div className="db-section">
-      <DeckImportPanel />
-      <DeckLibrary />
+      <DeckExplorer />
       <CardBrowser />
     </div>
   );

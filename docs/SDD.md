@@ -55,8 +55,11 @@ ecosistema de componentes de tablero/dados ya hechos.)*
   El snapshot se enriquece (SPEC-032) con facción/set/coste/puntos/texto (campos opcionales de
   `ArhCard`, solo para mostrar) que consume la **sección DB**: un conmutador `view: 'play' | 'db'`
   alterna tablero y sección DB (navegador de cartas vía `getAllCards()` + biblioteca de mazos en
-  `swd:decklib`, con los slots de origen persistidos por bando en `swd:slots:<side>` para poder
-  guardarlos). Cambiar de vista no toca el estado de partida del store. Desde SPEC-033 la UI de
+  `swd:decklib`). Cambiar de vista no toca el estado de partida del store. Desde SPEC-036 la sección
+  DB es un **explorador de mazos** de solo lectura (todos los mazos: precargados+comunidad+guardados,
+  buscador único por nombre/personaje/carta con índice memoizado, vista de cartas por mazo; cargar a
+  un bando solo desde `DeckPicker`) + navegador de cartas con filtro por set; importar es un botón+
+  pop-up. Se retiró el "guardar mazo del bando" y su clave `swd:slots:<side>`. Desde SPEC-033 la UI de
   import se reorganiza: en la pantalla de juego cada bando tiene un `DeckPicker` (buscador de
   precargados + biblioteca) en vez de textarea; pegar un mazo nuevo vive en la sección DB
   (`importToLibrary(raw, name)`, estado propio `libraryImportStatus`/`libraryImportError`, resuelve

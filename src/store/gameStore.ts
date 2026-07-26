@@ -56,32 +56,6 @@ function persistDeck(side: Side, characters: Character[]): void {
   }
 }
 
-// Slots de origen del último import por bando (SPEC-032): hacen falta para "Guardar en biblioteca"
-// (los characters/drawPile del estado ya no reconstruyen las cantidades originales).
-const SLOTS_KEY = (side: Side) => `swd:slots:${side}`;
-
-function loadPersistedSlots(side: Side): DeckSlot[] {
-  try {
-    const raw = localStorage.getItem(SLOTS_KEY(side));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) &&
-      parsed.every((s) => s && typeof s.code === 'string' && typeof s.qty === 'number')
-      ? (parsed as DeckSlot[])
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function persistSlots(side: Side, slots: DeckSlot[]): void {
-  try {
-    localStorage.setItem(SLOTS_KEY(side), JSON.stringify(slots));
-  } catch {
-    // best-effort
-  }
-}
-
 const DRAW_PILE_KEY = (side: Side) => `swd:drawpile:${side}`;
 
 function loadPersistedDrawPile(side: Side): string[] {
@@ -930,8 +904,6 @@ interface GameState {
   /** Pega/importa un mazo (JSON o text file) y lo añade a la biblioteca con un nombre, sin cargarlo
    * en ningún bando (SPEC-033). No-op si el nombre está vacío; deja error si el import falla. */
   importToLibrary: (raw: string, name: string) => Promise<void>;
-  /** Guarda el mazo importado en `side` con un nombre. No-op si no hay mazo o el nombre está vacío. */
-  saveDeckToLibrary: (side: Side, name: string) => void;
   /** Carga un mazo guardado (por id) en un bando, reusando importSlots. */
   loadDeckFromLibrary: (id: string, side: Side) => Promise<void>;
   /** Borra un mazo guardado de la biblioteca (los precargados no se borran). */
@@ -1129,18 +1101,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  saveDeckToLibrary: (side: Side, name: string) => {
-    const trimmed = name.trim();
-    if (trimmed === '') return;
-    const slots = loadPersistedSlots(side);
-    if (slots.length === 0) return; // no hay mazo importado en ese bando
-    const id =
-      typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
-    const library = [...get().library, { id, name: trimmed, slots }];
-    persistLibrary(library);
-    set({ library });
-  },
-
   loadDeckFromLibrary: async (id: string, side: Side) => {
     const deck = get().library.find((d) => d.id === id);
     if (!deck) return;
@@ -1182,8 +1142,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
     try {
       const cards = await resolveCards(slots);
-      // Guarda los slots de origen para poder guardar este mazo en la biblioteca (SPEC-032).
-      persistSlots(side, slots);
       const built = buildCharacters(slots, cards);
       // Trampa (GDD §4): la vida del bando enemigo se multiplica al importar, según la dificultad
       // vigente en ESE momento (SPEC-015; no retroactivo si se cambia después).
