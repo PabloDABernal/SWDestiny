@@ -17,7 +17,9 @@ sin pegarlos de nuevo. Todo offline (snapshot, SPEC-030).
 
 El snapshot de SPEC-030 solo guarda 7 campos de juego. El navegador necesita más, así que el script
 `cards:snapshot` pasa a incluir también, por carta: `faction_code`, `faction_name`, `set_code`,
-`set_name`, `affiliation_code`, `cost` (ya estaba), `points` y `text` (texto de reglas). El modelo
+`set_name`, `affiliation_code`, `cost` (ya estaba), `points` (mostrado en la ficha de personaje —
+reabre a propósito la omisión de SPEC-001, ahora sí verificado por un criterio) y `text` (texto de
+reglas). El modelo
 `ArhCard` gana esos campos como **opcionales** (la lógica de juego sigue usando solo los 7 de antes;
 los nuevos son para mostrar). El JSON crece a ~2.7 MB crudo / ~0.5 MB gzip; el build no debe fallar
 por tamaño de chunk (a lo sumo warning, como en SPEC-030).
@@ -38,8 +40,12 @@ Verificables jugando. Formato: acción → resultado observable.
       un buscador filtra por **nombre** (subcadena, sin distinguir mayúsculas/acentos) en vivo.
 - [ ] Hay filtros por **tipo** (personaje/mejora/apoyo/evento/…) y por **facción**; combinados con
       el buscador acotan la lista.
-- [ ] Al elegir una carta se ve su **ficha**: nombre, tipo, facción, set, coste (si tiene), vida (si
-      es personaje), **caras de dado** (si tiene dado) y **texto** de reglas.
+- [ ] Al elegir una carta se ve su **ficha**: nombre, tipo, facción, set, coste (si tiene), **puntos**
+      (si es personaje), vida (si es personaje), **caras de dado** (si tiene dado) y **texto** de
+      reglas.
+- [ ] Los filtros de **tipo** ofrecen los `type_code` realmente presentes en el snapshot
+      (personaje, mejora, apoyo, evento, trama, campo de batalla, desmejora…), no una lista cerrada
+      inventada; ídem los de **facción**.
 - [ ] La lista no intenta cargar imágenes ni llamar a la API: todo sale del snapshot (funciona
       offline, verificable con Network → Offline).
 
@@ -50,8 +56,11 @@ Verificables jugando. Formato: acción → resultado observable.
 - [ ] La sección DB lista los mazos guardados (nombre + nº de cartas). Desde ahí se puede **cargar**
       un mazo en el bando **Jugador** o **Enemigo** (mismo efecto que importarlo: reutiliza
       `importSlots`), y **borrar** un mazo de la biblioteca.
+- [ ] Cargar un mazo de la biblioteca en el bando **Enemigo** aplica el multiplicador de vida de la
+      dificultad vigente (igual que cualquier import, SPEC-015/031).
 - [ ] Los 3 mazos precargados (SPEC-031) aparecen listados en la biblioteca como **fijos** (se pueden
-      cargar, no borrar); los guardados por el jugador sí se pueden borrar.
+      cargar, no borrar); los guardados por el jugador sí se pueden borrar. Orden de la lista: los
+      **precargados primero**, luego los guardados en **orden de guardado** (el más reciente al final).
 - [ ] Recargar la página conserva la biblioteca de mazos guardados (localStorage), igual que el mazo
       importado de cada bando.
 
@@ -76,8 +85,9 @@ Verificables jugando. Formato: acción → resultado observable.
   filtro no casa nada, sin error.
 - **Guardar un bando sin mazo importado**: la acción "Guardar en biblioteca" no está disponible (o
   avisa) si el bando no tiene mazo; no guarda un mazo vacío.
-- **Nombre de mazo duplicado o vacío al guardar**: nombre vacío no se acepta (avisa); nombre repetido
-  se permite (id interno único), o se pregunta — decisión menor a fijar en implementación, no bloquea.
+- **Nombre de mazo duplicado o vacío al guardar**: nombre vacío no se acepta (avisa). Nombre repetido
+  **se permite** (decisión del usuario, 2026-07-26): cada mazo tiene un id interno único, pueden
+  convivir dos entradas con el mismo nombre en la lista.
 - **Biblioteca corrupta en localStorage** (mismo espíritu que SPEC-012): si el valor guardado no es
   un array válido, se descarta y la biblioteca arranca vacía (solo los precargados fijos), sin
   romper la carga.
@@ -116,7 +126,9 @@ Verificables jugando. Formato: acción → resultado observable.
 conmutador de pestañas. Es el máximo que cabe en una rebanada; si al implementar se dispara de ~300
 líneas de código o de complejidad, **partir**: dejar en SPEC-032 el conmutador + navegador de cartas
 (con el snapshot enriquecido) y mover la **biblioteca de mazos** a SPEC-033, avisando al usuario
-antes. No subdividir con sufijos (regla 4).
+antes. No subdividir con sufijos (regla 4). **Si se parte, editar en el mismo movimiento** la nota
+"Sección DB (SPEC-032)" de `docs/GDD.md` §7 (que hoy atribuye navegador + biblioteca a 032) para
+reflejar que la biblioteca pasa a SPEC-033.
 
 ## Resultado del playtest
 
