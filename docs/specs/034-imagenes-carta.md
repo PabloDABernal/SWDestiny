@@ -8,20 +8,27 @@
 ## Qué es (2-4 líneas)
 
 En la **ficha de detalle** del navegador de cartas (sección DB), además de los datos de texto, se
-muestra la **imagen real** de la carta, descargada bajo demanda de ARH (o de un mirror configurable).
-La imagen se **cachea en IndexedDB** al verla, así que las ya vistas funcionan **offline**; si no hay
-imagen (offline y no cacheada, o fallo de red), la ficha cae al detalle de texto de siempre (SPEC-032).
-No se bundlean imágenes en el repo (serían ~226 MB).
+muestra la **imagen real** de la carta (`<img>`), descargada bajo demanda de ARH (o de un mirror
+configurable). Un **Service Worker** cachea las imágenes vistas y las sirve **offline** (persistente
+entre recargas); si no hay imagen (offline y no cacheada, o fallo/404), la ficha cae al detalle de
+texto de siempre (SPEC-032). No se bundlean imágenes en el repo (serían ~226 MB).
+
+**Por qué Service Worker y no `fetch`+IndexedDB (verificado 2026-07-26):** el host de imágenes de ARH
+**no manda cabeceras CORS**, así que `fetch()` cross-origin no puede leer el blob para guardarlo en
+IndexedDB (respuesta opaca). En cambio `<img src>` **pinta** la imagen sin necesidad de CORS, y un
+Service Worker puede **cachear respuestas opacas** (Cache Storage) y servirlas offline sin CORS. Por
+eso la imagen se muestra con `<img>` y la persistencia offline la da el SW, no IndexedDB.
 
 ## Origen de la imagen
 
 - La URL se **reconstruye desde el `code`** (no se depende del `imagesrc` del snapshot, que además
   viene en `http://`): `<BASE>/<NN>/<code>.jpg`, donde `NN` son los 2 primeros dígitos del código
-  (el set). Ej.: `02036` → `<BASE>/02/02036.jpg`.
+  (el set). Ej.: `02036` → `<BASE>/02/02036.jpg`. **Patrón verificado 2026-07-26** contra el host
+  real: `https://…/en/02/02036.jpg` responde `200 image/jpeg`.
 - `BASE` es **configurable** (constante leída de `import.meta.env.VITE_CARD_IMAGE_BASE`, con default
   al de ARH). Así, si ARH cae, apuntar a un **mirror propio** (S3/CDN/GitHub Releases) es cambiar una
   variable, sin tocar código. **Debe ser `https`** (en GitHub Pages, una imagen `http://` se bloquea
-  por mixed-content).
+  por mixed-content; el default https ya lo cumple).
 - Default: `https://db.swdrenewedhope.com/bundles/app/images/cards/en`.
 
 ## Criterios de aceptación
@@ -29,13 +36,15 @@ No se bundlean imágenes en el repo (serían ~226 MB).
 Verificables jugando. Formato: acción → resultado observable.
 
 - [ ] En la sección DB, elegir una carta → en su ficha aparece la **imagen** de la carta (además de
-      los datos de texto), con la red disponible.
-- [ ] Ver una carta y luego cortar la red (DevTools → Network → Offline) y **volver a abrirla** → la
-      imagen **sigue mostrándose** (servida desde IndexedDB), sin pedir red.
+      los datos de texto), con la red disponible. Mientras carga se ve un **placeholder** (no un
+      hueco roto).
+- [ ] Ver una carta (con el Service Worker ya activo, tras la primera carga/recarga) y luego cortar
+      la red (DevTools → Network → Offline) y **volver a abrirla** → la imagen **sigue mostrándose**
+      (servida por el Service Worker desde Cache Storage), sin pedir red.
 - [ ] Abrir una carta **nunca vista** estando **offline** → no hay imagen; la ficha muestra el
       detalle de **texto** (fallback), sin error ni imagen rota.
 - [ ] Recargar la página tras haber visto varias cartas y ponerse offline → esas cartas siguen
-      mostrando imagen (IndexedDB persiste entre recargas), las no vistas caen a texto.
+      mostrando imagen (Cache Storage persiste entre recargas), las no vistas caen a texto.
 - [ ] Cambiar `VITE_CARD_IMAGE_BASE` a otra base (mirror) y reconstruir → las imágenes se piden a esa
       base (verificable en Network), sin tocar más código.
 
@@ -55,34 +64,52 @@ Verificables jugando. Formato: acción → resultado observable.
 
 ## Casos límite
 
-- **Carta sin imagen en el origen** (404): fallback a texto, sin imagen rota; **no** se cachea el
-  404 (para reintentar si el mirror la añade luego).
-- **Código de dos caras** (`13015A`): la URL usa el `code` tal cual (`.../13/13015A.jpg`); si el
-  origen no la tiene, cae a texto como cualquier 404.
-- **IndexedDB no disponible** (modo privado estricto, cuota llena): se degrada a solo-red (cache del
-  navegador), sin romper; la imagen se muestra si hay red, si no, texto.
-- **Cambiar de carta rápido** en la ficha: al seleccionar otra carta antes de que cargue la anterior,
-  no debe pintarse la imagen de la carta equivocada (cancelar/ignorar la carga obsoleta).
-- **Base mal configurada / mirror caído**: fallo de red → fallback a texto, igual que offline.
+- **Carta sin imagen en el origen** (404): fallback a texto vía `onError` del `<img>`, sin imagen
+  rota. El SW **no** cachea respuestas de error (solo `ok` u opacas de imagen real), para reintentar
+  si el mirror la añade luego. **Verificado 2026-07-26:** los códigos de dos caras (`13015A`) dan
+  404 en el host → siempre caen a texto.
+- **Código de dos caras** (`13015A`): la URL usa el `code` tal cual (`.../13/13015A.jpg`); el origen
+  no la tiene (404) → texto.
+- **Service Worker no disponible** (navegador viejo, o no registrado aún en la 1ª visita antes de la
+  primera recarga): la imagen se sigue **mostrando** vía `<img>` con la red; simplemente no hay cache
+  offline gestionado por SW hasta que esté activo (degradación, no rotura). Se verifica a mano viendo
+  que con red la imagen aparece aunque el SW no controle todavía la página.
+- **Cambiar de carta rápido** en la ficha: como la imagen se pinta con `<img src={urlDeLaCartaActual}>`,
+  al seleccionar otra carta React cambia el `src`; el `onLoad`/`onError` van ligados a la carta
+  actual, así que no se queda pintada la imagen de una carta anterior.
+- **Base mal configurada / mirror caído**: fallo de red/`onError` → fallback a texto, igual que
+  offline.
+- **Red muy lenta / petición colgada**: no se pone timeout manual sobre el `<img>` (riesgo aceptado);
+  el `onError` del navegador acaba disparando el fallback si la carga falla. Mientras tanto se ve el
+  placeholder, no un spinner infinito bloqueante (el resto de la ficha —texto— ya está visible).
 
 ## Notas técnicas (opcional)
 
 - **URL**: helper `cardImageUrl(code)` en `src/data/cardImages.ts` (o similar) que compone
   `<BASE>/<code.slice(0,2)>/<code>.jpg`. `BASE` de `import.meta.env.VITE_CARD_IMAGE_BASE ??` default
   https de ARH.
-- **Cache IndexedDB**: pequeño wrapper (sin librería externa) con un object store `card-images`
-  (clave = `code`, valor = `Blob`). Flujo al mostrar la ficha: (1) buscar en IndexedDB → si está,
-  `URL.createObjectURL(blob)`; (2) si no, `fetch(url)` → si `ok`, guardar el blob en IndexedDB y
-  mostrar; (3) si falla (offline/404), no mostrar imagen (fallback a texto). Revocar los object URLs
-  al cambiar de carta/desmontar. Usar un flag "carta actual" para ignorar respuestas obsoletas.
-- **Componente**: `CardImage({ code })` que encapsula ese flujo y su estado (cargando/imagen/sin
-  imagen); se inserta en la ficha de `DbSection` por encima de los datos de texto, que **siempre**
-  se renderizan (así el fallback es automático).
+- **Mostrar**: componente `CardImage({ code })` con un `<img src={cardImageUrl(code)}>` (NO
+  `fetch`+blob: el host no manda CORS). Estado local: `loading`/`loaded`/`error`; en `error` (404 o
+  red) se oculta el `<img>` y no se muestra nada (la ficha ya renderiza el texto debajo, fallback
+  automático); mientras `loading`, un placeholder. Se inserta en la ficha de `DbSection` por encima
+  de los datos de texto, que **siempre** se renderizan.
+- **Cache offline — Service Worker**: `public/sw.js` (fichero estático servido tal cual). Registrarlo
+  en el arranque de la app (`navigator.serviceWorker.register('<base>/sw.js')`, con el `base`
+  `/SWDestiny/` de Vite; solo si `'serviceWorker' in navigator`). En su evento `fetch`, para las
+  peticiones cuyo destino sea `image` **y** la URL empiece por la base de imágenes: **cache-first** —
+  `caches.match` → si está, servir; si no, `fetch(req)` (modo por defecto → respuesta **opaca**, no
+  necesita CORS), y si la respuesta es `ok` **u opaca** (`type === 'opaque'`), `cache.put` en un
+  cache `card-images-v1` y servirla; los errores no se cachean. Nota: las respuestas opacas ocupan
+  con padding en la cuota, pero las imágenes son pequeñas; aceptable.
 - **Script de mirror (dev, opcional, no shipped)**: `scripts/download-card-images.mjs` que recorre
   los códigos del snapshot y descarga cada `<BASE_ARH>/<NN>/<code>.jpg` a una carpeta local, para
-  poder subirlas a un hosting propio y apuntar `VITE_CARD_IMAGE_BASE` ahí. No se ejecuta en build/CI;
-  es la "puerta abierta" a no depender de ARH (BACKLOG 2026-07-26).
-- **Sin cambios** en el snapshot ni en la lógica de juego; es puramente presentación en la sección DB.
+  poder subirlas a un hosting propio (idealmente **con CORS**, lo que además habilitaría técnicas de
+  cache más ricas) y apuntar `VITE_CARD_IMAGE_BASE` ahí. No se ejecuta en build/CI; es la "puerta
+  abierta" a no depender de ARH (BACKLOG 2026-07-26).
+- **Sin cambios** en el snapshot ni en la lógica de juego; es presentación en la sección DB + un
+  Service Worker para el cache de imágenes.
+- **SDD**: actualizar la mención de IndexedDB (hoy "opción futura") para reflejar que el cache de
+  imágenes se hace con Service Worker + Cache Storage.
 
 ## Nota de tamaño (regla 4 CLAUDE.md)
 
