@@ -1,5 +1,5 @@
-// Modelo interno mínimo de SPEC-001. `points` se omite a propósito: ningún criterio
-// de aceptación lo verifica en v1 (ver docs/specs/001-importar-mazos-modelo.md).
+// Modelo interno de carta: los 7 campos de juego de SPEC-001 + campos opcionales de presentación
+// para la sección DB (SPEC-032), incluido `points`, que se muestra en la ficha del navegador.
 
 export interface Die {
   /** Las 6 caras tal cual las da ARH DB, p. ej. ["2MD", "2Sh", "1R", "Sp", "Sp", "-"]. */

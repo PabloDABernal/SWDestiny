@@ -1,5 +1,6 @@
 // Regenera el snapshot local de cartas (SPEC-030): baja el bulk de ARH DB y escribe
-// src/data/cards.json recortado a los 7 campos que usa el juego (ArhCard), como mapa
+// src/data/cards.json recortado a los campos de ArhCard: los 7 de juego (SPEC-001) + los de
+// presentación de la sección DB (SPEC-032: faction/set/affiliation/points/text), como mapa
 // { "<code>": {..} } ordenado por código para diffs limpios.
 //
 // Uso: npm run cards:snapshot
