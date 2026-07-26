@@ -19,14 +19,17 @@ Verificables jugando. Formato: acción → resultado observable.
 
 ### Crear
 
-- [ ] En la sección DB hay un botón **"Crear mazo"** que abre el **constructor**: a un lado el
+- [ ] En la cabecera del explorador de mazos (SPEC-036), junto a "Importar mazo", hay un botón
+      **"Crear mazo"** que abre el **constructor**: a un lado el
       navegador de cartas (buscar por nombre + filtros tipo/facción/set, SPEC-032/036), al otro el
       **mazo en construcción** (vacío al empezar) con un campo de **nombre**.
 - [ ] Añadir una carta (botón `+` en su fila) la mete en el mazo con cantidad 1; volver a añadirla
       sube la cantidad; `−` la baja y a 0 la quita. El mazo en construcción refleja los cambios.
 - [ ] El mazo en construcción muestra **contadores**: **puntos** de los personajes (usando el valor
-      elite cuando un personaje único va a 2), **nº de cartas** de mazo (no-personaje, no-battlefield)
-      y avisa (marca suave) de cartas con **más de 2 copias** — todo informativo, **no bloquea**.
+      elite cuando un personaje único va a 2; puntos negativos —existen en el snapshot, p. ej. `"-2"`—
+      se suman tal cual, el total puede quedar negativo, es informativo), **nº de cartas** de mazo
+      (no-personaje, no-battlefield) y una **marca suave** en las cartas con **más de 2 copias**
+      (color/etiqueta, detalle de implementación) — todo informativo, **no bloquea**.
 - [ ] Los personajes y el/los battlefield se muestran separados de las cartas de mazo en el panel.
 - [ ] Con un nombre puesto y **al menos un personaje**, **"Guardar"** añade el mazo a la biblioteca
       (aparece en el explorador como "guardado") y se puede cargar en "Jugar → Elegir mazo".
@@ -36,8 +39,10 @@ Verificables jugando. Formato: acción → resultado observable.
 
 - [ ] En el explorador, un mazo **guardado** tiene **"Editar"** que lo abre en el constructor con sus
       cartas ya cargadas; al guardar, **actualiza ese mismo mazo** (mismo id, no crea un duplicado).
-- [ ] Los mazos **precargados y de comunidad** no se editan directamente; pero se puede **"Duplicar a
-      mi biblioteca"** (crea una copia guardada editable) — así se parte de uno existente.
+- [ ] Los mazos **precargados y de comunidad** no se editan directamente; pero se puede **"Duplicar"**
+      que **abre el constructor** con sus cartas ya cargadas y el nombre prefijado "Copia de &lt;nombre&gt;"
+      (editable), **sin** `editingId`: al Guardar crea un mazo **nuevo** en la biblioteca (no toca el
+      original). Así se parte de uno existente.
 
 ## Fuera de alcance (explícito)
 
@@ -62,6 +67,9 @@ Verificables jugando. Formato: acción → resultado observable.
 - **Personaje único a cantidad 2**: se considera **elite** en el contador de puntos (mismo criterio
   que `buildCharacters`, SPEC-001); a 3+ el contador lo refleja igual pero es informativo.
 - **Guardar una edición sin cambios**: reescribe el mismo mazo con el mismo contenido (no rompe).
+- **Editar un mazo con un código no resoluble en el snapshot** (import antiguo, snapshot regenerado):
+  en el panel del constructor se muestra el **código crudo**, se puede **quitar** con `−`, y **no**
+  bloquea el guardado (no cuenta como personaje a efectos del contador/guard de ≥1 personaje).
 - **Nombre duplicado** con otro guardado: se permite (ids distintos), igual que SPEC-032.
 
 ## Notas técnicas (opcional)
@@ -75,10 +83,12 @@ Verificables jugando. Formato: acción → resultado observable.
   no-battlefield; copias = marcar `qty > 2`.
 - **Guardar**: nueva acción de store `upsertLibraryDeck({ id?, name, slots })`: si `id` existe en
   `library`, lo **reemplaza** (mismo id); si no, crea uno nuevo (id `crypto.randomUUID()`). Persiste
-  con `persistLibrary` (SPEC-032). "Duplicar a mi biblioteca" = `upsertLibraryDeck` sin id con los
-  slots del preset/comunidad.
-- **Abrir para editar**: desde el explorador (SPEC-036), botón "Editar" en guardados y "Duplicar" en
-  bundleados; ambos abren el constructor precargando `slots` (y `editingId` solo en "Editar").
+  con `persistLibrary` (SPEC-032). El constructor llama a `upsertLibraryDeck` con su `editingId`
+  (Editar) o sin id (Crear/Duplicar) al pulsar Guardar. **Editar cambia el nombre manteniendo el id**
+  — esto supera de forma natural el "renombrar = borrar y volver a guardar" que SPEC-032 dejó fuera.
+- **Abrir el constructor**: desde el explorador (SPEC-036), botón "Editar" en guardados (precarga
+  `slots` + `editingId`) y "Duplicar" en bundleados (precarga `slots`, nombre "Copia de …", **sin**
+  `editingId`); "Crear mazo" abre el constructor vacío. Ninguno guarda hasta pulsar Guardar.
 - **UI**: el constructor puede ser una vista/modo dentro de la sección DB (oculta el explorador
   mientras construyes, con "Volver"). Render del navegador acotado como ya se hace (limit + más).
 - Sin cambios en el pipeline de import a bando ni en el estado de partida.

@@ -350,8 +350,9 @@ la DB se pule: importar es un botón+pop-up; la biblioteca pasa a ser un **explo
 solo lectura con **todos** los mazos (precargados+comunidad+guardados), un buscador único (nombre/
 personaje/carta) y la vista de cartas de cada mazo (cargar a un bando sigue solo en "Jugar"); y el
 navegador de cartas gana filtro por set. Desde SPEC-037 la DB incluye un **deck-builder**: crear
-mazos carta a carta y editar los guardados (libre, sin forzar las reglas de construcción —solo
-contadores de puntos/cartas/copias—), guardándolos en la biblioteca. Desde SPEC-034 la ficha del navegador muestra la
+mazos carta a carta, editar los guardados y **duplicar** un precargado/comunidad como copia editable
+(libre, sin forzar las reglas de construcción —solo contadores de puntos/cartas/copias—), guardándolos
+en la biblioteca. Desde SPEC-034 la ficha del navegador muestra la
 **imagen** de la carta (`<img>`), descargada bajo demanda de ARH (o de un mirror con base URL
 configurable) y cacheada por un **Service Worker** (el host de ARH no manda CORS, así que se cachean
 respuestas opacas) para funcionar offline en las ya vistas; si no hay imagen, cae al detalle de texto.
