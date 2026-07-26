@@ -327,7 +327,9 @@ no-único duplicado (dados independientes por copia).
 
 ### Formatos de import aceptados
 
-El textarea de importar acepta dos formatos, detectados automáticamente:
+Pegar un mazo se hace en la sección DB (SPEC-033: va a la biblioteca); en la pantalla de juego cada
+bando solo elige un mazo con un selector-buscador (precargados + biblioteca). El textarea de importar
+acepta dos formatos, detectados automáticamente:
 - **JSON con `slots`** (código→cantidad) de ARH DB (SPEC-001).
 - **"Text file"** de ARH DB (el que genera el botón "Download"): listado legible tipo
   `2x Luminara Unduli, ... (Spirit of Rebellion #36)`, convertido a `slots` internamente
@@ -341,8 +343,10 @@ Una segunda pantalla, accesible con un conmutador "Jugar | DB" arriba, con dos p
 **navegador de cartas** (lista/busca/filtra todas las cartas del snapshot con su ficha: facción,
 set, coste, vida, caras de dado, texto) y una **biblioteca de mazos** (guardar con nombre los mazos
 importados y volver a cargarlos en un bando, además de los precargados). Todo offline. Para el
-navegador, el snapshot se enriquece con facción/set/coste/texto. No incluye deck-builder carta a
-carta ni imágenes de carta (fases futuras).
+navegador, el snapshot se enriquece con facción/set/coste/texto. Desde SPEC-033 la DB es también
+donde se **pega/importa** un mazo nuevo (se resuelve y se guarda en la biblioteca con nombre); la
+pantalla de juego ya no tiene textarea, solo el selector-buscador de mazo por bando. No incluye
+deck-builder carta a carta (BACKLOG) ni imágenes de carta (SPEC-034), fases futuras.
 
 ### Mazos precargados (SPEC-031)
 

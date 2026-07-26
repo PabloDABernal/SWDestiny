@@ -2,6 +2,9 @@
 
 Ideas que surgen durante la implementación. Una línea por idea. NO se implementan hasta que se conviertan en spec.
 
+- Deck-builder: crear mazos carta a carta desde la sección DB (elegir personajes + 30 cartas + battlefield, guardarlos en la biblioteca), en vez de solo importar/pegar. Feature futura pedida por el usuario (2026-07-26); va después de la reorg de import (SPEC-033) y las imágenes (SPEC-034).
+- Imágenes de carta on-demand: mostrar la imagen real (`imagesrc` de ARH, ~76KB/carta, ~226MB en total → no se bundlean) en la ficha del navegador DB, cargada bajo demanda con fallback a la ficha de texto offline, y cache opcional en IndexedDB de las vistas. Decidido con el usuario (2026-07-26); será SPEC-034.
+
 - Turnos reales alternados: ahora es SPEC-025 (docs/specs/025-turnos-reales-alternados.md), creada el 2026-07-23. Se deja esta línea hasta que se marque completada tras el playtest.
 - Descarte interactivo dentro del mantenimiento automático (RR: "descarta lo que quieras" antes de robar, RR pg 19-20): SPEC-025 quita el botón "Descartar" suelto pero el mantenimiento automático solo roba, sin ningún paso de descarte interactivo (decisión explícita del usuario, 2026-07-23, para no agrandar más esa spec). Pendiente de spec propia futura; reutilizar el patrón visual del mulligan (checkboxes + confirmar, SPEC-024) parece el candidato natural.
 - ~~Símbolos de dado que faltan por implementar: caras que quitan recursos o cartas (de la mano) al rival~~ — **Resuelto en SPEC-029** (2026-07-26): disrupt (`Dr`) y descarte (`Dc`) implementados y jugados, para jugador y autómata.
