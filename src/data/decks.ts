@@ -1,4 +1,5 @@
 import type { DeckSlot } from '../import/parseDeck';
+import { COMMUNITY_DECKS } from './communityDecks';
 
 // Mazos precargados (SPEC-031): decklists fijos empaquetados con el juego, elegibles desde el
 // desplegable "Mazos de ejemplo" de cada bando. Todos los códigos están en el snapshot local
@@ -61,7 +62,10 @@ export const PRESET_DECKS: PresetDeck[] = [
   },
 ];
 
-/** Busca un mazo precargado por id (o null si no existe). */
+/** Busca un mazo bundleado por id, entre los precargados y los de la comunidad (SPEC-035). Los ids
+ * de comunidad son numéricos y no colisionan con los de palabra de PRESET_DECKS. */
 export function getPresetDeck(id: string): PresetDeck | null {
-  return PRESET_DECKS.find((d) => d.id === id) ?? null;
+  const preset = PRESET_DECKS.find((d) => d.id === id);
+  if (preset) return preset;
+  return COMMUNITY_DECKS.find((d) => d.id === id) ?? null;
 }

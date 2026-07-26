@@ -847,3 +847,15 @@ button:disabled {
   font-size: 0.85rem;
   padding: 24px 0;
 }
+
+/* Selector de mazo: recuento y "mostrar más" (SPEC-035, cientos de mazos de comunidad). */
+.deck-picker__count {
+  color: #8a90a0;
+  font-size: 0.8rem;
+  margin: 4px 0;
+}
+.deck-picker__more {
+  width: 100%;
+  padding: 6px;
+  font-size: 0.85rem;
+}

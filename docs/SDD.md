@@ -60,7 +60,10 @@ ecosistema de componentes de tablero/dados ya hechos.)*
   import se reorganiza: en la pantalla de juego cada bando tiene un `DeckPicker` (buscador de
   precargados + biblioteca) en vez de textarea; pegar un mazo nuevo vive en la sección DB
   (`importToLibrary(raw, name)`, estado propio `libraryImportStatus`/`libraryImportError`, resuelve
-  y guarda en la biblioteca sin tocar `sides`).
+  y guarda en la biblioteca sin tocar `sides`). SPEC-035 bundlea además un lote grande de **mazos de
+  la comunidad** (`src/data/communityDecks.json`, generado por `scripts/build-community-decks.mjs`,
+  filtrados para cargar offline); `getPresetDeck` los busca junto a los precargados, y el `DeckPicker`
+  los lista (etiqueta "comunidad", render acotado + buscador).
   `buildCharacters` sigue quedándose solo con las de
   `type_code === 'character'`; desde SPEC-016, `buildDrawPile` construye además el mazo de robo
   (todo lo que no sea personaje, trama ni campo de batalla) con esas mismas cartas ya resueltas, sin

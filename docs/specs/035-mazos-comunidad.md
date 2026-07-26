@@ -24,9 +24,11 @@ cientos es barato en peso.
   colisiona con los ids de palabra de los precargados (`unduli`, `zuckuss-bounty`, `vader-force`), así
   que `getPresetDeck` puede buscar en ambos arrays sin ambigüedad. (Regla: los precargados usan ids de
   palabra; la comunidad, ids numéricos.)
-- **Techo de volumen**: el script escanea ids `1..3000` y **para tras 200 vacíos consecutivos**;
-  además se **acota el bundle a un máximo de 1000 mazos** (si tras el filtro pasaran más, se quedan
-  los primeros 1000 por id) para acotar el peso del JSON. Con eso el bundle queda bajo ~1 MB.
+- **Volumen**: el script escanea **todos** los ids (`1..5000`, parando tras 300 vacíos consecutivos)
+  y bundlea **todos** los mazos que pasan el filtro (decisión del usuario 2026-07-26: traerlos todos,
+  no solo los ids bajos, para mejorar la cobertura de personajes de sets nuevos). Hay un tope de
+  seguridad muy alto (10000) que en la práctica no se alcanza. Peso real ~1–1.5 MB crudo (~150–200 KB
+  gzip); build puede avisar de chunk grande (aceptable).
 - **Filtro de calidad** (heurística de curación de datos, ajustable al implementar; no es regla de
   juego): se descarta el mazo si no tiene al menos 1 personaje, si tiene menos de **~20** cartas de
   no-personaje (umbral para colar incompletos/tests, cerca del mínimo reglamentario de 30 pero
@@ -106,4 +108,5 @@ de descarga del script, no líneas de código.
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+(pendiente de jugar; implementación: **2107 mazos** bundleados de ARH, cobertura 512/572 personajes,
+60 sin mazo → target de SPEC-036; JSON 1.3 MB / ~160 KB gzip.)

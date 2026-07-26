@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useGameStore, type Side } from '../store/gameStore';
 import { PRESET_DECKS } from '../data/decks';
+import { COMMUNITY_DECKS } from '../data/communityDecks';
+
+const PAGE = 50; // cuántos mazos se pintan de golpe (SPEC-035: cientos de comunidad)
 
 /** Normaliza para buscar: minúsculas y sin acentos. */
 function norm(s: string): string {
@@ -31,11 +34,14 @@ export function DeckPicker({ side, label }: { side: Side; label: string }) {
   const hasDeck = useGameStore((s) => s.sides[side].characters.length > 0);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [limit, setLimit] = useState(PAGE);
 
+  // Orden: precargados → guardados → comunidad. `kind` decide cómo se carga y la etiqueta.
   const entries = useMemo(
     () => [
-      ...PRESET_DECKS.map((d) => ({ id: d.id, name: d.name, preset: true })),
-      ...library.map((d) => ({ id: d.id, name: d.name, preset: false })),
+      ...PRESET_DECKS.map((d) => ({ id: d.id, name: d.name, kind: 'preset' as const })),
+      ...library.map((d) => ({ id: d.id, name: d.name, kind: 'library' as const })),
+      ...COMMUNITY_DECKS.map((d) => ({ id: d.id, name: d.name, kind: 'community' as const })),
     ],
     [library],
   );
@@ -45,11 +51,15 @@ export function DeckPicker({ side, label }: { side: Side; label: string }) {
     return q === '' ? entries : entries.filter((e) => norm(e.name).includes(q));
   }, [entries, query]);
 
-  const choose = (id: string, preset: boolean) => {
-    if (preset) importPreset(side, id);
-    else loadDeckFromLibrary(id, side);
+  const shown = filtered.slice(0, limit);
+
+  const choose = (id: string, kind: 'preset' | 'library' | 'community') => {
+    // Precargados y comunidad son mazos bundleados → importPreset (getPresetDeck busca en ambos).
+    if (kind === 'library') loadDeckFromLibrary(id, side);
+    else importPreset(side, id);
     setOpen(false);
     setQuery('');
+    setLimit(PAGE);
   };
 
   return (
@@ -77,20 +87,32 @@ export function DeckPicker({ side, label }: { side: Side; label: string }) {
               className="deck-picker__search"
               placeholder="Buscar mazo…"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setLimit(PAGE);
+              }}
               aria-label={`Buscar mazo para ${label}`}
               autoFocus
             />
+            <p className="deck-picker__count">{filtered.length} mazos</p>
             <ul className="deck-picker__list">
               {filtered.length === 0 && <li className="deck-picker__empty">Sin resultados.</li>}
-              {filtered.map((e) => (
-                <li key={e.id}>
-                  <button className="deck-picker__item" onClick={() => choose(e.id, e.preset)}>
+              {shown.map((e) => (
+                <li key={`${e.kind}:${e.id}`}>
+                  <button className="deck-picker__item" onClick={() => choose(e.id, e.kind)}>
                     <span className="deck-picker__name">{e.name}</span>
-                    {e.preset && <em className="deck-picker__tag">precargado</em>}
+                    {e.kind === 'preset' && <em className="deck-picker__tag">precargado</em>}
+                    {e.kind === 'community' && <em className="deck-picker__tag">comunidad</em>}
                   </button>
                 </li>
               ))}
+              {filtered.length > shown.length && (
+                <li>
+                  <button className="deck-picker__more" onClick={() => setLimit((n) => n + PAGE)}>
+                    Mostrar más ({filtered.length - shown.length} restantes)
+                  </button>
+                </li>
+              )}
             </ul>
           </div>
         </div>
