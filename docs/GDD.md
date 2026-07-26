@@ -346,7 +346,11 @@ importados y volver a cargarlos en un bando, además de los precargados). Todo o
 navegador, el snapshot se enriquece con facción/set/coste/texto. Desde SPEC-033 la DB es también
 donde se **pega/importa** un mazo nuevo (se resuelve y se guarda en la biblioteca con nombre); la
 pantalla de juego ya no tiene textarea, solo el selector-buscador de mazo por bando. No incluye
-deck-builder carta a carta (BACKLOG) ni imágenes de carta (SPEC-034), fases futuras.
+deck-builder carta a carta (BACKLOG), fase futura. Desde SPEC-034 la ficha del navegador muestra la
+**imagen** de la carta, descargada bajo demanda de ARH (o de un mirror con base URL configurable) y
+cacheada en IndexedDB para funcionar offline en las ya vistas; si no hay imagen, cae al detalle de
+texto. Las imágenes no se bundlean (~226 MB); un script de dev permite descargarlas para alojarlas en
+un mirror propio si ARH desaparece.
 
 ### Mazos precargados (SPEC-031)
 
