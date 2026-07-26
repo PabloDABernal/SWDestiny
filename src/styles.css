@@ -45,6 +45,19 @@ h1 {
   margin-top: 0;
 }
 
+.import-panel__preset {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+  background: #0f1117;
+  color: #e6e8ee;
+  border: 1px solid #2a2e3a;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
 .import-panel__textarea {
   width: 100%;
   box-sizing: border-box;

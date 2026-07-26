@@ -46,6 +46,9 @@ ecosistema de componentes de tablero/dados ya hechos.)*
   regenerado con `npm run cards:snapshot`, cargado síncrono vía `src/data/cards.ts`) cubre offline
   todo lo publicado hasta su fecha; la API solo se usa como respaldo para códigos que no estén en él.
   `readCache` (lectura síncrona de nombres para la mano) consulta también el snapshot primero.
+  El pipeline se comparte vía `importSlots(side, slots)`: `importDeck` parsea el texto pegado y
+  delega; `importPreset(side, id)` importa uno de los mazos precargados de `src/data/decks.ts`
+  (SPEC-031, elegibles desde un `<select>` por bando), reusando exactamente el mismo camino offline.
   `buildCharacters` sigue quedándose solo con las de
   `type_code === 'character'`; desde SPEC-016, `buildDrawPile` construye además el mazo de robo
   (todo lo que no sea personaje, trama ni campo de batalla) con esas mismas cartas ya resueltas, sin

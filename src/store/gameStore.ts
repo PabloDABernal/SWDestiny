@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import type { Character } from '../model/types';
-import { parseDeck } from '../import/parseDeck';
+import { parseDeck, type DeckSlot } from '../import/parseDeck';
 import { parseTextDeck } from '../import/parseTextDeck';
+import { getPresetDeck } from '../data/decks';
 import { resolveCards } from '../import/resolveCards';
 import { buildCharacters } from '../import/buildCharacters';
 import { buildDrawPile, shuffle } from '../import/buildDrawPile';
@@ -892,6 +893,10 @@ interface GameState {
   /** Solo afecta a la PRÓXIMA importación del enemigo (vida); el reroll extra aplica de inmediato. */
   setDifficulty: (difficulty: Difficulty) => void;
   importDeck: (side: Side, raw: string) => Promise<void>;
+  /** Importa un mazo ya en forma de slots (núcleo compartido por importDeck e importPreset). */
+  importSlots: (side: Side, slots: DeckSlot[]) => Promise<void>;
+  /** Importa uno de los mazos precargados por id (SPEC-031). No-op si el id no existe. */
+  importPreset: (side: Side, id: string) => Promise<void>;
   /** Reparte 5 cartas a cada bando (o las que haya) desde su mazo de robo y abre el mulligan del
    * jugador (SPEC-024). No-op si la partida ya terminó o si algún bando no está en estado fresco
    * (mazo importado y mano vacía en ambos). */
@@ -1053,13 +1058,33 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   importDeck: async (side: Side, raw: string) => {
+    // Autodetección de formato (SPEC-017): JSON con `slots` si empieza por "{"; si no, el
+    // "text file" legible de ARH DB. Ambos producen el mismo DeckSlot[].
+    let slots: DeckSlot[];
+    try {
+      slots = raw.trim().startsWith('{') ? parseDeck(raw) : parseTextDeck(raw);
+    } catch (e) {
+      const message = e instanceof ImportError ? e.message : 'Error inesperado al importar el mazo.';
+      set((state) => ({
+        sides: { ...state.sides, [side]: { ...state.sides[side], importStatus: 'idle', importError: message } },
+      }));
+      return;
+    }
+    await get().importSlots(side, slots);
+  },
+
+  importPreset: async (side: Side, id: string) => {
+    // SPEC-031: los precargados ya vienen en forma de slots; reutilizan el mismo pipeline offline.
+    const preset = getPresetDeck(id);
+    if (!preset) return;
+    await get().importSlots(side, preset.slots);
+  },
+
+  importSlots: async (side: Side, slots: DeckSlot[]) => {
     set((state) => ({
       sides: { ...state.sides, [side]: { ...state.sides[side], importStatus: 'importing', importError: null } },
     }));
     try {
-      // Autodetección de formato (SPEC-017): JSON con `slots` si empieza por "{"; si no, el
-      // "text file" legible de ARH DB. Ambos producen el mismo DeckSlot[].
-      const slots = raw.trim().startsWith('{') ? parseDeck(raw) : parseTextDeck(raw);
       const cards = await resolveCards(slots);
       const built = buildCharacters(slots, cards);
       // Trampa (GDD §4): la vida del bando enemigo se multiplica al importar, según la dificultad
