@@ -1,6 +1,6 @@
 # SPEC-025: Turnos reales alternados
 
-**Estado:** Pendiente
+**Estado:** Completada
 **Sección del GDD:** Bloque nuevo (reordenado 2026-07-23) tras SPEC-024; sustituye el estand-in de
 "Nueva ronda"/"Turno enemigo" por la fase de acción real (RR pg 19-22,
 `docs/reglamento/04-estructura-y-customizacion.md`).
@@ -176,4 +176,7 @@ que decida quién empieza).
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+Completada (cerrada en la auditoría del 2026-07-26). Se dejó "Pendiente" por bookkeeping, pero los
+turnos reales alternados (turn/passStreak/pass/afterApply) llevan usándose y jugándose de facto como
+base de todas las specs posteriores (SPEC-028 a SPEC-033, jugadas y completadas encima de ellos);
+confirmado por el usuario que quedó cubierta por ese uso continuo.

@@ -1,6 +1,6 @@
 # SPEC-027: Modificador genérico (+X*)
 
-**Estado:** Pendiente
+**Estado:** Completada
 **Sección del GDD:** §3 (símbolos de dado y modificadores, corrige SPEC-010)
 **Depende de:** SPEC-010 (modificadores `+X` atados a símbolo), SPEC-013 (autómata combina
 modificadores y costes)
@@ -80,4 +80,7 @@ sea cual sea el símbolo base marcado (menos especial, que tiene valor fijo no m
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+Completada (cerrada en la auditoría del 2026-07-26). Se dejó "Pendiente" por bookkeeping, pero el
+modificador genérico `+X*` (Lure of Power) está implementado y testeado (`parsePlayerFace`/autómata)
+y se ha jugado de facto en specs posteriores; confirmado por el usuario que quedó cubierta por ese
+uso continuo.
