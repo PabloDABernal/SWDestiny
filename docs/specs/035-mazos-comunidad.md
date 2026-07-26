@@ -20,9 +20,18 @@ cientos es barato en peso.
   el script para tras una racha larga de vacíos).
 - Cada decklist trae `characters` y `slots` (ambos `{código: {quantity, dice}}`); se **combinan** en
   un `DeckSlot[]` (`{code, qty}`), personajes incluidos.
-- **Filtro de calidad** (para no meter basura/tests/incompletos): se descarta el mazo si no tiene al
-  menos 1 personaje, si tiene menos de 20 cartas de no-personaje, si su nombre está vacío, o si
-  **algún código no está en el snapshot** (SPEC-030) — esto último garantiza que todos cargan offline.
+- **id del mazo de comunidad**: el id numérico de ARH **como string** (p. ej. `"1"`, `"146"`). Nunca
+  colisiona con los ids de palabra de los precargados (`unduli`, `zuckuss-bounty`, `vader-force`), así
+  que `getPresetDeck` puede buscar en ambos arrays sin ambigüedad. (Regla: los precargados usan ids de
+  palabra; la comunidad, ids numéricos.)
+- **Techo de volumen**: el script escanea ids `1..3000` y **para tras 200 vacíos consecutivos**;
+  además se **acota el bundle a un máximo de 1000 mazos** (si tras el filtro pasaran más, se quedan
+  los primeros 1000 por id) para acotar el peso del JSON. Con eso el bundle queda bajo ~1 MB.
+- **Filtro de calidad** (heurística de curación de datos, ajustable al implementar; no es regla de
+  juego): se descarta el mazo si no tiene al menos 1 personaje, si tiene menos de **~20** cartas de
+  no-personaje (umbral para colar incompletos/tests, cerca del mínimo reglamentario de 30 pero
+  tolerante), si su nombre está vacío, o si **algún código no está en el snapshot** (SPEC-030) — esto
+  último garantiza que todos cargan offline.
 - **Dedupe**: mazos con exactamente el mismo conjunto de cartas (código→cantidad) se cuentan una vez
   (varios usuarios suben copias); se queda el primero.
 - Salida: `src/data/communityDecks.json` (array `{ id, name, slots }`), y por consola un **informe de
@@ -40,6 +49,9 @@ Verificables jugando. Formato: acción → resultado observable.
 - [ ] La búsqueda del selector filtra también los mazos de la comunidad por nombre.
 - [ ] Los mazos de la comunidad son **fijos**: se pueden cargar pero no borrar (no son de la
       biblioteca del jugador).
+- [ ] Abrir el selector con la comunidad cargada **no se congela ni pinta los cientos de mazos de
+      golpe**: la lista renderiza un tope (p. ej. primeros 50) + "mostrar más"; el buscador acota al
+      instante.
 - [ ] Regenerar con el script vuelve a producir el JSON y el build sigue verde; el informe de
       consola lista los personajes sin mazo.
 
