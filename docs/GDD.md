@@ -361,6 +361,15 @@ de mazo de cada bando (SPEC-033; antes era un desplegable en el panel de importa
 reorg). Se importan igual que un mazo pegado y offline (usan el snapshot, SPEC-030). Son fijos;
 editar/guardar mazos del jugador es la sección "DB" (SPEC-032).
 
+### Mazos de la comunidad (SPEC-035)
+
+Además de los 3 precargados, el juego bundlea un lote grande de **mazos de la comunidad** descargados
+de ARH DB (solo nombre + lista de cartas; los datos salen del snapshot), filtrados para que todos
+carguen offline y sean razonablemente completos. Aparecen en el selector de mazo de cada bando
+(categoría "Comunidad", buscable), cargables como cualquier otro. Garantizar **un mazo por cada
+personaje** (auto-generando los que falten) es objetivo aparte (SPEC-036); SPEC-035 solo reporta la
+cobertura.
+
 ### Base de datos local de cartas (SPEC-030)
 
 El juego incluye un **snapshot local** de todas las cartas de ARH DB (descargado una vez de su
