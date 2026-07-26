@@ -14,10 +14,13 @@ dificultad desde SPEC-015 — ver GDD hasta SPEC-015)
   sin overhead en runtime). Decidido en SPEC-001.
 - **Zustand** para el estado de partida (personajes, dados, pools, recursos...). Encaja bien con
   el volumen de estado mutable y las transiciones frecuentes de este tipo de juego.
-- **Sin backend en v1.** Todo el estado vive en el cliente. Los datos de cartas/mazos se importan
-  bajo demanda desde la API pública de [ARH DB](https://db.swdrenewedhope.com/api/) y se cachean
-  localmente en **localStorage** (decidido en SPEC-001; IndexedDB queda como opción futura si el
-  volumen lo exige).
+- **Sin backend en v1.** Todo el estado vive en el cliente. Los datos de cartas/mazos salen del
+  **snapshot local** versionado en el repo (SPEC-030), con la API pública de
+  [ARH DB](https://db.swdrenewedhope.com/api/) solo como respaldo; el estado de partida y las
+  bibliotecas se persisten en **localStorage**. Las **imágenes de carta** (SPEC-034) se muestran con
+  `<img>` bajo demanda desde ARH (o un mirror con base URL configurable) y se cachean con un
+  **Service Worker + Cache Storage** (respuestas opacas, el host no manda CORS) para funcionar
+  offline en las ya vistas.
 - Sin persistencia de partidas entre sesiones en v1 (a revisar si se pide más adelante).
 - **Despliegue**: GitHub Pages sirviendo el build estático desde `main` (`.github/workflows/deploy-pages.yml`,
   `vite.config.ts` con `base: '/SWDestiny/'`). En dev, `resolveCards.ts` pasa por el proxy `/arh`

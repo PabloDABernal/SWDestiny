@@ -830,3 +830,20 @@ button:disabled {
   font-size: 0.85rem;
   resize: vertical;
 }
+
+/* Imagen de carta en la ficha DB (SPEC-034). */
+.card-image {
+  margin-bottom: 10px;
+}
+.card-image img {
+  width: 100%;
+  max-width: 320px;
+  border-radius: 8px;
+  display: block;
+}
+.card-image__ph {
+  display: inline-block;
+  color: #8a90a0;
+  font-size: 0.85rem;
+  padding: 24px 0;
+}

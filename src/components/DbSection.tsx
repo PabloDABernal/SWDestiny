@@ -1,8 +1,31 @@
 import { useMemo, useState } from 'react';
 import { useGameStore, type Side } from '../store/gameStore';
 import { getAllCards } from '../data/cards';
+import { cardImageUrl } from '../data/cardImages';
 import { PRESET_DECKS } from '../data/decks';
 import type { ArhCard } from '../model/types';
+
+/** Imagen de carta on-demand (SPEC-034): la muestra con <img> (el host no manda CORS); mientras
+ * carga hay un placeholder; si falla (404/offline/no cacheada), se oculta y la ficha cae a texto.
+ * El estado se resetea al cambiar de `code` (React remonta por `key`). El Service Worker cachea las
+ * vistas para offline. */
+function CardImage({ code }: { code: string }) {
+  const [state, setState] = useState<'loading' | 'loaded' | 'error'>('loading');
+  if (state === 'error') return null;
+  return (
+    <div className={`card-image card-image--${state}`}>
+      {state === 'loading' && <span className="card-image__ph">Cargando imagen…</span>}
+      <img
+        src={cardImageUrl(code)}
+        alt={`Carta ${code}`}
+        loading="lazy"
+        onLoad={() => setState('loaded')}
+        onError={() => setState('error')}
+        style={state === 'loaded' ? undefined : { display: 'none' }}
+      />
+    </div>
+  );
+}
 
 const TYPE_LABEL: Record<string, string> = {
   character: 'Personaje',
@@ -107,6 +130,7 @@ function CardBrowser() {
 
         {selected && (
           <aside className="db-card-detail">
+            <CardImage key={selected.code} code={selected.code} />
             <h3>{selected.name}</h3>
             <p className="db-card-detail__line">
               {TYPE_LABEL[selected.type_code] ?? selected.type_code}

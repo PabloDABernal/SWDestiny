@@ -43,8 +43,10 @@ Verificables jugando. Formato: acción → resultado observable.
       (servida por el Service Worker desde Cache Storage), sin pedir red.
 - [ ] Abrir una carta **nunca vista** estando **offline** → no hay imagen; la ficha muestra el
       detalle de **texto** (fallback), sin error ni imagen rota.
-- [ ] Recargar la página tras haber visto varias cartas y ponerse offline → esas cartas siguen
-      mostrando imagen (Cache Storage persiste entre recargas), las no vistas caen a texto.
+- [ ] Recargar la página tras haber visto varias cartas **con el Service Worker ya activo** (es
+      decir, vistas después de la primera recarga que le da control de la página) y ponerse offline →
+      esas cartas siguen mostrando imagen (Cache Storage persiste entre recargas), las no vistas caen
+      a texto.
 - [ ] Cambiar `VITE_CARD_IMAGE_BASE` a otra base (mirror) y reconstruir → las imágenes se piden a esa
       base (verificable en Network), sin tocar más código.
 
@@ -100,7 +102,9 @@ Verificables jugando. Formato: acción → resultado observable.
   `caches.match` → si está, servir; si no, `fetch(req)` (modo por defecto → respuesta **opaca**, no
   necesita CORS), y si la respuesta es `ok` **u opaca** (`type === 'opaque'`), `cache.put` en un
   cache `card-images-v1` y servirla; los errores no se cachean. Nota: las respuestas opacas ocupan
-  con padding en la cuota, pero las imágenes son pequeñas; aceptable.
+  con padding en la cuota, pero las imágenes son pequeñas; aceptable. **No** usa `self.skipWaiting()`
+  ni `clients.claim()`: el SW controla la página en la siguiente recarga (los criterios ya asumen esa
+  recarga intermedia), sin activación agresiva.
 - **Script de mirror (dev, opcional, no shipped)**: `scripts/download-card-images.mjs` que recorre
   los códigos del snapshot y descarga cada `<BASE_ARH>/<NN>/<code>.jpg` a una carpeta local, para
   poder subirlas a un hosting propio (idealmente **con CORS**, lo que además habilitaría técnicas de
