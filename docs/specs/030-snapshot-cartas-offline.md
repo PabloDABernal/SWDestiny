@@ -27,10 +27,14 @@ carta funciona **offline**, sin depender de que la API esté arriba. Sin cambios
 
 Verificables jugando. Formato: acción → resultado observable.
 
-- [ ] **Import offline**: con la API caída/sin red (simulable en DevTools → Network → "Offline", o
-      bloqueando `db.swdrenewedhope.com`), importar un mazo cuyas cartas estén en el snapshot (p. ej.
-      "Unduli, clone commander") → **importa igual**, con personajes y "Mazo: N" correctos, sin
-      ningún error de red.
+- [ ] **Import offline**: con la red cortada — **DevTools → Network → "Offline"** (importante: en
+      `npm run dev` la llamada a la API pasa por el proxy `/arh` de Vite, server-side; bloquear solo
+      el dominio en el navegador **no** la corta, "Offline" sí) — importar un mazo cuyas cartas estén
+      en el snapshot (p. ej. "Unduli, clone commander") → **importa igual**, con personajes y
+      "Mazo: N" correctos, sin ningún error de red.
+- [ ] **Snapshot gana a la caché**: poner a mano en localStorage (`swd:card:<code>`) una versión
+      alterada de una carta del snapshot (p. ej. cambiar su `name`), importar un mazo que la use → se
+      ve el dato del **snapshot**, no el de la caché.
 - [ ] **Sin llamadas por-carta**: importar un mazo normal **no** genera peticiones a
       `/api/public/card/<code>` para las cartas del snapshot (verificable en Network: 0 requests de
       ese tipo). El único tráfico posible sería para códigos que no estén en el snapshot (ver abajo).
@@ -67,6 +71,13 @@ Verificables jugando. Formato: acción → resultado observable.
   crash) — mismo espíritu defensivo que SPEC-012.
 - **Endpoint masivo caído al regenerar**: el script falla con mensaje claro y **no** sobrescribe el
   snapshot existente con un archivo vacío/parcial.
+- **Carta suelta con datos parciales en el bulk** (le falta alguno de los 7 campos, no es fallo total
+  de la descarga): el script **descarta esa carta** y sigue, avisando por consola cuántas descartó;
+  no aborta el snapshot entero por un registro malo. (Ausencia total de respuesta sí aborta, ver
+  arriba.)
+- **Aviso de chunk grande de Vite**: el import estático del snapshot (~80 KB gzip) engorda el bundle
+  inicial; el build de producción **no debe fallar** por ello (a lo sumo un warning de tamaño de
+  chunk es aceptable). Si Vite lo marca, no es un bloqueante.
 
 ## Notas técnicas (opcional)
 
@@ -83,8 +94,9 @@ Verificables jugando. Formato: acción → resultado observable.
 - **Script de regeneración**: `scripts/build-card-snapshot.mjs` (Node), llamado por
   `npm run cards:snapshot`. Baja `https://db.swdrenewedhope.com/api/public/cards/`, recorta cada
   carta a los 7 campos, escribe `src/data/cards.json` ordenado por código (diffs limpios). Aborta sin
-  escribir si la descarga falla o trae 0 cartas. Un comentario de cabecera anota fecha y nº de
-  cartas de la última regeneración.
+  escribir si la descarga falla o trae 0 cartas; una carta suelta a la que le falte algún campo se
+  descarta y se cuenta en un aviso de consola (no aborta el conjunto). Un comentario de cabecera (o
+  un `_meta` en el JSON) anota fecha y nº de cartas de la última regeneración.
 - **Sin cambio de contrato**: `resolveCards` sigue devolviendo `Map<string, ArhCard>` y el resto del
   pipeline (`buildCharacters`, `buildDrawPile`, `parseTextDeck`) no cambia.
 
