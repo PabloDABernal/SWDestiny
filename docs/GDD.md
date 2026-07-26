@@ -335,6 +335,13 @@ El textarea de importar acepta dos formatos, detectados automáticamente:
   la base de datos local de cartas (ver abajo); el text file no aporta datos de juego, solo qué
   cartas y cuántas.
 
+### Mazos precargados (SPEC-031)
+
+El juego trae **3 mazos de ejemplo** listos para jugar (el héroe de referencia Unduli + 2 villanos,
+uno de ellos con caras disrupt/descarte para probar SPEC-029), elegibles desde un desplegable en el
+panel de importar de cada bando. Se importan igual que un mazo pegado y offline (usan el snapshot,
+SPEC-030). Son fijos; editar/guardar mazos del jugador es la sección "DB" (SPEC-032).
+
 ### Base de datos local de cartas (SPEC-030)
 
 El juego incluye un **snapshot local** de todas las cartas de ARH DB (descargado una vez de su
