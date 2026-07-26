@@ -2,6 +2,7 @@
 
 Ideas que surgen durante la implementación. Una línea por idea. NO se implementan hasta que se conviertan en spec.
 
+- App offline / PWA: cachear el app shell (HTML/JS/CSS) con el Service Worker para que la app entera funcione sin red (hoy solo se cachean las imágenes de carta, SPEC-034; recargar offline muestra el dinosaurio de Chrome) y sea instalable. Detectado jugando SPEC-034 (2026-07-26).
 - Texto de carta con markup literal en la ficha DB: el campo `text` del snapshot trae etiquetas HTML/BBCode (`<i>Sith</i>`, `[special]`, `[force]`…) que se muestran tal cual en `.db-card-detail__text` (`DbSection.tsx`). Quedaría mejor parsear/renderizar esos símbolos (o al menos quitar las etiquetas `<i>`/`<b>`). Detectado jugando SPEC-034 (2026-07-26).
 
 - Deck-builder: crear mazos carta a carta desde la sección DB (elegir personajes + 30 cartas + battlefield, guardarlos en la biblioteca), en vez de solo importar/pegar. Feature futura pedida por el usuario (2026-07-26); va después de la reorg de import (SPEC-033) y las imágenes (SPEC-034).

@@ -43,10 +43,11 @@ Verificables jugando. Formato: acción → resultado observable.
       (servida por el Service Worker desde Cache Storage), sin pedir red.
 - [ ] Abrir una carta **nunca vista** estando **offline** → no hay imagen; la ficha muestra el
       detalle de **texto** (fallback), sin error ni imagen rota.
-- [ ] Recargar la página tras haber visto varias cartas **con el Service Worker ya activo** (es
-      decir, vistas después de la primera recarga que le da control de la página) y ponerse offline →
-      esas cartas siguen mostrando imagen (Cache Storage persiste entre recargas), las no vistas caen
-      a texto.
+- [ ] La persistencia del cache de imágenes sobrevive a recargas **online**: con el SW activo, ver
+      cartas, recargar (online) y volver a la DB → esas imágenes ya no piden red (Cache Storage
+      persiste). *(Nota: recargar la página **estando offline** NO carga la app — el app shell no se
+      cachea; hacer la app entera offline/instalable es una PWA fuera del alcance de esta spec, ver
+      abajo.)*
 - [ ] Cambiar `VITE_CARD_IMAGE_BASE` a otra base (mirror) y reconstruir → las imágenes se piden a esa
       base (verificable en Network), sin tocar más código.
 
@@ -60,6 +61,10 @@ Verificables jugando. Formato: acción → resultado observable.
   se ven cartas, no de una tacada.
 - **Imágenes en el tablero de juego** (fichas de personaje, mano): esta spec es solo la ficha de la
   sección DB. Llevar imágenes al juego es otra spec.
+- **App offline / PWA** (cachear el app shell HTML/JS/CSS para que la app entera funcione sin red y
+  sea instalable): fuera de alcance. El Service Worker de esta spec cachea **solo las imágenes de
+  carta**; recargar la app estando offline muestra el error del navegador (no hay shell cacheado).
+  Convertirla en PWA offline es una spec propia futura (BACKLOG).
 - **Invalidar/expirar** el cache de imágenes (errata que cambia el arte): no se gestiona; una imagen
   cacheada se sirve indefinidamente. Limpiar el cache es manual (borrar datos del sitio) hasta que se
   decida una spec de mantenimiento.
