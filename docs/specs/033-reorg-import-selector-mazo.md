@@ -1,6 +1,6 @@
 # SPEC-033: Reorganizar el import — pegar mazos en la sección DB + selector de mazo por bando
 
-**Estado:** Pendiente
+**Estado:** Completada
 **Sección del GDD:** §7 (nota "Sección DB" / "Formatos de import" a ajustar)
 **Depende de:** SPEC-031 (`importPreset`, `PRESET_DECKS`), SPEC-032 (sección DB, biblioteca,
 `importSlots`, `saveDeckToLibrary`/`loadDeckFromLibrary`, `swd:slots`/`swd:decklib`)
@@ -103,4 +103,8 @@ rebanada.
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+Completada tras playtest 2026-07-26. Botón "Elegir/Cambiar mazo" por bando abre un modal con
+buscador + lista (precargados primero, etiqueta "precargado"); elegir carga y cierra; cerrar sin
+elegir no cambia nada. El botón se deshabilita con partida en curso (tras repartir manos) y se
+reactiva con Reset total: no se puede cambiar de mazo a mitad. Pegar un mazo nuevo se hace en la
+sección DB (a la biblioteca) y aparece luego en el modal. Todo OK.
