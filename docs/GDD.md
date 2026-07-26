@@ -345,7 +345,11 @@ set, coste, vida, caras de dado, texto) y una **biblioteca de mazos** (guardar c
 importados y volver a cargarlos en un bando, además de los precargados). Todo offline. Para el
 navegador, el snapshot se enriquece con facción/set/coste/texto. Desde SPEC-033 la DB es también
 donde se **pega/importa** un mazo nuevo (se resuelve y se guarda en la biblioteca con nombre); la
-pantalla de juego ya no tiene textarea, solo el selector-buscador de mazo por bando. No incluye
+pantalla de juego ya no tiene textarea, solo el selector-buscador de mazo por bando. Desde SPEC-036
+la DB se pule: importar es un botón+pop-up; la biblioteca pasa a ser un **explorador de mazos** de
+solo lectura con **todos** los mazos (precargados+comunidad+guardados), un buscador único (nombre/
+personaje/carta) y la vista de cartas de cada mazo (cargar a un bando sigue solo en "Jugar"); y el
+navegador de cartas gana filtro por set. No incluye
 deck-builder carta a carta (BACKLOG), fase futura. Desde SPEC-034 la ficha del navegador muestra la
 **imagen** de la carta (`<img>`), descargada bajo demanda de ARH (o de un mirror con base URL
 configurable) y cacheada por un **Service Worker** (el host de ARH no manda CORS, así que se cachean
@@ -367,7 +371,7 @@ Además de los 3 precargados, el juego bundlea un lote grande de **mazos de la c
 de ARH DB (solo nombre + lista de cartas; los datos salen del snapshot), filtrados para que todos
 carguen offline y sean razonablemente completos. Aparecen en el selector de mazo de cada bando
 (categoría "Comunidad", buscable), cargables como cualquier otro. Garantizar **un mazo por cada
-personaje** (auto-generando los que falten) es objetivo aparte (SPEC-036); SPEC-035 solo reporta la
+personaje** (auto-generando los que falten) es objetivo aparte (una spec futura); SPEC-035 solo reporta la
 cobertura.
 
 ### Base de datos local de cartas (SPEC-030)

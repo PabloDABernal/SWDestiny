@@ -18,8 +18,9 @@ cientos es barato en peso.
 - Un script `scripts/build-community-decks.mjs` (no shipped, dev) recorre los decklists de ARH por id
   (`/api/public/decklist/<id>`, ids ~1..N; los vacíos/borrados devuelven cuerpo vacío y se saltan;
   el script para tras una racha larga de vacíos).
-- Cada decklist trae `characters` y `slots` (ambos `{código: {quantity, dice}}`); se **combinan** en
-  un `DeckSlot[]` (`{code, qty}`), personajes incluidos.
+- Cada decklist trae `slots` (`{código: {quantity, dice}}`), que **ya incluye a los personajes** (el
+  campo `characters` es un subconjunto); se usa **solo `slots`** para el `DeckSlot[]` (`{code, qty}`)
+  — combinar ambos duplicaría los personajes (bug corregido en el playtest).
 - **id del mazo de comunidad**: el id numérico de ARH **como string** (p. ej. `"1"`, `"146"`). Nunca
   colisiona con los ids de palabra de los precargados (`unduli`, `zuckuss-bounty`, `vader-force`), así
   que `getPresetDeck` puede buscar en ambos arrays sin ambigüedad. (Regla: los precargados usan ids de
@@ -60,7 +61,7 @@ Verificables jugando. Formato: acción → resultado observable.
 ## Fuera de alcance (explícito)
 
 - **Auto-generar un mazo mínimo por personaje** no cubierto por ningún mazo comunitario: es el
-  objetivo "un mazo por personaje", que queda para **SPEC-036** (decisión del usuario, 2026-07-26).
+  objetivo "un mazo por personaje", que queda para una **spec futura** (decisión del usuario, 2026-07-26).
   Esta spec solo reporta la cobertura, no la completa.
 - **Ordenar por popularidad / mostrar favoritos / autor / descripción** del mazo: se trae solo
   nombre + cartas; ni ranking ni metadatos. (La API no expone votos de forma fiable.)
@@ -96,9 +97,9 @@ Verificables jugando. Formato: acción → resultado observable.
 - **UI**: en `DeckPicker` (`src/components/DeckPicker.tsx`), añadir `COMMUNITY_DECKS` a la lista tras
   los precargados y la biblioteca, con etiqueta "comunidad"; acotar el render (limit + "mostrar más")
   porque son cientos. La búsqueda ya normaliza (`norm`).
-- **Script**: `scripts/build-community-decks.mjs` combina `characters`+`slots`, filtra contra
-  `src/data/cards.json`, dedupe por hash de slots ordenados, escribe el JSON e imprime el informe de
-  cobertura de personajes. Aborta sin sobrescribir si no logra bajar ningún mazo (red caída).
+- **Script**: `scripts/build-community-decks.mjs` usa `slots` (que ya incluye personajes), filtra
+  contra `src/data/cards.json`, dedupe por hash de slots ordenados, escribe el JSON e imprime el
+  informe de cobertura de personajes. Aborta sin sobrescribir si no logra bajar ningún mazo (red caída).
 
 ## Nota de tamaño (regla 4 CLAUDE.md)
 
@@ -111,5 +112,5 @@ de descarga del script, no líneas de código.
 Completada tras playtest 2026-07-26. **2107 mazos** bundleados de ARH (JSON 1.2 MB), todos cargables
 offline; aparecen en el selector "Elegir mazo" (etiqueta "comunidad") con recuento, buscador y render
 50/tanda ("mostrar más"); cargar uno importa el bando sin congelar. Cobertura 512/572 personajes (60
-sin mazo → SPEC-036). Bug corregido durante el playtest: personajes salían duplicados porque el
+sin mazo → spec futura de auto-mazo). Bug corregido durante el playtest: personajes salían duplicados porque el
 `slots` de ARH ya incluye a los `characters` (se combinaban) — ahora se usa solo `slots`.
