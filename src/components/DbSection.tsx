@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useGameStore, type Side } from '../store/gameStore';
 import { getAllCards } from '../data/cards';
 import { cardImageUrl } from '../data/cardImages';
@@ -11,14 +11,21 @@ import type { ArhCard } from '../model/types';
  * vistas para offline. */
 function CardImage({ code }: { code: string }) {
   const [state, setState] = useState<'loading' | 'loaded' | 'error'>('loading');
+  // Red de seguridad: si en 15s no hubo onLoad/onError (petición colgada/bloqueada), caer a texto en
+  // vez de quedarse en "Cargando…" para siempre.
+  useEffect(() => {
+    const t = setTimeout(() => setState((s) => (s === 'loading' ? 'error' : s)), 15000);
+    return () => clearTimeout(t);
+  }, []);
   if (state === 'error') return null;
   return (
     <div className={`card-image card-image--${state}`}>
       {state === 'loading' && <span className="card-image__ph">Cargando imagen…</span>}
+      {/* Sin loading="lazy": un <img> oculto + lazy nunca entra en viewport y no se carga (ni onLoad
+          ni onError), quedándose colgado en "Cargando…". */}
       <img
         src={cardImageUrl(code)}
         alt={`Carta ${code}`}
-        loading="lazy"
         onLoad={() => setState('loaded')}
         onError={() => setState('error')}
         style={state === 'loaded' ? undefined : { display: 'none' }}

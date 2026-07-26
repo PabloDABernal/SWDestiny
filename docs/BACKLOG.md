@@ -2,6 +2,8 @@
 
 Ideas que surgen durante la implementación. Una línea por idea. NO se implementan hasta que se conviertan en spec.
 
+- Texto de carta con markup literal en la ficha DB: el campo `text` del snapshot trae etiquetas HTML/BBCode (`<i>Sith</i>`, `[special]`, `[force]`…) que se muestran tal cual en `.db-card-detail__text` (`DbSection.tsx`). Quedaría mejor parsear/renderizar esos símbolos (o al menos quitar las etiquetas `<i>`/`<b>`). Detectado jugando SPEC-034 (2026-07-26).
+
 - Deck-builder: crear mazos carta a carta desde la sección DB (elegir personajes + 30 cartas + battlefield, guardarlos en la biblioteca), en vez de solo importar/pegar. Feature futura pedida por el usuario (2026-07-26); va después de la reorg de import (SPEC-033) y las imágenes (SPEC-034).
 - Imágenes de carta on-demand: mostrar la imagen real (`imagesrc` de ARH, ~76KB/carta, ~226MB en total → no se bundlean) en la ficha del navegador DB, cargada bajo demanda con fallback a la ficha de texto offline, y cache opcional en IndexedDB de las vistas. Decidido con el usuario (2026-07-26); será SPEC-034. **Puerta abierta (petición del usuario, no fía en que ARH siga existiendo):** la **base URL de las imágenes debe ser configurable** (constante/env, no hardcodear el host de ARH) para poder apuntar a un mirror propio (S3/CDN/GitHub Releases del usuario) como swap directo; incluir en 034 (o spec aparte) un **script de descarga masiva** de las ~2977 imágenes para poder alojarlas nosotros si ARH cae. El snapshot ya guarda el `code`, así que la URL se puede reconstruir como `<BASE>/<set>/<code>.jpg` sin depender de `imagesrc`.
 
