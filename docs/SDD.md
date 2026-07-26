@@ -48,12 +48,16 @@ ecosistema de componentes de tablero/dados ya hechos.)*
   `readCache` (lectura síncrona de nombres para la mano) consulta también el snapshot primero.
   El pipeline se comparte vía `importSlots(side, slots)`: `importDeck` parsea el texto pegado y
   delega; `importPreset(side, id)` importa uno de los mazos precargados de `src/data/decks.ts`
-  (SPEC-031, elegibles desde un `<select>` por bando), reusando exactamente el mismo camino offline.
+  (SPEC-031), reusando exactamente el mismo camino offline.
   El snapshot se enriquece (SPEC-032) con facción/set/coste/puntos/texto (campos opcionales de
   `ArhCard`, solo para mostrar) que consume la **sección DB**: un conmutador `view: 'play' | 'db'`
   alterna tablero y sección DB (navegador de cartas vía `getAllCards()` + biblioteca de mazos en
   `swd:decklib`, con los slots de origen persistidos por bando en `swd:slots:<side>` para poder
-  guardarlos). Cambiar de vista no toca el estado de partida del store.
+  guardarlos). Cambiar de vista no toca el estado de partida del store. Desde SPEC-033 la UI de
+  import se reorganiza: en la pantalla de juego cada bando tiene un `DeckPicker` (buscador de
+  precargados + biblioteca) en vez de textarea; pegar un mazo nuevo vive en la sección DB
+  (`importToLibrary(raw, name)`, estado propio `libraryImportStatus`/`libraryImportError`, resuelve
+  y guarda en la biblioteca sin tocar `sides`).
   `buildCharacters` sigue quedándose solo con las de
   `type_code === 'character'`; desde SPEC-016, `buildDrawPile` construye además el mazo de robo
   (todo lo que no sea personaje, trama ni campo de batalla) con esas mismas cartas ya resueltas, sin

@@ -924,6 +924,12 @@ interface GameState {
   setView: (view: 'play' | 'db') => void;
   /** Biblioteca de mazos guardados por el jugador (SPEC-032). */
   library: SavedDeck[];
+  /** Estado del import a biblioteca desde la sección DB (SPEC-033); propio, no toca ningún bando. */
+  libraryImportStatus: 'idle' | 'importing';
+  libraryImportError: string | null;
+  /** Pega/importa un mazo (JSON o text file) y lo añade a la biblioteca con un nombre, sin cargarlo
+   * en ningún bando (SPEC-033). No-op si el nombre está vacío; deja error si el import falla. */
+  importToLibrary: (raw: string, name: string) => Promise<void>;
   /** Guarda el mazo importado en `side` con un nombre. No-op si no hay mazo o el nombre está vacío. */
   saveDeckToLibrary: (side: Side, name: string) => void;
   /** Carga un mazo guardado (por id) en un bando, reusando importSlots. */
@@ -1091,6 +1097,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   difficulty: loadPersistedDifficulty(),
   view: 'play',
   library: loadLibrary(),
+  libraryImportStatus: 'idle',
+  libraryImportError: null,
 
   setDifficulty: (difficulty: Difficulty) => {
     persistDifficulty(difficulty);
@@ -1098,6 +1106,28 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   setView: (view: 'play' | 'db') => set({ view }),
+
+  importToLibrary: async (raw: string, name: string) => {
+    const trimmed = name.trim();
+    if (trimmed === '') {
+      set({ libraryImportError: 'Pon un nombre al mazo antes de importarlo.' });
+      return;
+    }
+    set({ libraryImportStatus: 'importing', libraryImportError: null });
+    try {
+      const slots = raw.trim().startsWith('{') ? parseDeck(raw) : parseTextDeck(raw);
+      // Resuelve para validar (offline vía snapshot); si algún código falla, lanza y no guarda nada.
+      await resolveCards(slots);
+      const id =
+        typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
+      const library = [...get().library, { id, name: trimmed, slots }];
+      persistLibrary(library);
+      set({ library, libraryImportStatus: 'idle' });
+    } catch (e) {
+      const message = e instanceof ImportError ? e.message : 'Error inesperado al importar el mazo.';
+      set({ libraryImportStatus: 'idle', libraryImportError: message });
+    }
+  },
 
   saveDeckToLibrary: (side: Side, name: string) => {
     const trimmed = name.trim();

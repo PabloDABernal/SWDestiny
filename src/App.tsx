@@ -1,11 +1,11 @@
 import { useEffect } from 'react';
 import { readCache } from './import/resolveCards';
 import { useGameStore, opposite, type Side } from './store/gameStore';
-import { ImportPanel } from './components/ImportPanel';
 import { CharacterCard } from './components/CharacterCard';
 import { DicePool } from './components/DicePool';
 import { DifficultySelector } from './components/DifficultySelector';
 import { DbSection } from './components/DbSection';
+import { DeckPicker } from './components/DeckPicker';
 import { Hand } from './components/Hand';
 import { SupportList } from './components/SupportList';
 import { currentHealth, isKO } from './game/damage';
@@ -49,7 +49,7 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
       <div className="battle-side__head">
         <h2>{label}</h2>
         {!isPlayer && <DifficultySelector />}
-        <ImportPanel side={side} label={label} />
+        <DeckPicker side={side} label={label} />
       </div>
       {isPlayer && playUpgrade && outcome === null && (
         <p className="app__hint">

@@ -134,6 +134,56 @@ function CardBrowser() {
   );
 }
 
+/** Panel para pegar/importar un mazo nuevo a la biblioteca (SPEC-033). Autodetecta JSON o text file
+ * (SPEC-017); resuelve offline vía snapshot; no carga en ningún bando. */
+function DeckImportPanel() {
+  const importToLibrary = useGameStore((s) => s.importToLibrary);
+  const status = useGameStore((s) => s.libraryImportStatus);
+  const error = useGameStore((s) => s.libraryImportError);
+  const importing = status === 'importing';
+  const [raw, setRaw] = useState('');
+  const [name, setName] = useState('');
+
+  const doImport = async () => {
+    await importToLibrary(raw, name);
+    // Limpia solo si no quedó error (el store deja el error si falló).
+    if (useGameStore.getState().libraryImportError === null) {
+      setRaw('');
+      setName('');
+    }
+  };
+
+  return (
+    <div className="db-import">
+      <h3>Importar mazo a la biblioteca</h3>
+      <input
+        type="text"
+        className="db-import__name"
+        placeholder="Nombre del mazo…"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        aria-label="Nombre del mazo importado"
+      />
+      <textarea
+        className="db-import__textarea"
+        placeholder='JSON { "slots": {…} } o el "text file" de ARH DB'
+        value={raw}
+        onChange={(e) => setRaw(e.target.value)}
+        rows={5}
+        spellCheck={false}
+      />
+      <button disabled={importing || raw.trim() === '' || name.trim() === ''} onClick={doImport}>
+        {importing ? 'Importando…' : 'Importar a la biblioteca'}
+      </button>
+      {error && (
+        <p className="import-panel__error" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function DeckLibrary() {
   const library = useGameStore((s) => s.library);
   const loadDeckFromLibrary = useGameStore((s) => s.loadDeckFromLibrary);
@@ -203,6 +253,7 @@ function DeckLibrary() {
 export function DbSection() {
   return (
     <div className="db-section">
+      <DeckImportPanel />
       <DeckLibrary />
       <CardBrowser />
     </div>
