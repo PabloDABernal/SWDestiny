@@ -351,9 +351,10 @@ deck-builder carta a carta (BACKLOG) ni imágenes de carta (SPEC-034), fases fut
 ### Mazos precargados (SPEC-031)
 
 El juego trae **3 mazos de ejemplo** listos para jugar (el héroe de referencia Unduli + 2 villanos,
-uno de ellos con caras disrupt/descarte para probar SPEC-029), elegibles desde un desplegable en el
-panel de importar de cada bando. Se importan igual que un mazo pegado y offline (usan el snapshot,
-SPEC-030). Son fijos; editar/guardar mazos del jugador es la sección "DB" (SPEC-032).
+uno de ellos con caras disrupt/descarte para probar SPEC-029), elegibles desde el selector-buscador
+de mazo de cada bando (SPEC-033; antes era un desplegable en el panel de importar, retirado con la
+reorg). Se importan igual que un mazo pegado y offline (usan el snapshot, SPEC-030). Son fijos;
+editar/guardar mazos del jugador es la sección "DB" (SPEC-032).
 
 ### Base de datos local de cartas (SPEC-030)
 

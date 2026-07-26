@@ -22,7 +22,9 @@ Verificables jugando. Formato: acción → resultado observable.
 
 - [ ] Cada bando (Jugador y Enemigo) muestra un **selector de mazo con buscador**: un campo de texto
       que filtra por nombre y una lista con los **precargados** (SPEC-031) + los mazos **guardados**
-      en la biblioteca (SPEC-032).
+      en la biblioteca (SPEC-032). Orden: **precargados primero, luego los guardados en orden de
+      guardado** (mismo criterio que la lista de la biblioteca en SPEC-032), y los precargados se
+      distinguen visualmente (etiqueta "precargado").
 - [ ] Elegir un mazo en el selector del Jugador lo importa en el Jugador (personajes + "Mazo: N");
       ídem en el Enemigo (con multiplicador de vida por dificultad, SPEC-015). Mismo efecto que hoy
       tiene importar.
@@ -61,8 +63,10 @@ Verificables jugando. Formato: acción → resultado observable.
   consistente con reimportar (SPEC-001/031).
 - **Importar en la DB con nombre vacío**: no se acepta (avisa), no se añade a la biblioteca (mismo
   criterio que "Guardar en biblioteca" de SPEC-032).
-- **Importar en la DB mientras otro import está en curso**: el botón queda deshabilitado mientras
-  `importing` para no solapar (como SPEC-031).
+- **Importar en la DB mientras otro import está en curso**: el botón queda deshabilitado mientras el
+  import a biblioteca esté en curso. Como `importToLibrary` **no** toca ningún bando, no usa el
+  `importStatus` de un side: lleva su **propio estado** (p. ej. `libraryImportStatus`/
+  `libraryImportError` en el store) para el "importando…"/error del panel de la DB.
 - **Borrar de la biblioteca un mazo que está cargado en un bando**: el bando no se toca (sigue
   jugándose con lo ya importado); solo desaparece de los selectores/biblioteca. No es un error.
 
@@ -76,7 +80,8 @@ Verificables jugando. Formato: acción → resultado observable.
 - **Import a biblioteca**: nueva acción de store `importToLibrary(raw, name)` que parsea
   (`parseDeck`/`parseTextDeck`), resuelve (`resolveCards`, para validar/offline), y si va bien añade
   `{ id, name, slots }` a la biblioteca (reutiliza el guardado de SPEC-032). Reutiliza el manejo de
-  errores de `importDeck` (mismo `ImportError`). No toca `sides`.
+  errores de `importDeck` (mismo `ImportError`) pero con **estado propio** (`libraryImportStatus`/
+  `libraryImportError`, no el de un side, porque no toca `sides`). No modifica `sides`.
 - **DB**: en `DbSection`, añadir el panel "Importar mazo" (textarea + nombre + botón) por encima o
   junto a la biblioteca.
 - El pipeline de import a un bando (`importSlots`, trampa de vida enemiga, mazo de robo, reset de
