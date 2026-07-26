@@ -23,15 +23,14 @@ const snapshot = JSON.parse(readFileSync(SNAPSHOT, 'utf8'));
 const inSnapshot = (code) => code !== '_meta' && Object.prototype.hasOwnProperty.call(snapshot, code);
 const isCharacter = (code) => snapshot[code] && snapshot[code].type_code === 'character';
 
-/** Combina characters+slots del decklist de ARH en un DeckSlot[] {code, qty}. */
+/** DeckSlot[] {code, qty} de un decklist de ARH. `slots` YA incluye a los personajes (los
+ * `characters` son un subconjunto), así que NO se combinan: se usaría dos veces cada personaje. */
 function toSlots(deck) {
   const out = [];
-  for (const src of [deck.characters, deck.slots]) {
-    if (!src) continue;
-    for (const [code, v] of Object.entries(src)) {
-      const qty = v && typeof v.quantity === 'number' ? v.quantity : 0;
-      if (qty > 0) out.push({ code, qty });
-    }
+  const src = deck.slots || {};
+  for (const [code, v] of Object.entries(src)) {
+    const qty = v && typeof v.quantity === 'number' ? v.quantity : 0;
+    if (qty > 0) out.push({ code, qty });
   }
   return out;
 }
