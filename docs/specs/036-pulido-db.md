@@ -52,8 +52,12 @@ Verificables jugando. Formato: acción → resultado observable.
 - **Editar el contenido** de un mazo (deck-builder): sigue en BACKLOG. Aquí solo se ven las cartas.
 - **Imágenes en la lista de cartas del mazo**: la vista del mazo es texto (nombre + cantidad); la
   imagen sigue solo en la ficha del navegador de cartas (SPEC-034).
-- **Guardar un mazo de comunidad/precargado como copia editable**: no; para tenerlo en la biblioteca
-  propia se importaría/guardaría aparte (flujo existente).
+- **"Guardar mazo del Jugador/Enemigo"** (el `saveDeckToLibrary` que guardaba en la biblioteca el
+  mazo cargado en un bando): **se elimina** (decisión del usuario 2026-07-26). Añadir mazos a la
+  biblioteca propia se hace **solo** pegándolos en el pop-up de importar; los precargados y de
+  comunidad ya están siempre en el explorador, no hace falta "guardarlos". La acción de store
+  `saveDeckToLibrary` y la persistencia de slots por bando `swd:slots:<side>` (que solo la
+  alimentaban) quedan huérfanas y **se retiran**.
 
 ## Casos límite
 
@@ -61,7 +65,7 @@ Verificables jugando. Formato: acción → resultado observable.
 - **Mazo con muchas copias de una carta**: la vista muestra la cantidad (p. ej. "2× Force Speed").
 - **Personaje/carta de un mazo cuyo código no esté en el snapshot**: no debería pasar (comunidad y
   precargados están filtrados; guardados se resolvieron al importar), pero si ocurre se muestra el
-  código crudo en vez de romper.
+  código crudo en vez de romper, y **no** se trata como personaje (no va primero en la lista).
 - **Miles de mazos + búsqueda por carta**: el índice de búsqueda (nombre+personajes+cartas por mazo)
   se precalcula una vez para que filtrar por tecleo no recorra miles de mazos × decenas de códigos en
   cada pulsación.
@@ -74,15 +78,19 @@ Verificables jugando. Formato: acción → resultado observable.
   modal (mismo patrón de overlay que `DeckPicker`, SPEC-033), disparado por un botón.
 - **Explorador de mazos**: nuevo componente que combina `PRESET_DECKS` + `COMMUNITY_DECKS` +
   `library` (store). Índice de búsqueda por mazo: string normalizado (`norm`, ya existe) con nombre +
-  nombres de sus cartas (resueltas con `getCardFromSnapshot`), **memoizado** (los bundleados son
-  estáticos; recomputar solo al cambiar `library`). Filtrado = `index.includes(query)`. Render con
-  límite + "mostrar más" (como `DeckPicker`/`CardBrowser`). Al seleccionar un mazo, resolver sus
-  `slots` a `{name, qty, isCharacter}` para la lista (personajes primero).
+  nombres de sus cartas (resueltas con `getCardFromSnapshot`). El índice de los **bundleados**
+  (precargados+comunidad, estáticos) se calcula **una sola vez a nivel de módulo** (constante fuera
+  del componente), no en cada montaje de la pestaña DB; el de los **guardados** se memoiza y solo se
+  recalcula al cambiar `library`. Filtrado = `index.includes(query)`. Render con límite + "mostrar
+  más" (como `DeckPicker`/`CardBrowser`). Al seleccionar un mazo, resolver sus `slots` a
+  `{name, qty, isCharacter}` para la lista (personajes primero); un código no resuelto se muestra
+  crudo y **no** cuenta como personaje (va al final, no primero).
 - **Borrado**: los guardados exponen borrar vía `deleteFromLibrary` (SPEC-032); precargados/comunidad
   no (se distinguen por origen: id de palabra = preset, en `library` = guardado, resto = comunidad).
 - **Filtro por set en el navegador**: en `CardBrowser` (`DbSection.tsx`), añadir un `<select>` de
-  `set_name`/`set_code` (valores presentes en el snapshot, como ya se hace con tipo/facción), y
-  sumarlo al filtro combinado.
+  `set_name`/`set_code` con **todos** los sets presentes en el snapshot (no se reduce según el tipo/
+  facción ya elegidos; siempre la lista completa, como los otros filtros), y sumarlo al filtro
+  combinado.
 - Sin cambios en el store de partida ni en el pipeline de import a bando.
 
 ## Nota de tamaño (regla 4 CLAUDE.md)
