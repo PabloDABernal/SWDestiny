@@ -1,6 +1,6 @@
 # SPEC-031: Mazos precargados (jugar/probar sin pegar nada)
 
-**Estado:** Pendiente
+**Estado:** Completada
 **Sección del GDD:** §7 (mazos de referencia) + nota "Mazos precargados"
 **Depende de:** SPEC-001 (importDeck, pipeline), SPEC-017 (parseTextDeck), SPEC-030 (snapshot local:
 los precargados se resuelven offline). **Relación con SPEC-029** (disrupt/descarte): su código ya
@@ -108,4 +108,8 @@ listas de villanos (datos, no lógica).
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+Completada tras playtest 2026-07-26. Desplegable "Mazos de ejemplo" en ambos bandos; elegir importa
+de un clic (Unduli en Jugador, Vader en Enemigo con vida x dificultad), offline (Network→Offline)
+sin error, re-elegir el mismo reimporta, el desplegable sigue visible en el panel colapsado, y el
+mazo Zuckuss saca caras Dr/Dc en el pool. Líder del mazo 3 (Darth Vader `02010`) confirmado por el
+usuario.
