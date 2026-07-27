@@ -1,6 +1,6 @@
 # SPEC-038: Pestañas Mazos/Cartas en DB, caras de personaje en la lista, enlace carta→mazos y búsqueda por personaje en "Elegir mazo"
 
-**Estado:** Pendiente
+**Estado:** Completada
 **Sección del GDD:** §7 (nota "Sección DB")
 **Depende de:** SPEC-032 (navegador de cartas), SPEC-034 (imágenes de carta), SPEC-036 (explorador de
 mazos, buscador único), SPEC-037 (deck-builder)
@@ -112,4 +112,7 @@ con sufijos).
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+Completada tras playtest 2026-07-27. El usuario confirma que todo funciona: las pestañas Mazos/Cartas,
+las miniaturas de personaje en la lista de mazos, el apartado "Mazos que la usan" en la ficha de
+carta (con salto a la pestaña Mazos y apertura del mazo correcto) y la búsqueda por personaje en
+"Jugar → Elegir mazo".
