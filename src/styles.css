@@ -1079,3 +1079,76 @@ button:disabled {
   font-size: 0.9rem;
   margin-left: 4px;
 }
+
+/* Pestañas Mazos/Cartas de la sección DB (SPEC-038). */
+.db-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid #2a2e3a;
+}
+.db-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 8px 16px;
+  color: #8a90a0;
+  font-size: 0.95rem;
+}
+.db-tab--active {
+  color: #e6e8ee;
+  border-bottom-color: #2b6cb0;
+}
+
+/* Miniaturas de personaje en la lista de mazos (SPEC-038). */
+.db-deck-row__chars {
+  display: flex;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+.card-image--thumb {
+  margin-bottom: 0;
+  width: 24px;
+  height: 34px;
+  overflow: hidden;
+  border-radius: 3px;
+  flex: 0 0 auto;
+}
+.card-image--thumb img {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+  border-radius: 3px;
+}
+
+/* Apartado "Mazos que la usan" en la ficha de carta (SPEC-038). */
+.db-card-detail__decks {
+  margin-top: 14px;
+  border-top: 1px solid #2a2e3a;
+  padding-top: 10px;
+}
+.db-card-detail__decks h4 {
+  margin: 0 0 6px;
+  font-size: 0.85rem;
+  color: #9aa0b0;
+}
+.db-card-detail__decklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.db-card-detail__decklink {
+  width: 100%;
+  text-align: left;
+  background: #0f1117;
+  color: #e6e8ee;
+  border: 1px solid #2a2e3a;
+  border-radius: 5px;
+  padding: 4px 8px;
+  font-size: 0.85rem;
+}

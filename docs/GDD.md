@@ -357,7 +357,11 @@ en la biblioteca. Desde SPEC-034 la ficha del navegador muestra la
 configurable) y cacheada por un **Service Worker** (el host de ARH no manda CORS, así que se cachean
 respuestas opacas) para funcionar offline en las ya vistas; si no hay imagen, cae al detalle de texto.
 Las imágenes no se bundlean (~226 MB); un script de dev permite descargarlas para alojarlas en un
-mirror propio si ARH desaparece.
+mirror propio si ARH desaparece. Desde SPEC-038 la DB se organiza en **dos pestañas** ("Mazos" y
+"Cartas", sin scroll entre ellas); la lista de mazos muestra las **caras de sus personajes** junto al
+nombre, y la ficha de una carta incluye un apartado **"Mazos que la usan"** que enlaza a la pestaña
+Mazos. El buscador de "Jugar → Elegir mazo" también filtra por **nombre de personaje**, además de por
+nombre de mazo.
 
 ### Mazos precargados (SPEC-031)
 
