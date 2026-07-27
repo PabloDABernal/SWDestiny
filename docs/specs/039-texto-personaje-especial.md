@@ -25,9 +25,12 @@ Verificables jugando. Formato: acción → resultado observable.
       selector de dado (Luminara), el selector de personaje (Vader) o la resolución directa sin
       elección (Zuckuss). No se pueden marcar Especiales de **dueños distintos** a la vez en el mismo
       modo de resolución.
-- [ ] Si en el pool quedan **más Especiales sin resolver** después de resolver uno (del mismo dueño u
-      otro), el turno **no cambia**: se puede seguir marcando y resolviendo Especiales (o cualquier
-      otro dado pendiente) hasta que no quede ninguno o el jugador decida pasar/hacer otra acción.
+- [ ] **Excepción deliberada a "una acción por turno" (SPEC-025), solo para Especial**: si en el pool
+      quedan **más dados de Especial sin resolver** después de resolver uno (del mismo dueño u otro),
+      el turno **no cambia** — se puede seguir marcando y resolviendo Especiales, uno tras otro, sin
+      pasar al bando contrario. En cuanto se hace **cualquier otra acción** (daño, escudo, activar,
+      pasar, jugar una carta...) el turno se cierra con total normalidad, igual que hoy; la excepción
+      es únicamente "resolver un Especial", no un modo general de acciones libres.
 
 ### Luminara Unduli — "Resuelve uno de tus dados, +2 (+3 si no es único)"
 
@@ -66,6 +69,12 @@ Verificables jugando. Formato: acción → resultado observable.
       elegibles; Zuckuss gana 1 recurso; Vader ataca al personaje rival de menor vida (o propio si
       no hay rival vivo, siguiendo el mismo criterio que el resto de daño automático) y se
       autoinflige 1 después.
+- [ ] **El autómata resuelve UN dado de Especial de UN dueño por acción**, nunca varios dueños
+      combinados en el mismo lote (aunque su pool tenga Especiales de más de un personaje a la vez).
+      No hace falta un orden determinista entre dueños distintos: basta con que cada acción de
+      Especial del autómata se quede con un único dueño (p. ej. el primero que encuentre recorriendo
+      su pool); el resto de Especiales pendientes se resuelven en tandas/acciones futuras, igual que
+      el resto de su tabla de prioridades ya deja trabajo pendiente para después.
 
 ### Aviso para personajes no cubiertos
 
@@ -113,6 +122,10 @@ Verificables jugando. Formato: acción → resultado observable.
 - **El autómata controla a Luminara sin ningún dado propio elegible**: mismo caso límite que el
   jugador — su Especial no tiene objetivo, se resuelve sin efecto, sigue con el resto de su tabla de
   prioridades (no se cuelga).
+- **El autómata controla dos de estos personajes a la vez** (posible con mazos de comunidad) y su
+  pool tiene Especiales de ambos en el mismo momento: cada acción de Especial del autómata resuelve
+  **un solo dueño** (cualquiera, sin orden fijo entre ellos); el otro queda pendiente para una
+  acción futura, igual que el resto de su tabla de prioridades ya deja trabajo para después.
 
 ## Notas técnicas (opcional)
 
@@ -127,6 +140,22 @@ Verificables jugando. Formato: acción → resultado observable.
   Especial.
 - **No-único vs. único**: usar `is_unique` de la carta dueña del dado objetivo (mismo campo que
   `characterPoints`/elite en SPEC-037), no del propio personaje que tira el Especial.
+- **`selectDie` debe impedir marcar un segundo Especial de dueño distinto** mientras el flujo de
+  Luminara/Vader sigue abierto esperando su objetivo: hoy el guard de esa función solo compara
+  `side`+`symbol` (ambos `'special'` pasarían) — hace falta comparar también el `code` del dado ya
+  marcado contra el del nuevo, y bloquear si difieren (mismo patrón que ya usa para no mezclar
+  bando/símbolo distintos).
+- **Excepción de turno acotada a Especial**: `afterApply` (y el resto de sitios que hacen
+  `turn: opposite(side)` tras una resolución) deben comprobar si, tras resolver un Especial, el
+  pool del bando que acaba de actuar **todavía tiene otro dado de Especial sin resolver**; si es
+  así, el turno se queda en el mismo bando (no se llama a `opposite`); en cualquier otra resolución
+  (daño, escudo, foco, etc.) el turno cambia exactamente igual que hoy, sin tocar ese camino.
+- **Autómata — dividir el lote de Especial por dueño**: `combineAutomatonBatch(enemy.pool,
+  isSpecialSymbol, ...)` (`automaton.ts`) hoy agrupa **todos** los índices de Especial del pool en un
+  único lote, sin distinguir dueño; para esta spec hace falta que la rama `'special'` de la tabla de
+  prioridades agrupe esos índices **por `code`** primero y opere sobre un solo grupo (el primero que
+  encuentre) cada vez, dejando el resto del pool intacto para una acción futura — igual que ya pasa
+  con el resto de acciones que no agotan todo el trabajo pendiente en una sola pulsación.
 - **Texto real de Luminara es más estricto** ("one of your character dice": solo dados de personaje);
   esta spec lo amplía deliberadamente a dados de mejora/apoyo también (decisión del usuario). Dejar
   un comentario en el código señalándolo, para que no se lea como error de transcripción del texto
