@@ -2,12 +2,25 @@ import { useMemo, useState } from 'react';
 import { useGameStore, type Side } from '../store/gameStore';
 import { PRESET_DECKS } from '../data/decks';
 import { COMMUNITY_DECKS } from '../data/communityDecks';
+import { getCardFromSnapshot } from '../data/cards';
+import type { DeckSlot } from '../import/parseDeck';
 
 const PAGE = 50; // cuántos mazos se pintan de golpe (SPEC-035: cientos de comunidad)
 
 /** Normaliza para buscar: minúsculas y sin acentos. */
 function norm(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+/** Índice de búsqueda de un mazo para "Elegir mazo" (SPEC-038): nombre + nombres de sus personajes
+ * (no de cualquier carta; eso solo está en el buscador de la sección DB, SPEC-036). */
+function searchIndex(name: string, slots: DeckSlot[]): string {
+  const chars = slots
+    .map((s) => getCardFromSnapshot(s.code))
+    .filter((c) => c?.type_code === 'character')
+    .map((c) => c!.name)
+    .join(' ');
+  return norm(`${name} ${chars}`);
 }
 
 /** ¿Se puede elegir/cambiar mazo? Solo en fase de preparación (SPEC-033): sin partida terminada, sin
@@ -22,6 +35,21 @@ function useCanPickDeck(): boolean {
       s.mulligan === null &&
       s.indirectDistribution === null,
   );
+}
+
+// Índice de búsqueda de los mazos bundleados (precargados + comunidad): estáticos, se calcula una
+// sola vez (mismo patrón que `bundledEntries` en DbSection.tsx, SPEC-036/038).
+let bundledCache:
+  | { id: string; name: string; kind: 'preset' | 'community'; search: string }[]
+  | null = null;
+function bundledEntries() {
+  if (bundledCache === null) {
+    bundledCache = [
+      ...PRESET_DECKS.map((d) => ({ id: d.id, name: d.name, kind: 'preset' as const, search: searchIndex(d.name, d.slots) })),
+      ...COMMUNITY_DECKS.map((d) => ({ id: d.id, name: d.name, kind: 'community' as const, search: searchIndex(d.name, d.slots) })),
+    ];
+  }
+  return bundledCache;
 }
 
 /** Botón "Elegir mazo" por bando (SPEC-033): abre un modal con buscador + lista (precargados +
@@ -39,16 +67,16 @@ export function DeckPicker({ side, label }: { side: Side; label: string }) {
   // Orden: precargados → guardados → comunidad. `kind` decide cómo se carga y la etiqueta.
   const entries = useMemo(
     () => [
-      ...PRESET_DECKS.map((d) => ({ id: d.id, name: d.name, kind: 'preset' as const })),
-      ...library.map((d) => ({ id: d.id, name: d.name, kind: 'library' as const })),
-      ...COMMUNITY_DECKS.map((d) => ({ id: d.id, name: d.name, kind: 'community' as const })),
+      ...bundledEntries().filter((e) => e.kind === 'preset'),
+      ...library.map((d) => ({ id: d.id, name: d.name, kind: 'library' as const, search: searchIndex(d.name, d.slots) })),
+      ...bundledEntries().filter((e) => e.kind === 'community'),
     ],
     [library],
   );
 
   const filtered = useMemo(() => {
     const q = norm(query.trim());
-    return q === '' ? entries : entries.filter((e) => norm(e.name).includes(q));
+    return q === '' ? entries : entries.filter((e) => e.search.includes(q));
   }, [entries, query]);
 
   const shown = filtered.slice(0, limit);

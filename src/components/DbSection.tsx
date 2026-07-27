@@ -13,16 +13,17 @@ const PAGE = 50;
  * carga hay un placeholder; si falla (404/offline/no cacheada), se oculta y la ficha cae a texto.
  * El estado se resetea al cambiar de `code` (React remonta por `key`). El Service Worker cachea las
  * vistas para offline. */
-function CardImage({ code }: { code: string }) {
+function CardImage({ code, thumb }: { code: string; thumb?: boolean }) {
   const [state, setState] = useState<'loading' | 'loaded' | 'error'>('loading');
   useEffect(() => {
     const t = setTimeout(() => setState((s) => (s === 'loading' ? 'error' : s)), 15000);
     return () => clearTimeout(t);
   }, []);
   if (state === 'error') return null;
+  const cls = thumb ? 'card-image card-image--thumb' : 'card-image';
   return (
-    <div className={`card-image card-image--${state}`}>
-      {state === 'loading' && <span className="card-image__ph">Cargando imagen…</span>}
+    <div className={`${cls} card-image--${state}`}>
+      {state === 'loading' && !thumb && <span className="card-image__ph">Cargando imagen…</span>}
       <img
         src={cardImageUrl(code)}
         alt={`Carta ${code}`}
@@ -58,7 +59,7 @@ function characterPoints(pointsStr: string | undefined, isElite: boolean): numbe
   return Number.isFinite(n) ? n : 0;
 }
 
-function CardBrowser() {
+function CardBrowser({ entries, onOpenDeck }: { entries: DeckEntry[]; onOpenDeck: (key: string) => void }) {
   const all = getAllCards();
   const [query, setQuery] = useState('');
   const [type, setType] = useState('');
@@ -66,6 +67,15 @@ function CardBrowser() {
   const [set, setSet] = useState('');
   const [selected, setSelected] = useState<ArhCard | null>(null);
   const [limit, setLimit] = useState(100);
+  const [deckLinksLimit, setDeckLinksLimit] = useState(PAGE);
+
+  // Mazos que incluyen la carta seleccionada (SPEC-038): filtra el índice ya calculado del
+  // explorador de mazos, sin construir uno inverso aparte.
+  const usingDecks = useMemo(() => {
+    if (!selected) return [];
+    return entries.filter((e) => e.slots.some((s) => s.code === selected.code));
+  }, [entries, selected]);
+  const shownDeckLinks = usingDecks.slice(0, deckLinksLimit);
 
   // Valores de filtro presentes en el snapshot (siempre la lista completa, no acotada por otros).
   const types = useMemo(() => [...new Set(all.map((c) => c.type_code))].sort(), [all]);
@@ -142,7 +152,10 @@ function CardBrowser() {
             <li key={c.code}>
               <button
                 className={selected?.code === c.code ? 'db-card-row db-card-row--active' : 'db-card-row'}
-                onClick={() => setSelected(c)}
+                onClick={() => {
+                  setSelected(c);
+                  setDeckLinksLimit(PAGE);
+                }}
               >
                 <span className="db-card-row__name">{c.name}</span>
                 <span className="db-card-row__meta">
@@ -184,6 +197,36 @@ function CardBrowser() {
               <p className="db-card-detail__line">Dado: {selected.sides.join('  ')}</p>
             )}
             {selected.text && <p className="db-card-detail__text">{selected.text}</p>}
+
+            <div className="db-card-detail__decks">
+              <h4>Mazos que la usan</h4>
+              {usingDecks.length === 0 ? (
+                <p className="db-explorer__empty">Ningún mazo la usa.</p>
+              ) : (
+                <ul className="db-card-detail__decklist">
+                  {shownDeckLinks.map((d) => (
+                    <li key={`${d.origin}:${d.id}`}>
+                      <button
+                        className="db-card-detail__decklink"
+                        onClick={() => onOpenDeck(`${d.origin}:${d.id}`)}
+                      >
+                        {d.name} <em className="db-deck-row__tag">{ORIGIN_TAG[d.origin]}</em>
+                      </button>
+                    </li>
+                  ))}
+                  {usingDecks.length > shownDeckLinks.length && (
+                    <li>
+                      <button
+                        className="db-browser__more"
+                        onClick={() => setDeckLinksLimit((n) => n + PAGE)}
+                      >
+                        Mostrar más ({usingDecks.length - shownDeckLinks.length} restantes)
+                      </button>
+                    </li>
+                  )}
+                </ul>
+              )}
+            </div>
           </aside>
         )}
       </div>
@@ -270,11 +313,21 @@ interface DeckEntry {
   origin: DeckOrigin;
   slots: DeckSlot[];
   search: string;
+  characterCodes: string[];
 }
 
 function buildEntry(d: { id: string; name: string; slots: DeckSlot[] }, origin: DeckOrigin): DeckEntry {
-  const cardNames = d.slots.map((s) => getCardFromSnapshot(s.code)?.name ?? s.code).join(' ');
-  return { id: d.id, name: d.name, origin, slots: d.slots, search: norm(`${d.name} ${cardNames}`) };
+  const cards = d.slots.map((s) => ({ slot: s, card: getCardFromSnapshot(s.code) }));
+  const cardNames = cards.map(({ slot, card }) => card?.name ?? slot.code).join(' ');
+  const characterCodes = cards.filter(({ card }) => card?.type_code === 'character').map(({ slot }) => slot.code);
+  return {
+    id: d.id,
+    name: d.name,
+    origin,
+    slots: d.slots,
+    search: norm(`${d.name} ${cardNames}`),
+    characterCodes,
+  };
 }
 
 // Índice de búsqueda de los mazos bundleados (precargados + comunidad): estáticos, se calcula UNA
@@ -296,24 +349,37 @@ const ORIGIN_TAG: Record<DeckOrigin, string> = {
   saved: 'guardado',
 };
 
+/** Todos los mazos (precargados + comunidad + guardados) como `DeckEntry`, compartido entre el
+ * explorador de mazos y el navegador de cartas (enlace "mazos que la usan", SPEC-038). */
+function useDeckEntries(): DeckEntry[] {
+  const library = useGameStore((s) => s.library);
+  const savedEntries = useMemo(() => library.map((d) => buildEntry(d, 'saved')), [library]);
+  return useMemo(() => [...bundledEntries(), ...savedEntries], [savedEntries]);
+}
+
+/** Clave estable de un mazo (origen+id, no solo id: dos mazos de distinto origen podrían compartir
+ * id, SPEC-038). */
+function deckKey(e: { origin: DeckOrigin; id: string }): string {
+  return `${e.origin}:${e.id}`;
+}
+
 /** Explorador de mazos (SPEC-036): todos los mazos (precargados + comunidad + guardados), buscador
  * único (nombre/personaje/carta) y vista de las cartas del mazo. Solo lectura (cargar a un bando se
- * hace en "Jugar → Elegir mazo"); los guardados se pueden borrar. */
+ * hace en "Jugar → Elegir mazo"); los guardados se pueden borrar. Selección controlada por el padre
+ * (SPEC-038): permite que el enlace carta→mazos abra un mazo desde la pestaña Cartas. */
 interface DeckActions {
+  entries: DeckEntry[];
+  selected: string | null;
+  onSelect: (key: string | null) => void;
   onCreate: () => void;
   onEdit: (d: DeckEntry) => void;
   onDuplicate: (d: DeckEntry) => void;
 }
 
-function DeckExplorer({ onCreate, onEdit, onDuplicate }: DeckActions) {
-  const library = useGameStore((s) => s.library);
+function DeckExplorer({ entries, selected: selectedKey, onSelect, onCreate, onEdit, onDuplicate }: DeckActions) {
   const deleteFromLibrary = useGameStore((s) => s.deleteFromLibrary);
   const [query, setQuery] = useState('');
   const [limit, setLimit] = useState(PAGE);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  const savedEntries = useMemo(() => library.map((d) => buildEntry(d, 'saved')), [library]);
-  const entries = useMemo(() => [...bundledEntries(), ...savedEntries], [savedEntries]);
 
   const filtered = useMemo(() => {
     const q = norm(query.trim());
@@ -321,7 +387,7 @@ function DeckExplorer({ onCreate, onEdit, onDuplicate }: DeckActions) {
   }, [entries, query]);
 
   const shown = filtered.slice(0, limit);
-  const selected = selectedId === null ? null : entries.find((e) => e.id === selectedId) ?? null;
+  const selected = selectedKey === null ? null : entries.find((e) => deckKey(e) === selectedKey) ?? null;
 
   // Cartas del mazo seleccionado, personajes primero.
   const cards = useMemo(() => {
@@ -360,11 +426,20 @@ function DeckExplorer({ onCreate, onEdit, onDuplicate }: DeckActions) {
         <ul className="db-explorer__list">
           {filtered.length === 0 && <li className="db-explorer__empty">Sin resultados.</li>}
           {shown.map((e) => (
-            <li key={`${e.origin}:${e.id}`} className="db-deck-row">
+            <li key={deckKey(e)} className="db-deck-row">
               <button
-                className={selectedId === e.id ? 'db-deck-row__pick db-deck-row__pick--active' : 'db-deck-row__pick'}
-                onClick={() => setSelectedId(e.id)}
+                className={
+                  selectedKey === deckKey(e) ? 'db-deck-row__pick db-deck-row__pick--active' : 'db-deck-row__pick'
+                }
+                onClick={() => onSelect(deckKey(e))}
               >
+                {e.characterCodes.length > 0 && (
+                  <span className="db-deck-row__chars">
+                    {e.characterCodes.map((code) => (
+                      <CardImage key={code} code={code} thumb />
+                    ))}
+                  </span>
+                )}
                 <span className="db-deck-row__name">{e.name}</span>
                 <em className="db-deck-row__tag">{ORIGIN_TAG[e.origin]}</em>
               </button>
@@ -587,28 +662,66 @@ function DeckBuilder({ init, onClose }: { init: BuilderInit; onClose: () => void
   );
 }
 
+/** Sección DB (SPEC-038): dos pestañas ("Mazos"/"Cartas") sin scroll entre ellas; ambas se mantienen
+ * montadas (ocultas con CSS) al cambiar de pestaña para no perder buscador/filtros/selección. El
+ * mazo abierto vive aquí (no en `DeckExplorer`) para que el enlace "mazos que la usan" del navegador
+ * de cartas pueda cambiar de pestaña y abrir el mazo correcto. */
 export function DbSection() {
+  const [tab, setTab] = useState<'decks' | 'cards'>('decks');
   const [builder, setBuilder] = useState<BuilderInit | null>(null);
+  const [openDeck, setOpenDeck] = useState<string | null>(null);
+  const entries = useDeckEntries();
 
   const fromSlots = (s: DeckSlot[]): Record<string, number> =>
     Object.fromEntries(s.map((x) => [x.code, x.qty]));
 
-  if (builder) {
-    return (
-      <div className="db-section">
-        <DeckBuilder init={builder} onClose={() => setBuilder(null)} />
-      </div>
-    );
-  }
+  const goToDeck = (key: string) => {
+    setOpenDeck(key);
+    setBuilder(null);
+    setTab('decks');
+  };
 
   return (
     <div className="db-section">
-      <DeckExplorer
-        onCreate={() => setBuilder({ editingId: null, name: '', slots: {} })}
-        onEdit={(d) => setBuilder({ editingId: d.id, name: d.name, slots: fromSlots(d.slots) })}
-        onDuplicate={(d) => setBuilder({ editingId: null, name: `Copia de ${d.name}`, slots: fromSlots(d.slots) })}
-      />
-      <CardBrowser />
+      <div className="db-tabs" role="tablist">
+        <button
+          role="tab"
+          aria-selected={tab === 'decks'}
+          className={tab === 'decks' ? 'db-tab db-tab--active' : 'db-tab'}
+          onClick={() => setTab('decks')}
+        >
+          Mazos
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === 'cards'}
+          className={tab === 'cards' ? 'db-tab db-tab--active' : 'db-tab'}
+          onClick={() => setTab('cards')}
+        >
+          Cartas
+        </button>
+      </div>
+
+      <div style={{ display: tab === 'decks' ? 'block' : 'none' }}>
+        {builder ? (
+          <DeckBuilder init={builder} onClose={() => setBuilder(null)} />
+        ) : (
+          <DeckExplorer
+            entries={entries}
+            selected={openDeck}
+            onSelect={setOpenDeck}
+            onCreate={() => setBuilder({ editingId: null, name: '', slots: {} })}
+            onEdit={(d) => setBuilder({ editingId: d.id, name: d.name, slots: fromSlots(d.slots) })}
+            onDuplicate={(d) =>
+              setBuilder({ editingId: null, name: `Copia de ${d.name}`, slots: fromSlots(d.slots) })
+            }
+          />
+        )}
+      </div>
+
+      <div style={{ display: tab === 'cards' ? 'block' : 'none' }}>
+        <CardBrowser entries={entries} onOpenDeck={goToDeck} />
+      </div>
     </div>
   );
 }
