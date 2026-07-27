@@ -63,8 +63,10 @@ function formatCardText(text: string): ReactNode[] {
   while ((match = pattern.exec(text)) !== null) {
     if (match.index > lastIndex) nodes.push(text.slice(lastIndex, match.index));
     if (match[1]) {
+      // Reconocido: la etiqueta legible sustituye TODO el token, sin corchetes (ya no es markup en
+      // crudo); no reconocido: se deja tal cual, con corchetes, como pide la spec.
       const label = TEXT_TOKEN_LABEL[match[1].toLowerCase()];
-      nodes.push(label ? `[${label}]` : match[0]);
+      nodes.push(label ?? match[0]);
     } else if (match[2] === 'b') {
       nodes.push(<strong key={key++}>{match[3]}</strong>);
     } else {

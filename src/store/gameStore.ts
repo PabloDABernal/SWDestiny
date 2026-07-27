@@ -828,6 +828,13 @@ interface ResolveMode {
   /** SPEC-023 (symbol === 'reroll'): dados (de cualquier pool, propio o rival) ya elegidos como
    * objetivo de esta resolución de Reroll de dado, acumulados hasta `confirmReroll`. */
   rerollTargets?: { side: Side; poolIndex: number }[];
+  /** SPEC-039: este modo proviene de convertir el Especial de Luminara en un modificador `+2*`/`+3*`
+   * (`pickLuminaraTarget`) — aunque `symbol` ya es el del dado objetivo (no 'special'), la excepción
+   * de turno de Especial (ver `afterApply`) sigue aplicando a ESTA resolución en concreto. Sin este
+   * flag, `afterApply` no tendría forma de distinguir "esto viene de un Especial" de una tanda normal
+   * que simplemente coincide con que el bando tenga OTRO Especial suelto en el pool (bug real
+   * detectado por revisor-codigo: la excepción se filtraba a cualquier símbolo). */
+  viaSpecial?: boolean;
 }
 
 /**
@@ -861,13 +868,19 @@ function afterApply(
 ): { resolve: ResolveMode | null; turn?: Side; passStreak?: number } {
   const resolve = nextResolveAfterApply(res.sides, mode, res.outcome);
   if (resolve !== null) return { resolve };
-  // Excepción de turno para Especial (SPEC-039), única para este símbolo: aunque esta tanda ya se ha
-  // cerrado del todo (no queda más dado BASE del símbolo recién resuelto — p. ej. el boost de
-  // Luminara a un dado de daño/focus/etc. cierra ESE símbolo con normalidad), si el bando todavía
-  // tiene otro dado de Especial sin resolver (de cualquier dueño), su turno NO cambia: puede seguir
-  // marcando y resolviendo Especiales sin pasar. Cualquier otro símbolo sigue cerrando turno como
-  // siempre (este chequeo solo añade una excepción, no quita ninguna).
-  if (res.outcome === null && hasUnresolvedSpecial(res.sides[mode.side].pool)) {
+  // Excepción de turno para Especial (SPEC-039), acotada EXACTAMENTE a resolver un Especial: solo si
+  // `mode` es directamente un Especial (symbol === 'special') o proviene de convertir el de Luminara
+  // en un modificador (`viaSpecial`, ver `pickLuminaraTarget`) — nunca por la mera coincidencia de que
+  // el bando tenga OTRO Especial suelto en el pool mientras resuelve un símbolo no relacionado (bug
+  // real detectado por revisor-codigo: sin este guard, resolver p. ej. daño normal no cerraba turno
+  // solo porque había un Especial sin marcar por ahí). Si aplica y el bando todavía tiene otro
+  // Especial sin resolver, su turno NO cambia: puede seguir marcando y resolviendo Especiales sin
+  // pasar. Cualquier otra resolución sigue cerrando turno como siempre.
+  if (
+    res.outcome === null &&
+    (mode.symbol === 'special' || mode.viaSpecial === true) &&
+    hasUnresolvedSpecial(res.sides[mode.side].pool)
+  ) {
     return { resolve: null };
   }
   return { resolve, turn: opposite(mode.side), passStreak: 0 };
@@ -1717,10 +1730,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (die) {
         if (die.code === ZUCKUSS_CODE || die.code === VADER_CODE) return state;
         if (die.code === LUMINARA_CODE) {
+          // Mismo criterio que `pickLuminaraTarget`/`canPickLuminaraTarget` (DicePool.tsx): un
+          // modificador genérico +X* suelto (symbol null) NO cuenta como objetivo (no tiene sentido
+          // "subir" un modificador sin dado base) — si no se excluyera aquí igual, este botón
+          // quedaría oculto (por creer que "hay objetivo") sin que ningún dado fuera realmente
+          // clicable, dejando el Especial de Luminara sin forma de cerrarse (bug detectado por
+          // revisor-codigo).
           const hasTarget = own.pool.some((d, i) => {
             if (i === cur.marked[0]) return false;
             const p = parsePlayerFace(d.face);
-            return p !== null && p.symbol !== 'special';
+            return p !== null && p.symbol !== null && p.symbol !== 'special';
           });
           if (hasTarget) return state;
         }
@@ -1780,7 +1799,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
       return {
         sides: nextSides,
-        resolve: { side: cur.side, symbol: targetParsed.symbol, marked: [specialIdx, poolIndex] },
+        resolve: { side: cur.side, symbol: targetParsed.symbol, marked: [specialIdx, poolIndex], viaSpecial: true },
         resolveError: null,
       };
     }),

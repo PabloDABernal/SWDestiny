@@ -45,12 +45,14 @@ export function DicePool({ side }: { side: Side }) {
     mode && mode.symbol === 'special' && mode.marked.length === 1 ? pool[mode.marked[0]]?.code : undefined;
   const isLuminaraSpecial = specialOwnerCode === LUMINARA_CODE;
   const isVaderSpecial = specialOwnerCode === VADER_CODE;
+  // Mismo criterio que `canPickLuminaraTarget` de abajo (y que `resolveSpecial` en el store): un
+  // modificador genérico +X* suelto (symbol null) no cuenta como objetivo clicable.
   const luminaraTargetExists =
     isLuminaraSpecial &&
     pool.some((d, i) => {
       if (i === mode!.marked[0]) return false;
       const p = parsePlayerFace(d.face);
-      return p !== null && p.symbol !== 'special';
+      return p !== null && p.symbol !== null && p.symbol !== 'special';
     });
 
   // SPEC-023: mientras se resuelve un Reroll de dado del jugador, CUALQUIER pool (incluido el
