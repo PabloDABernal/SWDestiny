@@ -835,6 +835,12 @@ interface ResolveMode {
    * que simplemente coincide con que el bando tenga OTRO Especial suelto en el pool (bug real
    * detectado por revisor-codigo: la excepción se filtraba a cualquier símbolo). */
   viaSpecial?: boolean;
+  /** SPEC-039 (viaSpecial): cara e índice originales del dado de Especial antes de convertirlo en
+   * `+2*`/`+3*`, y coste de recurso ya cobrado al elegir objetivo, para que `cancelResolve` pueda
+   * deshacer la conversión (si no, cancelar dejaba el dado congelado en `+2*`/`+3*` para siempre,
+   * con el valor calculado contra el primer objetivo elegido — bug real: al volver a marcarlo con
+   * otro dado tras cancelar, no se recalculaba el +2 vs +3 según el nuevo dueño). */
+  specialRevert?: { poolIndex: number; face: string; resourceCost: number };
 }
 
 /**
@@ -1605,7 +1611,24 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
     }),
 
-  cancelResolve: () => set({ resolve: null, resolveError: null }),
+  // Cancelar una resolución en curso (SPEC-008a). Si venía de convertir el Especial de Luminara en
+  // `+2*`/`+3*` (`pickLuminaraTarget`), hay que deshacer esa conversión: devolver el dado a su cara
+  // original de Especial y reembolsar el coste de recurso ya cobrado — si no, el modificador se queda
+  // huérfano en el pool para siempre, con el valor congelado contra el objetivo que se había elegido
+  // antes de cancelar (bug real, detectado jugando SPEC-039).
+  cancelResolve: () =>
+    set((state) => {
+      const cur = state.resolve;
+      if (!cur?.specialRevert) return { resolve: null, resolveError: null };
+      const { poolIndex, face, resourceCost } = cur.specialRevert;
+      const own = state.sides[cur.side];
+      const pool = own.pool.map((d, i) => (i === poolIndex ? { ...d, face } : d));
+      return {
+        sides: { ...state.sides, [cur.side]: { ...own, pool, resources: own.resources + resourceCost } },
+        resolve: null,
+        resolveError: null,
+      };
+    }),
 
   // Focus (SPEC-023): elegir dado objetivo (paso repetible hasta el presupuesto = suma de valores
   // de los dados de Focus marcados) → elegir su nueva cara → confirmar (paga coste, gira todos los
@@ -1799,7 +1822,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
       return {
         sides: nextSides,
-        resolve: { side: cur.side, symbol: targetParsed.symbol, marked: [specialIdx, poolIndex], viaSpecial: true },
+        resolve: {
+          side: cur.side,
+          symbol: targetParsed.symbol,
+          marked: [specialIdx, poolIndex],
+          viaSpecial: true,
+          specialRevert: { poolIndex: specialIdx, face: specialDie.face, resourceCost: specialParsed.resourceCost },
+        },
         resolveError: null,
       };
     }),
