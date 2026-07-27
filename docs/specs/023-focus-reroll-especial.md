@@ -17,8 +17,15 @@ dado con un aviso genérico, sin efecto real de juego todavía).
 - [ ] El jugador puede resolver un dado que muestre Focus, elegir uno o más dados propios sin
       resolver (distintos del/los dado(s) de Focus usados) y, para cada uno, elegir la cara a la
       que se gira; el dado objetivo pasa a mostrar esa cara y sigue **sin resolver** en el pool.
-- [ ] Si se agrupan varios dados de Focus del mismo símbolo (SPEC-008a), el jugador puede girar
-      hasta la suma de sus valores en dados objetivo, en la misma acción.
+- [ ] ~~Si se agrupan varios dados de Focus del mismo símbolo (SPEC-008a), el jugador puede girar
+      hasta la suma de sus valores en dados objetivo, en la misma acción.~~ **Corrección
+      (2026-07-27, decisión del usuario, detectado jugando):** el jugador resuelve **un dado base de
+      Focus a la vez** (no combinado), igual que Especial/Indirecto (SPEC-026/039) — combinar varias
+      fuentes dejaba sin forma de elegir como objetivo un segundo dado que TAMBIÉN mostrara cara
+      Focus (el clic siempre se interpretaba como "súmalo como fuente", nunca como "gíralo a mí").
+      Un modificador genérico `+X*` sí puede acompañar al único dado base (igual que indirecto). El
+      autómata no tiene este problema (no hay ambigüedad de clic en su lógica programática) y sigue
+      pudiendo combinar varios dados de Focus propios en una sola acción, sin cambios.
 - [ ] El/los dado(s) de Focus usados para activar la acción se consumen igual que cualquier otro
       dado resuelto (salen del pool sin resolver ya).
 - [ ] El jugador puede resolver un dado que muestre Reroll y elegir hasta `n` dados sin resolver de
@@ -30,10 +37,10 @@ dado con un aviso genérico, sin efecto real de juego todavía).
 - [ ] Si una cara de Focus, Reroll o Especial trae coste de recursos, resolverla exige tener y
       gastar esos recursos igual que hoy con daño/escudo/recurso (SPEC-008b/010); sin recursos
       suficientes, no se puede resolver (tampoco el aviso genérico de Especial).
-- [ ] Si hay varios dados propios de Focus sin resolver a la vez, el jugador (y el autómata) los
-      agrupa en una sola acción sumando sus valores (igual que ya hace la tabla con daño, escudo y
-      recurso, SPEC-008a/013/014), pudiendo girar hasta esa suma de dados objetivo en una sola
-      resolución/pulsación.
+- [ ] ~~Si hay varios dados propios de Focus sin resolver a la vez, el jugador (y el autómata) los
+      agrupa en una sola acción sumando sus valores...~~ **Corrección (2026-07-27):** solo el
+      **autómata** agrupa varios dados de Focus propios en una sola acción (sin cambios); el
+      **jugador** resuelve un dado base de Focus a la vez (ver corrección de arriba).
 - [ ] Igual que Focus, si hay varios dados propios de Reroll(dado) sin resolver a la vez, se
       agrupan sumando sus valores en una sola acción/pulsación.
 - [ ] Al pulsar "Turno enemigo" con un dado de Focus disponible (y sin daño/escudo/activar/recurso
