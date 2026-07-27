@@ -1762,7 +1762,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           const hasTarget = own.pool.some((d, i) => {
             if (i === cur.marked[0]) return false;
             const p = parsePlayerFace(d.face);
-            return p !== null && p.symbol !== null && p.symbol !== 'special';
+            if (p === null || p.symbol === null || p.symbol === 'special') return false;
+            return getCardFromSnapshot(d.code)?.type_code === 'character';
           });
           if (hasTarget) return state;
         }
@@ -1808,6 +1809,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (!targetDie) return state;
       const targetParsed = parsePlayerFace(targetDie.face);
       if (!targetParsed || targetParsed.symbol === null || targetParsed.symbol === 'special') return state;
+      // Corrección (2026-07-27): texto real de Luminara es "one of your character dice" — un dado
+      // de mejora/apoyo no cuenta como objetivo (revertido tras detectarlo jugando; la versión
+      // anterior de SPEC-039 lo permitía deliberadamente, ver spec).
+      if (getCardFromSnapshot(targetDie.code)?.type_code !== 'character') return state;
       const specialParsed = parsePlayerFace(specialDie.face);
       if (!specialParsed) return state;
       if (own.resources < specialParsed.resourceCost) {

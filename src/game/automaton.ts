@@ -10,6 +10,7 @@ import {
   type DieSymbol,
 } from './damage';
 import { LUMINARA_CODE, VADER_CODE } from './characterAbilities';
+import { getCardFromSnapshot } from '../data/cards';
 
 /** Vista del bando del jugador que necesita el autómata para el margen "sin overkill" (SPEC-014):
  * sus escudos absorben antes que la vida, así que el margen real es escudos + vida restante. */
@@ -352,6 +353,9 @@ export function bestLuminaraTargetForAutomaton(pool: PooledDie[], excludeIndex: 
     if (i === excludeIndex) return;
     const p = parsePlayerFace(d.face);
     if (!p || p.isModifier || p.symbol !== 'resource') return;
+    // Corrección (2026-07-27): texto real de Luminara es "one of your character dice" — un dado de
+    // mejora/apoyo no cuenta como objetivo (revertido tras detectarlo jugando, ver SPEC-039).
+    if (getCardFromSnapshot(d.code)?.type_code !== 'character') return;
     if (p.amount > bestAmount) {
       bestAmount = p.amount;
       best = i;

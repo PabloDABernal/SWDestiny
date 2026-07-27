@@ -650,6 +650,11 @@ describe('nextAutomatonAction — Especial real de Luminara/Zuckuss/Vader (SPEC-
   const LUMINARA_CODE = '02036';
   const ZUCKUSS_CODE = '11041';
   const VADER_CODE = '02010';
+  // Códigos reales del snapshot (SPEC-039, corrección 2026-07-27): bestLuminaraTargetForAutomaton
+  // ahora comprueba `type_code === 'character'` contra el snapshot real, así que estos tests no
+  // pueden usar los códigos sintéticos `c<n>` del helper `die()` para el dado objetivo.
+  const CLONE_TROOPER_CODE = '05038'; // personaje
+  const UPGRADE_CODE = '02055'; // mejora (no personaje)
 
   it('Zuckuss: ownerCode identifica su Especial (se resuelve como "gana 1 recurso" en el store)', () => {
     const enemy = enemySide({ activated: [true, true], pool: [dieCode(0, 'Sp', ZUCKUSS_CODE)] });
@@ -667,12 +672,23 @@ describe('nextAutomatonAction — Especial real de Luminara/Zuckuss/Vader (SPEC-
   // práctica el autómata ya lo habría resuelto como acción de recurso antes de llegar a Especial.
   // Confirmado abajo que, sin ningún candidato en el pool, nextAutomatonAction no encuentra objetivo.
   it('elige el dado de recurso de mayor valor entre los candidatos, ignorando daño/escudo', () => {
-    const pool = [dieCode(0, 'Sp', LUMINARA_CODE), die(0, '2MD'), die(1, '1R'), die(0, '3R'), die(1, '1Sh')];
+    const pool = [
+      dieCode(0, 'Sp', LUMINARA_CODE),
+      die(0, '2MD'),
+      dieCode(1, '1R', CLONE_TROOPER_CODE),
+      dieCode(0, '3R', CLONE_TROOPER_CODE),
+      die(1, '1Sh'),
+    ];
     expect(bestLuminaraTargetForAutomaton(pool, 0)).toBe(3);
   });
 
   it('sin ningún dado de recurso, no hay objetivo elegible (-1)', () => {
     const pool = [dieCode(0, 'Sp', LUMINARA_CODE), die(0, '2MD'), die(1, '1Sh')];
+    expect(bestLuminaraTargetForAutomaton(pool, 0)).toBe(-1);
+  });
+
+  it('un dado de recurso de mejora/apoyo no cuenta como objetivo (corrección 2026-07-27)', () => {
+    const pool = [dieCode(0, 'Sp', LUMINARA_CODE), dieCode(1, '3R', UPGRADE_CODE)];
     expect(bestLuminaraTargetForAutomaton(pool, 0)).toBe(-1);
   });
 
