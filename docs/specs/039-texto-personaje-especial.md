@@ -18,9 +18,20 @@ muestra legible en la ficha de la DB (sin las etiquetas `[special]`/`<i>`/`<b>` 
 
 Verificables jugando. Formato: acción → resultado observable.
 
+### Interacción: marcar un Especial dispara su propio flujo
+
+- [ ] A diferencia del resto de símbolos (que se marcan varios y se resuelven con un botón común),
+      **marcar un dado de Especial concreto dispara de inmediato el flujo propio de su dueño**: el
+      selector de dado (Luminara), el selector de personaje (Vader) o la resolución directa sin
+      elección (Zuckuss). No se pueden marcar Especiales de **dueños distintos** a la vez en el mismo
+      modo de resolución.
+- [ ] Si en el pool quedan **más Especiales sin resolver** después de resolver uno (del mismo dueño u
+      otro), el turno **no cambia**: se puede seguir marcando y resolviendo Especiales (o cualquier
+      otro dado pendiente) hasta que no quede ninguno o el jugador decida pasar/hacer otra acción.
+
 ### Luminara Unduli — "Resuelve uno de tus dados, +2 (+3 si no es único)"
 
-- [ ] Al marcar y resolver el Especial de Luminara (jugador o autómata la controla), se puede elegir
+- [ ] Al marcar el Especial de Luminara (jugador o autómata la controla), se puede elegir
       **cualquier dado propio ya tirado y sin resolver** (de cualquier personaje, mejora o apoyo del
       mismo bando, incluida ella misma) **que tenga un valor numérico asociado** (daño, escudo,
       recurso, focus, reroll, disrupt, descarte) — **no** otro Especial ni una cara en blanco `-`.
@@ -33,14 +44,14 @@ Verificables jugando. Formato: acción → resultado observable.
 
 ### Zuckuss — "Gana 1 recurso" (versión simplificada, sin bounty)
 
-- [ ] Al marcar y resolver el Especial de Zuckuss, el bando que lo controla **gana 1 recurso**
-      (equivalente a un `1R` normal). La rama de texto real ligada a la keyword **bounty** no se
-      implementa (no existen cartas bounty en el juego); queda anotada en BACKLOG para cuando
-      existan.
+- [ ] Al marcar el Especial de Zuckuss, se resuelve **de inmediato sin elección**: el bando que lo
+      controla **gana 1 recurso** (equivalente a un `1R` normal). La rama de texto real ligada a la
+      keyword **bounty** no se implementa (no existen cartas bounty en el juego); queda anotada en
+      BACKLOG para cuando existan.
 
 ### Darth Vader — "3 de daño a un personaje, luego 1 a Vader"
 
-- [ ] Al marcar y resolver el Especial de Vader, se elige un **personaje objetivo** (propio o rival,
+- [ ] Al marcar el Especial de Vader, se elige un **personaje objetivo** (propio o rival,
       cualquiera, como dice el texto real) y recibe **3 de daño** (mismo reparto de escudo/vida que
       el daño normal). Inmediatamente después, **Vader recibe 1 de daño** (a él mismo, sin poder
       evitarlo ni elegir otro receptor).
@@ -65,9 +76,11 @@ Verificables jugando. Formato: acción → resultado observable.
 ### Texto legible en la ficha DB
 
 - [ ] En la ficha de una carta (sección DB, pestaña Cartas), el campo de texto ya no muestra las
-      etiquetas en crudo: `[special]`, `[force]` (u otro token entre corchetes reconocido) se
-      sustituyen por una palabra/etiqueta legible; `<i>...</i>` y `<b>...</b>` se muestran en
-      cursiva/negrita en vez de con las etiquetas literales.
+      etiquetas en crudo: los tokens entre corchetes que sí aparecen en el snapshot real (`[special]`,
+      `[melee]`, `[ranged]`, `[indirect]`, `[shield]`, `[resource]`, `[discard]`, `[disrupt]`,
+      `[focus]`, `[blank]`) se sustituyen por una palabra/etiqueta legible; `<i>...</i>`, `<b>...</b>`
+      **y `<em>...</em>`** se muestran en cursiva/negrita en vez de con las etiquetas literales (las
+      tres aparecen mezcladas en textos reales del snapshot, confirmado).
 - [ ] Un token entre corchetes **no reconocido** (keyword rara que no está en la tabla) se deja tal
       cual entre corchetes, sin romper el resto del texto.
 
@@ -83,11 +96,12 @@ Verificables jugando. Formato: acción → resultado observable.
 
 ## Casos límite
 
-- **Varios Especiales marcados a la vez** (p. ej. Luminara y Vader tiran Especial en la misma
-  activación): se resuelven **uno a uno** dentro de la misma acción/turno (mismo patrón ya usado por
-  el reparto multi-objetivo de daño/escudo, SPEC-011): cada clic resuelve un Especial concreto con su
-  propio efecto/objetivo; el turno no cambia hasta que no queda ningún Especial marcado sin resolver
-  (o el jugador cancela/pasa). No se combinan ni se suman entre sí.
+- **Luminara y Vader tiran Especial en la misma activación**: no se combinan; se resuelven de uno en
+  uno marcando cada dado por separado (ver "Interacción" arriba), sin cambiar de turno entre ambos.
+- **Vader elige a sí mismo como objetivo del 3 de daño** (el texto real "a character" lo permite, no
+  se restringe): recibe 3 + 1 (el fijo) = **4 de daño en la misma resolución**; se procesa igual que
+  cualquier otro objetivo (el 3 primero, reparto de escudo/vida normal; el 1 fijo después, sobre lo
+  que quede).
 - **Luminara sube el valor de un dado de recurso/daño que ya tiene coste**: el coste (recurso o
   indirecto propio) de ese dado se sigue pagando igual; el +2/+3 solo afecta al valor de daño/
   escudo/recurso/focus/reroll, no al coste.
@@ -113,6 +127,10 @@ Verificables jugando. Formato: acción → resultado observable.
   Especial.
 - **No-único vs. único**: usar `is_unique` de la carta dueña del dado objetivo (mismo campo que
   `characterPoints`/elite en SPEC-037), no del propio personaje que tira el Especial.
+- **Texto real de Luminara es más estricto** ("one of your character dice": solo dados de personaje);
+  esta spec lo amplía deliberadamente a dados de mejora/apoyo también (decisión del usuario). Dejar
+  un comentario en el código señalándolo, para que no se lea como error de transcripción del texto
+  real.
 - **Vader — daño propio y objetivo propio/rival**: reutilizar el motor de resolución existente
   (`resolvePlayerBatch`/lo que ya reparte daño) para el 3 de daño con selección de objetivo libre
   (propio o rival); el 1 de daño a Vader es un segundo paso fijo (receptor = el propio Vader, sin
@@ -122,12 +140,15 @@ Verificables jugando. Formato: acción → resultado observable.
   menor vida; Luminara boostea el dado propio sin resolver de mayor valor entre los elegibles (mejor
   jugada disponible, mismo espíritu que el resto de heurística fija del autómata, sin evaluación de
   jugadas más allá de eso).
-- **Texto legible (ficha DB)**: pequeña función de formateo en `DbSection.tsx` (o módulo aparte) que
-  (a) reemplaza tokens `[token]` reconocidos por una tabla fija (al menos `special`→"Especial",
-  `force`→"Fuerza"; ampliar según se encuentren jugando) y deja los no reconocidos tal cual entre
-  corchetes; (b) convierte `<i>…</i>`/`<b>…</b>` en elementos React (`<em>`/`<strong>`) en vez de
-  imprimir las etiquetas. No es un renderer HTML genérico (nada de `dangerouslySetInnerHTML`): parseo
-  manual acotado a estos patrones conocidos.
+- **Texto legible (ficha DB)**: único punto a tocar hoy es `src/components/DbSection.tsx` (donde se
+  imprime `selected.text` en crudo). Pequeña función de formateo (en el mismo archivo o módulo
+  aparte) que (a) reemplaza los tokens `[special]`, `[melee]`, `[ranged]`, `[indirect]`, `[shield]`,
+  `[resource]`, `[discard]`, `[disrupt]`, `[focus]`, `[blank]` (confirmados contra
+  `src/data/cards.json`) por una tabla fija de etiquetas legibles, dejando cualquier otro token entre
+  corchetes tal cual; (b) convierte `<i>…</i>`, `<b>…</b>` **y `<em>…</em>`** en elementos React
+  (`<em>`/`<strong>`) en vez de imprimir las etiquetas — las tres aparecen mezcladas en textos reales
+  del snapshot. No es un renderer HTML genérico (nada de `dangerouslySetInnerHTML`): parseo manual
+  acotado a estos patrones conocidos.
 - Sin cambios en el pipeline de import, en las reglas de construcción, ni en otros símbolos de dado.
 
 ## Nota de tamaño (regla 4 CLAUDE.md)
