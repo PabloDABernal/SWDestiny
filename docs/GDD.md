@@ -396,6 +396,18 @@ respaldo para códigos que aún no estén en el snapshot (p. ej. un set publicad
 regeneración). El snapshot se regenera con un script de desarrollo; refrescarlo desde dentro del
 juego y una sección "DB" para navegar cartas/mazos son features posteriores (SPEC-031/032).
 
+### App offline e instalable (PWA, SPEC-040)
+
+El juego funciona **entero sin red**: el Service Worker que ya cacheaba imágenes (SPEC-034) cachea
+también el **app shell** (HTML/JS/CSS), así que abrir la app y jugar una partida completa offline
+funciona, no solo tras una recarga sino cerrando y reabriendo el navegador. Como el snapshot de
+cartas, los mazos precargados y los de la comunidad van dentro del bundle (SPEC-030/031/035), lo
+único que sigue dependiendo de la red son las **imágenes** de carta no vistas antes (caen al detalle
+de texto, SPEC-034). Además la app es **instalable** (manifest + iconos): se abre en ventana propia
+con su icono. Cuando se despliega una versión nueva, la app **avisa con un botón "Actualizar"** en
+vez de recargar sola: nunca te interrumpe a mitad de partida ni te deja en una build vieja sin
+saberlo.
+
 ## 8. Preguntas de diseño abiertas
 
 - (Ninguna pendiente ahora mismo; añadir aquí cuando surjan durante la implementación, siguiendo

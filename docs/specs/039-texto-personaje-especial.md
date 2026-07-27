@@ -1,6 +1,6 @@
 # SPEC-039: Texto de personaje — Especial real para Luminara Unduli, Zuckuss y Darth Vader
 
-**Estado:** Pendiente
+**Estado:** Completada
 **Sección del GDD:** §5 nota "Focus, reroll y especial" (SPEC-023); primera pieza de "texto de
 cartas" (v4, ver roadmap)
 **Depende de:** SPEC-023 (símbolo Especial, hoy placeholder), SPEC-010/013/014 (resolución de tandas
@@ -211,4 +211,8 @@ subdividir con sufijos).
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+Completada tras playtest 2026-07-27. Especial real de Luminara Unduli, Zuckuss y Darth Vader, tanto
+para el jugador como para el autómata. Durante el playtest se corrigieron tres cosas sobre la
+implementación inicial: cancelar la resolución tras elegir objetivo de Luminara revierte el +2*/+3*
+(`b212ddd`), el objetivo de ese +2*/+3* se limita a dados de personaje (`dfc857d`), y —regresión de
+SPEC-023 detectada de paso— el jugador resuelve Focus de un dado base a la vez (`1db7344`). Todo OK.
