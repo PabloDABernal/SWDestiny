@@ -171,7 +171,10 @@ Verificables jugando. Formato: acción → resultado observable.
   objetivo del efecto (qué dado propio boostea Luminara / a qué personaje ataca Vader) y ampliar el
   tipo `AutomatonAction` de `'special'` con ese objetivo ya resuelto (mismo patrón que `targetIndex`
   en `'shield'`/`'attack'` o `targets` en `'focus'`/`'rerollDice'`), para que el `case 'special'` de
-  `enemyTurn` (`gameStore.ts`) solo tenga que ejecutarlo, sin decidir nada por su cuenta.
+  `enemyTurn` (`gameStore.ts`) solo tenga que ejecutarlo, sin decidir nada por su cuenta. El objetivo
+  de Vader puede caer en su **propio bando** (si no hay rival vivo) además del rival, a diferencia de
+  `'attack'`/`'shield'` (bando fijo): el objetivo ampliado necesita expresar también de qué bando es
+  (mismo patrón que el campo `side` de `RerollDieTarget`), no asumir "rival" por defecto.
 - **Texto real de Luminara es más estricto** ("one of your character dice": solo dados de personaje);
   esta spec lo amplía deliberadamente a dados de mejora/apoyo también (decisión del usuario). Dejar
   un comentario en el código señalándolo, para que no se lea como error de transcripción del texto
