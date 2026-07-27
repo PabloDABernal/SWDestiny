@@ -31,6 +31,9 @@ Verificables jugando. Formato: acción → resultado observable.
       pasar al bando contrario. En cuanto se hace **cualquier otra acción** (daño, escudo, activar,
       pasar, jugar una carta...) el turno se cierra con total normalidad, igual que hoy; la excepción
       es únicamente "resolver un Especial", no un modo general de acciones libres.
+- [ ] Esta excepción de turno aplica **igual si quien resuelve es el autómata**: si tras resolver un
+      Especial del autómata su pool todavía tiene otro Especial sin resolver, su turno tampoco cambia
+      (misma regla que para el jugador, no solo del lado humano).
 
 ### Luminara Unduli — "Resuelve uno de tus dados, +2 (+3 si no es único)"
 
@@ -145,17 +148,30 @@ Verificables jugando. Formato: acción → resultado observable.
   `side`+`symbol` (ambos `'special'` pasarían) — hace falta comparar también el `code` del dado ya
   marcado contra el del nuevo, y bloquear si difieren (mismo patrón que ya usa para no mezclar
   bando/símbolo distintos).
-- **Excepción de turno acotada a Especial**: `afterApply` (y el resto de sitios que hacen
-  `turn: opposite(side)` tras una resolución) deben comprobar si, tras resolver un Especial, el
-  pool del bando que acaba de actuar **todavía tiene otro dado de Especial sin resolver**; si es
-  así, el turno se queda en el mismo bando (no se llama a `opposite`); en cualquier otra resolución
-  (daño, escudo, foco, etc.) el turno cambia exactamente igual que hoy, sin tocar ese camino.
-- **Autómata — dividir el lote de Especial por dueño**: `combineAutomatonBatch(enemy.pool,
-  isSpecialSymbol, ...)` (`automaton.ts`) hoy agrupa **todos** los índices de Especial del pool en un
-  único lote, sin distinguir dueño; para esta spec hace falta que la rama `'special'` de la tabla de
-  prioridades agrupe esos índices **por `code`** primero y opere sobre un solo grupo (el primero que
-  encuentre) cada vez, dejando el resto del pool intacto para una acción futura — igual que ya pasa
-  con el resto de acciones que no agotan todo el trabajo pendiente en una sola pulsación.
+- **Excepción de turno acotada a Especial — lado jugador**: `afterApply` (`gameStore.ts`, usada por
+  `resolveSpecial`) debe comprobar si, tras resolver un Especial, el pool del bando que acaba de
+  actuar **todavía tiene otro dado de Especial sin resolver**; si es así, el turno se queda en el
+  mismo bando (no se llama a `opposite`); en cualquier otra resolución (daño, escudo, foco, etc.) el
+  turno cambia exactamente igual que hoy, sin tocar ese camino.
+- **Excepción de turno — lado autómata**: el `case 'special'` de `enemyTurn` (`gameStore.ts`, hoy
+  hace `set({ turn: 'player', passStreak: 0 })` en crudo, sin pasar por `afterApply`) es un **tercer
+  sitio** a tocar, distinto del anterior: tras ejecutar el efecto real, debe comprobar si el pool del
+  enemigo todavía tiene otro Especial sin resolver (de cualquier dueño) y, si es así, **no** llamar a
+  ese `set({ turn: 'player', ... })` (el turno se queda en `'enemy'`, y `enemyTurn` se volverá a
+  invocar para la siguiente acción, igual que ya ocurre con el reparto de indirecto pendiente).
+- **Autómata — dividir el lote de Especial por dueño y decidir su objetivo en `automaton.ts`**:
+  `combineAutomatonBatch(enemy.pool, isSpecialSymbol, ...)` (línea ~547) hoy agrupa **todos** los
+  índices de Especial del pool en un único lote, sin distinguir dueño ni decidir ningún objetivo (el
+  tipo `AutomatonAction` para `'special'`, línea ~102, solo lleva `dieIndices`/`costReceiverIndex`,
+  a diferencia de `'shield'`/`'focus'`/`'rerollDice'` que sí llevan su objetivo ya decidido). Para
+  esta spec hace falta: (a) agrupar los índices de Especial **por `code`** y operar sobre un solo
+  grupo (el primero que se encuentre) cada vez, dejando el resto del pool intacto para una acción
+  futura; (b) igual que ya hace el resto de la tabla de prioridades (heurística "rival vivo de menor
+  vida" para daño, "dado propio de mayor valor" ya se necesita para Luminara), decidir aquí mismo el
+  objetivo del efecto (qué dado propio boostea Luminara / a qué personaje ataca Vader) y ampliar el
+  tipo `AutomatonAction` de `'special'` con ese objetivo ya resuelto (mismo patrón que `targetIndex`
+  en `'shield'`/`'attack'` o `targets` en `'focus'`/`'rerollDice'`), para que el `case 'special'` de
+  `enemyTurn` (`gameStore.ts`) solo tenga que ejecutarlo, sin decidir nada por su cuenta.
 - **Texto real de Luminara es más estricto** ("one of your character dice": solo dados de personaje);
   esta spec lo amplía deliberadamente a dados de mejora/apoyo también (decisión del usuario). Dejar
   un comentario en el código señalándolo, para que no se lea como error de transcripción del texto
