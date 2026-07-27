@@ -3,6 +3,7 @@ import {
   nextAutomatonAction,
   applyEnemyHealthMultiplier,
   distributeIncomingDamage,
+  bestLuminaraTargetForAutomaton,
   DIFFICULTY_SETTINGS,
   type AutomatonSide,
   type AutomatonOpponent,
@@ -593,12 +594,13 @@ describe('nextAutomatonAction — focus, reroll de dado y especial (SPEC-023)', 
     expect(action.type).toBe('pass');
   });
 
-  it('especial se resuelve (mismo placeholder) si no queda ninguna acción mejor', () => {
+  it('especial se resuelve (mismo placeholder) si no queda ninguna acción mejor (código no cubierto)', () => {
     const enemy = enemySide({ activated: [true, true], pool: [die(0, 'Sp')] });
     expect(next(enemy, playerSide(), noRerollsUsed)).toEqual({
       type: 'special',
       dieIndices: [0],
       costReceiverIndex: null,
+      ownerCode: 'c0',
     });
   });
 
@@ -636,6 +638,103 @@ describe('nextAutomatonAction — focus, reroll de dado y especial (SPEC-023)', 
 
     const onlyBlanks = enemySide({ activated: [true, true], pool: [die(0, '-'), die(1, '-')] });
     expect(next(onlyBlanks, playerSide(), noRerollsUsed).type).toBe('reroll');
+  });
+});
+
+/** Dado con `code` explícito (los tests genéricos de `die()` siempre usan `c<characterIndex>`). */
+function dieCode(characterIndex: number, face: string, code: string): PooledDie {
+  return { characterIndex, code, name: code, dieIndex: 0, face };
+}
+
+describe('nextAutomatonAction — Especial real de Luminara/Zuckuss/Vader (SPEC-039)', () => {
+  const LUMINARA_CODE = '02036';
+  const ZUCKUSS_CODE = '11041';
+  const VADER_CODE = '02010';
+
+  it('Zuckuss: ownerCode identifica su Especial (se resuelve como "gana 1 recurso" en el store)', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [dieCode(0, 'Sp', ZUCKUSS_CODE)] });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toEqual({
+      type: 'special',
+      dieIndices: [0],
+      costReceiverIndex: null,
+      ownerCode: ZUCKUSS_CODE,
+    });
+  });
+
+  // `bestLuminaraTargetForAutomaton` se prueba aparte (aislada de `nextAutomatonAction`): en la
+  // tabla de prioridades real, cualquier dado de recurso elegible como objetivo también dispara la
+  // fila 4 (recurso) POR SU CUENTA, con prioridad más alta que Especial (fila 8) — así que en la
+  // práctica el autómata ya lo habría resuelto como acción de recurso antes de llegar a Especial.
+  // Confirmado abajo que, sin ningún candidato en el pool, nextAutomatonAction no encuentra objetivo.
+  it('elige el dado de recurso de mayor valor entre los candidatos, ignorando daño/escudo', () => {
+    const pool = [dieCode(0, 'Sp', LUMINARA_CODE), die(0, '2MD'), die(1, '1R'), die(0, '3R'), die(1, '1Sh')];
+    expect(bestLuminaraTargetForAutomaton(pool, 0)).toBe(3);
+  });
+
+  it('sin ningún dado de recurso, no hay objetivo elegible (-1)', () => {
+    const pool = [dieCode(0, 'Sp', LUMINARA_CODE), die(0, '2MD'), die(1, '1Sh')];
+    expect(bestLuminaraTargetForAutomaton(pool, 0)).toBe(-1);
+  });
+
+  it('Luminara vía nextAutomatonAction: sin ningún candidato en el pool, se resuelve sin objetivo', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [dieCode(0, 'Sp', LUMINARA_CODE), die(0, '-')] });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toEqual({
+      type: 'special',
+      dieIndices: [0],
+      costReceiverIndex: null,
+      ownerCode: LUMINARA_CODE,
+      luminaraTargetPoolIndex: null,
+    });
+  });
+
+  it('Vader: ataca al rival vivo de menor vida', () => {
+    const enemy = enemySide({ activated: [true, true], pool: [dieCode(0, 'Sp', VADER_CODE)] });
+    const player = playerSide({ damage: [5, 0] }); // A: 6 vida, B: 6 vida (empate, gana el primero)
+    expect(next(enemy, player, noRerollsUsed)).toEqual({
+      type: 'special',
+      dieIndices: [0],
+      costReceiverIndex: null,
+      ownerCode: VADER_CODE,
+      vaderTarget: { side: 'player', index: 0 },
+    });
+  });
+
+  it('Vader: sin ningún rival vivo, ataca al propio de menor vida', () => {
+    const enemy = enemySide({
+      activated: [true, true],
+      pool: [dieCode(0, 'Sp', VADER_CODE)],
+      damage: [3, 7], // A: 7 vida, B: 1 vida
+    });
+    const player = playerSide({ damage: [11, 6] }); // ambos KO (0 de vida)
+    expect(next(enemy, player, noRerollsUsed)).toEqual({
+      type: 'special',
+      dieIndices: [0],
+      costReceiverIndex: null,
+      ownerCode: VADER_CODE,
+      vaderTarget: { side: 'enemy', index: 1 },
+    });
+  });
+
+  it('nunca combina dos dueños distintos de Especial en la misma acción: toma solo uno', () => {
+    const enemy = enemySide({
+      activated: [true, true],
+      pool: [dieCode(0, 'Sp', VADER_CODE), dieCode(1, 'Sp', ZUCKUSS_CODE)],
+    });
+    const action = next(enemy, playerSide(), noRerollsUsed);
+    expect(action.type).toBe('special');
+    if (action.type === 'special') {
+      expect(action.dieIndices).toHaveLength(1);
+      expect([VADER_CODE, ZUCKUSS_CODE]).toContain(action.ownerCode);
+    }
+  });
+
+  it('un Especial cuyo coste no se puede pagar no es acción legal (pasa, sin blancos suficientes)', () => {
+    const enemy = enemySide({
+      activated: [true, true],
+      pool: [dieCode(0, 'Sp2', ZUCKUSS_CODE), die(0, '-')],
+      resources: 1,
+    });
+    expect(next(enemy, playerSide(), noRerollsUsed).type).toBe('pass');
   });
 });
 

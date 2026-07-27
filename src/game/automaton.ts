@@ -9,6 +9,7 @@ import {
   MAX_SHIELDS,
   type DieSymbol,
 } from './damage';
+import { LUMINARA_CODE, VADER_CODE } from './characterAbilities';
 
 /** Vista del bando del jugador que necesita el autómata para el margen "sin overkill" (SPEC-014):
  * sus escudos absorben antes que la vida, así que el margen real es escudos + vida restante. */
@@ -99,7 +100,23 @@ export type AutomatonAction =
     }
   | { type: 'focus'; dieIndices: number[]; targets: FocusTarget[]; costReceiverIndex: number | null }
   | { type: 'rerollDice'; dieIndices: number[]; targets: RerollDieTarget[]; costReceiverIndex: number | null }
-  | { type: 'special'; dieIndices: number[]; costReceiverIndex: number | null }
+  | {
+      /** Especial (SPEC-023/039): un único dado por acción, nunca varios combinados (cada Especial
+       * es un efecto propio de carta, no un símbolo sumable) ni de dueños distintos. */
+      type: 'special';
+      dieIndices: number[];
+      costReceiverIndex: number | null;
+      /** Código de la carta dueña del dado (SPEC-039): decide qué efecto real aplica; si no está en
+       * `KNOWN_SPECIAL_CODES`, se resuelve como el placeholder ya existente. */
+      ownerCode: string;
+      /** Luminara: índice en el pool del dado propio elegido para el +2/+3 (solo entre daño
+       * melee/ranged y recurso, ver `bestLuminaraTargetForAutomaton`), o null si no hay ninguno
+       * elegible (se resuelve sin efecto, igual que el jugador sin objetivo). */
+      luminaraTargetPoolIndex?: number | null;
+      /** Vader: objetivo del 3 de daño (rival vivo de menor vida, o propio si no hay rival vivo),
+       * o null si no hay ningún personaje vivo al que atacar (no debería ocurrir en partida). */
+      vaderTarget?: { side: 'enemy' | 'player'; index: number } | null;
+    }
   | { type: 'reroll'; dieIndices: number[]; kind: 'free' | 'extra' }
   | { type: 'pass' };
 
@@ -286,7 +303,6 @@ const isDisruptSymbol = (s: DieSymbol | null) => s === 'disrupt';
 const isDiscardSymbol = (s: DieSymbol | null) => s === 'discard';
 const isFocusSymbol = (s: DieSymbol | null) => s === 'focus';
 const isRerollDieSymbol = (s: DieSymbol | null) => s === 'reroll';
-const isSpecialSymbol = (s: DieSymbol | null) => s === 'special';
 
 /** Mejor cara disponible de un dado candidato para Focus (SPEC-023): sigue la misma prioridad que
  * el resto de la tabla (daño > escudo > recurso). null si ninguna de sus 6 caras mejora nada. */
@@ -319,6 +335,43 @@ function ascendingHealthCandidates(
     .map((_, i) => i)
     .filter((i) => !isKO(characters[i], damage[i] ?? 0) && filter(i))
     .sort((a, b) => currentHealth(characters[a], damage[a] ?? 0) - currentHealth(characters[b], damage[b] ?? 0));
+}
+
+/** Mejor dado propio para el +2/+3 de Luminara (SPEC-039), limitado a **recurso**: a diferencia del
+ * jugador (que puede elegir cualquier dado con valor numérico, incluido daño/escudo/focus/reroll/
+ * disrupt/descarte), el autómata solo considera recurso — el único caso que se puede aplicar de
+ * inmediato sin decidir además un personaje/dado objetivo propio nuevo (daño/escudo necesitarían su
+ * propia elección de objetivo; focus/reroll/disrupt/descarte, un paso interactivo adicional).
+ * Decisión de implementación para mantener la heurística del autómata simple y de una sola pasada;
+ * documentado explícitamente para no leerse como una limitación del efecto en sí (el jugador sí
+ * puede aplicarlo a cualquier símbolo). -1 si no hay ningún dado de recurso elegible. */
+export function bestLuminaraTargetForAutomaton(pool: PooledDie[], excludeIndex: number): number {
+  let best = -1;
+  let bestAmount = -1;
+  pool.forEach((d, i) => {
+    if (i === excludeIndex) return;
+    const p = parsePlayerFace(d.face);
+    if (!p || p.isModifier || p.symbol !== 'resource') return;
+    if (p.amount > bestAmount) {
+      bestAmount = p.amount;
+      best = i;
+    }
+  });
+  return best;
+}
+
+/** Objetivo del 3 de daño de Vader (SPEC-039): rival vivo de menor vida; si no hay ningún rival vivo,
+ * el propio de menor vida (mismo criterio que el resto de daño automático); null si no hay ninguno
+ * vivo en ningún bando (no debería ocurrir con la partida en curso). */
+function bestVaderTarget(
+  enemy: AutomatonSide,
+  player: AutomatonOpponent,
+): { side: 'enemy' | 'player'; index: number } | null {
+  const rivalCandidates = ascendingHealthCandidates(player.characters, player.damage, () => true);
+  if (rivalCandidates.length > 0) return { side: 'player', index: rivalCandidates[0] };
+  const ownCandidates = ascendingHealthCandidates(enemy.characters, enemy.damage, () => true);
+  if (ownCandidates.length > 0) return { side: 'enemy', index: ownCandidates[0] };
+  return null;
 }
 
 /** Recorta `dieIndices` (ya ordenados de mayor a menor valor) al prefijo que no supere `margin`,
@@ -541,14 +594,37 @@ export function nextAutomatonAction(
     }
   }
 
-  // 8. Especial combinado (SPEC-023): placeholder sin efecto real, se "resuelve" igual que el
-  // jugador (mismo aviso/consumo) si no queda ninguna acción de prioridad más alta disponible.
-  // El modificador genérico +X* no vale con especial (valor fijo, no modificable — SPEC-027).
-  const specialBatch = combineAutomatonBatch(enemy.pool, isSpecialSymbol, enemy.resources, hasNonKoAlly, false);
-  if (specialBatch !== null) {
-    const costReceiverIndex =
-      specialBatch.indirectCost > 0 ? indirectCostReceiverIndex(enemy, specialBatch.indirectCost) : null;
-    return { type: 'special', dieIndices: specialBatch.dieIndices, costReceiverIndex };
+  // 8. Especial (SPEC-023/039): nunca se combinan varios dados ni dueños distintos en una acción
+  // (cada Especial es un efecto propio de carta, no un símbolo sumable, a diferencia del resto de
+  // filas) — se toma UN dado de Especial (el primero que se pueda pagar, sin orden fijo entre
+  // dueños distintos, decisión del usuario) y se resuelve con su efecto real si el código es
+  // conocido (Luminara/Zuckuss/Vader) o con el placeholder de siempre si no.
+  const specialIndex = enemy.pool.findIndex((d) => {
+    const p = parsePlayerFace(d.face);
+    return p !== null && p.symbol === 'special' && p.resourceCost <= enemy.resources;
+  });
+  if (specialIndex !== -1) {
+    const ownerCode = enemy.pool[specialIndex].code;
+    if (ownerCode === LUMINARA_CODE) {
+      const targetIdx = bestLuminaraTargetForAutomaton(enemy.pool, specialIndex);
+      return {
+        type: 'special',
+        dieIndices: [specialIndex],
+        costReceiverIndex: null,
+        ownerCode,
+        luminaraTargetPoolIndex: targetIdx === -1 ? null : targetIdx,
+      };
+    }
+    if (ownerCode === VADER_CODE) {
+      return {
+        type: 'special',
+        dieIndices: [specialIndex],
+        costReceiverIndex: null,
+        ownerCode,
+        vaderTarget: bestVaderTarget(enemy, player),
+      };
+    }
+    return { type: 'special', dieIndices: [specialIndex], costReceiverIndex: null, ownerCode };
   }
 
   const blanks = blankDieIndices(enemy.pool);

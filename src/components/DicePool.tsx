@@ -1,6 +1,7 @@
 import { useGameStore, type Side } from '../store/gameStore';
 import { dieSymbol, parsePlayerFace, isGenericModifier } from '../game/damage';
 import { readCache } from '../import/resolveCards';
+import { LUMINARA_CODE, VADER_CODE } from '../game/characterAbilities';
 
 /** Suma de valores (base + modificador) de los dados marcados de `pool` (SPEC-023: presupuesto de
  * cuántos dados objetivo puede girar Focus / rerollear Reroll de dado). */
@@ -27,6 +28,7 @@ export function DicePool({ side }: { side: Side }) {
   const confirmFocus = useGameStore((s) => s.confirmFocus);
   const pickRerollTarget = useGameStore((s) => s.pickRerollTarget);
   const confirmReroll = useGameStore((s) => s.confirmReroll);
+  const pickLuminaraTarget = useGameStore((s) => s.pickLuminaraTarget);
   const cancelResolve = useGameStore((s) => s.cancelResolve);
   const turn = useGameStore((s) => s.turn);
   const resolveError = useGameStore((s) => s.resolveError);
@@ -34,6 +36,24 @@ export function DicePool({ side }: { side: Side }) {
   // El jugador solo ARRANCA la resolución de su propio pool (SPEC-008a).
   const interactive = side === 'player';
   const mode = resolve && resolve.side === side ? resolve : null;
+
+  // Especial por dueño (SPEC-039): mientras `mode.symbol === 'special'` sigue siendo un único dado
+  // marcado (`marked.length === 1`), el dueño decide el flujo — Luminara espera un dado objetivo
+  // propio (aquí, en el pool), Vader un personaje (en App.tsx/CharacterCard), cualquier otro código
+  // usa el botón "Resolver especial" de siempre.
+  const specialOwnerCode =
+    mode && mode.symbol === 'special' && mode.marked.length === 1 ? pool[mode.marked[0]]?.code : undefined;
+  const isLuminaraSpecial = specialOwnerCode === LUMINARA_CODE;
+  const isVaderSpecial = specialOwnerCode === VADER_CODE;
+  // Mismo criterio que `canPickLuminaraTarget` de abajo (y que `resolveSpecial` en el store): un
+  // modificador genérico +X* suelto (symbol null) no cuenta como objetivo clicable.
+  const luminaraTargetExists =
+    isLuminaraSpecial &&
+    pool.some((d, i) => {
+      if (i === mode!.marked[0]) return false;
+      const p = parsePlayerFace(d.face);
+      return p !== null && p.symbol !== null && p.symbol !== 'special';
+    });
 
   // SPEC-023: mientras se resuelve un Reroll de dado del jugador, CUALQUIER pool (incluido el
   // rival, aquí "enemy") acepta clics para elegir dados objetivo — única vía por la que el pool
@@ -74,7 +94,13 @@ export function DicePool({ side }: { side: Side }) {
               Resolver recursos
             </button>
           )}
-          {mode.symbol === 'special' && (
+          {mode.symbol === 'special' && isLuminaraSpecial && luminaraTargetExists && (
+            <span className="pool__mode-label">Elige un dado propio (con valor) para subir +2/+3.</span>
+          )}
+          {mode.symbol === 'special' && isVaderSpecial && (
+            <span className="pool__mode-label">Elige un personaje, propio o rival, para 3 de daño.</span>
+          )}
+          {mode.symbol === 'special' && !isVaderSpecial && !(isLuminaraSpecial && luminaraTargetExists) && (
             <button onClick={resolveSpecial} disabled={mode.marked.length === 0}>
               Resolver especial
             </button>
@@ -176,6 +202,13 @@ export function DicePool({ side }: { side: Side }) {
               !(side === 'player' && rerollMode.marked.includes(i)) &&
               (isRerollTarget || (symbol !== 'reroll' && !isGeneric && rerollBudget > 0));
 
+            // Elegir dado objetivo del +2/+3 de Luminara (SPEC-039): cualquier dado propio sin
+            // resolver, distinto del Especial marcado, con valor numérico (no otro Especial ni una
+            // cara en blanco/sin valor — un modificador +X* solo tampoco cuenta, igual criterio que
+            // Focus/Reroll de arriba).
+            const canPickLuminaraTarget =
+              interactive && isLuminaraSpecial && mode !== null && i !== mode.marked[0] && symbol !== null;
+
             // Arrancar un modo nuevo, o seguir marcando/desmarcando dados del MISMO símbolo ya en
             // curso (incluye sumar más presupuesto de Focus/Reroll, SPEC-008a/023): mismo `selectDie`
             // genérico de siempre. Arrancar un modo nuevo exige además que sea tu turno (SPEC-025);
@@ -183,30 +216,35 @@ export function DicePool({ side }: { side: Side }) {
             // que el chequeo no cambia el comportamiento de seguir marcando/desmarcando.
             // Modificador genérico +X* (SPEC-027): no tiene símbolo propio (no puede abrir modo por
             // sí solo), pero cuenta como "del símbolo del modo abierto" para cualquier símbolo salvo
-            // especial (valor fijo, no modificable).
+            // especial (valor fijo, no modificable). Especial (SPEC-039): una vez hay un modo
+            // abierto, no se vuelve a interactuar con él vía `selectDie` (el flujo sigue por
+            // `pickLuminaraTarget`/`resolveVaderTarget`/`resolveSpecial`/`cancelResolve`).
             const canSelect =
               interactive &&
               turn === 'player' &&
               (mode === null
                 ? symbol !== null
-                : mode.focusFaceChoice == null && (mode.symbol === symbol || (isGeneric && mode.symbol !== 'special')));
+                : mode.symbol !== 'special' && mode.focusFaceChoice == null && (mode.symbol === symbol || isGeneric));
 
             const onClick = canPickFocusTarget
               ? () => pickFocusTarget(i)
               : canPickRerollTarget
                 ? () => pickRerollTarget(side, i)
-                : canSelect
-                  ? () => selectDie(side, i)
-                  : undefined;
+                : canPickLuminaraTarget
+                  ? () => pickLuminaraTarget(i)
+                  : canSelect
+                    ? () => selectDie(side, i)
+                    : undefined;
 
             const marked = isMarked || isRerollTarget || isFocusPick;
-            const dimmed = mode !== null && symbol !== null && symbol !== mode.symbol && !canPickRerollTarget;
+            const dimmed =
+              mode !== null && symbol !== null && symbol !== mode.symbol && !canPickRerollTarget && !canPickLuminaraTarget;
             const cls =
               'pool-die' +
               (symbol ? ` pool-die--${symbolClass(symbol)}` : isGeneric ? ' pool-die--generic' : '') +
               (marked ? ' pool-die--selected' : '') +
               (dimmed ? ' pool-die--dimmed' : '') +
-              (canPickFocusTarget || canPickRerollTarget ? ' pool-die--pickable' : '');
+              (canPickFocusTarget || canPickRerollTarget || canPickLuminaraTarget ? ' pool-die--pickable' : '');
             return (
               <button
                 key={i}

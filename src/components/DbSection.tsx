@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { getAllCards, getCardFromSnapshot } from '../data/cards';
 import { cardImageUrl } from '../data/cardImages';
@@ -33,6 +33,49 @@ function CardImage({ code, thumb }: { code: string; thumb?: boolean }) {
       />
     </div>
   );
+}
+
+// Tokens entre corchetes confirmados en el texto real de cartas (SPEC-039, src/data/cards.json);
+// uno no listado aquí se deja tal cual entre corchetes (ver `formatCardText`).
+const TEXT_TOKEN_LABEL: Record<string, string> = {
+  special: 'Especial',
+  melee: 'Melee',
+  ranged: 'A distancia',
+  indirect: 'Indirecto',
+  shield: 'Escudo',
+  resource: 'Recurso',
+  discard: 'Descarte',
+  disrupt: 'Disrupt',
+  focus: 'Focus',
+  blank: 'Blanco',
+};
+
+/** Da formato legible al texto de una carta (SPEC-039, BACKLOG): sustituye los tokens `[token]`
+ * conocidos por una etiqueta legible y convierte `<i>`/`<b>`/`<em>` en cursiva/negrita, en vez de
+ * mostrar el markup en crudo. Parseo manual acotado a estos patrones conocidos (nada de
+ * `dangerouslySetInnerHTML`); un token no reconocido se deja tal cual entre corchetes. */
+function formatCardText(text: string): ReactNode[] {
+  const pattern = /\[(\w+)\]|<(i|b|em)>([\s\S]*?)<\/\2>/g;
+  const nodes: ReactNode[] = [];
+  let lastIndex = 0;
+  let key = 0;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) nodes.push(text.slice(lastIndex, match.index));
+    if (match[1]) {
+      // Reconocido: la etiqueta legible sustituye TODO el token, sin corchetes (ya no es markup en
+      // crudo); no reconocido: se deja tal cual, con corchetes, como pide la spec.
+      const label = TEXT_TOKEN_LABEL[match[1].toLowerCase()];
+      nodes.push(label ?? match[0]);
+    } else if (match[2] === 'b') {
+      nodes.push(<strong key={key++}>{match[3]}</strong>);
+    } else {
+      nodes.push(<em key={key++}>{match[3]}</em>);
+    }
+    lastIndex = pattern.lastIndex;
+  }
+  if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
+  return nodes;
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -196,7 +239,7 @@ function CardBrowser({ entries, onOpenDeck }: { entries: DeckEntry[]; onOpenDeck
             {selected.sides.length > 0 && (
               <p className="db-card-detail__line">Dado: {selected.sides.join('  ')}</p>
             )}
-            {selected.text && <p className="db-card-detail__text">{selected.text}</p>}
+            {selected.text && <p className="db-card-detail__text">{formatCardText(selected.text)}</p>}
 
             <div className="db-card-detail__decks">
               <h4>Mazos que la usan</h4>

@@ -276,7 +276,13 @@ Tres símbolos de dado nuevos, resolubles tanto por el jugador como por el autó
 - **Especial**: usa la habilidad especial impresa en la carta del dado (RR pg 12). Como el texto de
   cartas/keywords todavía no existe (siguiente capa de v4), esta spec resuelve la cara como
   **placeholder**: al pulsarla se muestra un aviso genérico ("habilidad especial de la carta,
-  pendiente de implementar") y el dado se consume, sin ningún efecto real de juego.
+  pendiente de implementar") y el dado se consume, sin ningún efecto real de juego. Desde SPEC-039,
+  **Especial deja de ser siempre placeholder**: Luminara Unduli, Zuckuss y Darth Vader (los tres
+  personajes de los mazos precargados con texto `[special]` real) resuelven su efecto real de texto
+  —tanto si los controla el jugador como el autómata—, mediante una tabla de efectos por código de
+  personaje (no un intérprete genérico de texto). Cualquier otro personaje con Especial sigue
+  mostrando el aviso placeholder. El texto de las cartas también se muestra legible en la ficha de
+  la DB (sin las etiquetas `[special]`/`<i>`/`<b>` en crudo).
 
 El autómata amplía su tabla de prioridades: daño → escudo → activar → recurso → **disrupt/descarte**
 (SPEC-029, disrupt primero si hay tanda de ambos) → **focus → reroll(dado) → especial** → reroll de
