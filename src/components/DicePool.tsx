@@ -176,20 +176,20 @@ export function DicePool({ side }: { side: Side }) {
             const isRerollTarget =
               rerollMode !== null && (rerollMode.rerollTargets ?? []).some((t) => t.side === side && t.poolIndex === i);
 
-            // Elegir dado objetivo de Focus (SPEC-023): dado propio sin resolver, distinto de los
-            // ya marcados (fuente) o ya girados, mientras quede presupuesto y no haya una elección
-            // de cara pendiente. Un dado que él mismo muestra Focus se marca como fuente adicional
-            // (más presupuesto, `canSelect`) en vez de elegirse como objetivo, para no ambiguar el
-            // clic entre "sumar presupuesto" y "girar este dado". Un modificador genérico +X* sin
-            // marcar (SPEC-027) tiene el mismo trato: puede sumarse como fuente a la tanda de Focus
-            // en curso, así que tampoco cuenta como objetivo a elegir (si no, el clic sería ambiguo
-            // y nunca se podría marcar como modificador mientras Focus está abierto).
+            // Elegir dado objetivo de Focus (SPEC-023): dado propio sin resolver, distinto del ya
+            // marcado (fuente) o ya girados, mientras quede presupuesto y no haya una elección de
+            // cara pendiente. Corrección (2026-07-27): un dado que él mismo muestra cara Focus
+            // SIEMPRE cuenta como objetivo a re-girar, igual que cualquier otro — ya no se trata
+            // como "fuente adicional" (Focus se resuelve de un dado base a la vez, ver `selectDie`
+            // en el store); sin este cambio, un segundo dado con cara Focus no tenía forma de
+            // elegirse como objetivo (bug real detectado jugando). Un modificador genérico +X* sin
+            // marcar (SPEC-027) sigue sin contar como objetivo (puede sumarse como modificador del
+            // único dado base, igual que indirecto).
             const canPickFocusTarget =
               interactive &&
               mode !== null &&
               mode.symbol === 'focus' &&
               mode.focusFaceChoice == null &&
-              symbol !== 'focus' &&
               !isGeneric &&
               !isMarked &&
               !isFocusPick &&

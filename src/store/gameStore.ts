@@ -1534,6 +1534,23 @@ export const useGameStore = create<GameState>((set, get) => ({
       ) {
         return state;
       }
+      // Corrección (2026-07-27, SPEC-023): Focus se resuelve de un dado BASE a la vez, igual que
+      // Especial/Indirecto (no combinado) — detectado jugando: al combinar dos fuentes de Focus, un
+      // segundo dado que TAMBIÉN mostrara cara Focus quedaba sin forma de elegirse como objetivo a
+      // re-girar (el clic siempre se interpretaba como "súmalo como fuente"). Marcar un segundo dado
+      // base de Focus mientras ya hay uno marcado es no-op (los modificadores +X sí pueden
+      // acompañar al único dado base, igual que indirecto).
+      if (
+        symbol === 'focus' &&
+        !cur.marked.includes(poolIndex) &&
+        !parsePlayerFace(die.face)?.isModifier &&
+        cur.marked.some((i) => {
+          const markedDie = state.sides[side].pool[i];
+          return markedDie && !parsePlayerFace(markedDie.face)?.isModifier;
+        })
+      ) {
+        return state;
+      }
       const marked = cur.marked.includes(poolIndex)
         ? cur.marked.filter((i) => i !== poolIndex)
         : [...cur.marked, poolIndex];
