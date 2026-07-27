@@ -3,6 +3,8 @@ import type { Character } from '../model/types';
 import { parseDeck, type DeckSlot } from '../import/parseDeck';
 import { parseTextDeck } from '../import/parseTextDeck';
 import { getPresetDeck } from '../data/decks';
+import { getCardFromSnapshot } from '../data/cards';
+import { LUMINARA_CODE, ZUCKUSS_CODE, VADER_CODE, luminaraBoostAmount } from '../game/characterAbilities';
 import { loadLibrary, persistLibrary, type SavedDeck } from '../data/deckLibrary';
 import { resolveCards } from '../import/resolveCards';
 import { buildCharacters } from '../import/buildCharacters';
@@ -858,7 +860,90 @@ function afterApply(
   res: { sides: Record<Side, SideState>; outcome: Outcome },
 ): { resolve: ResolveMode | null; turn?: Side; passStreak?: number } {
   const resolve = nextResolveAfterApply(res.sides, mode, res.outcome);
-  return resolve === null ? { resolve, turn: opposite(mode.side), passStreak: 0 } : { resolve };
+  if (resolve !== null) return { resolve };
+  // Excepción de turno para Especial (SPEC-039), única para este símbolo: aunque esta tanda ya se ha
+  // cerrado del todo (no queda más dado BASE del símbolo recién resuelto — p. ej. el boost de
+  // Luminara a un dado de daño/focus/etc. cierra ESE símbolo con normalidad), si el bando todavía
+  // tiene otro dado de Especial sin resolver (de cualquier dueño), su turno NO cambia: puede seguir
+  // marcando y resolviendo Especiales sin pasar. Cualquier otro símbolo sigue cerrando turno como
+  // siempre (este chequeo solo añade una excepción, no quita ninguna).
+  if (res.outcome === null && hasUnresolvedSpecial(res.sides[mode.side].pool)) {
+    return { resolve: null };
+  }
+  return { resolve, turn: opposite(mode.side), passStreak: 0 };
+}
+
+/** True si `pool` todavía tiene algún dado de Especial sin resolver (SPEC-039: base de la excepción
+ * de turno, y del "hasta que no quede ninguno" del criterio de Interacción). */
+function hasUnresolvedSpecial(pool: PooledDie[]): boolean {
+  return pool.some((d) => parsePlayerFace(d.face)?.symbol === 'special');
+}
+
+/** Igual que `afterApply` pero para las resoluciones de Especial que no pasan por `resolvePlayerBatch`
+ * (Zuckuss inmediato, Vader): siempre cierran su propio modo (`resolve: null`, no hay reparto
+ * multi-objetivo posible en estos efectos) y aplican la misma excepción de turno. */
+function specialTurnClose(
+  side: Side,
+  nextSides: Record<Side, SideState>,
+  outcome: Outcome,
+): { resolve: null; turn?: Side; passStreak?: number } {
+  if (outcome !== null) return { resolve: null };
+  return hasUnresolvedSpecial(nextSides[side].pool) ? { resolve: null } : { resolve: null, turn: opposite(side), passStreak: 0 };
+}
+
+/** Aplica una cantidad fija de daño a un personaje concreto (SPEC-039: Vader), fuera del flujo de
+ * tandas por símbolo — mismo reparto de escudo/vida y limpieza de KO que la rama de daño de
+ * `resolvePlayerBatch`. Si el personaje ya está KO (p. ej. el 3 de daño previo ya lo mató), no hace
+ * nada: el 1 autoinfligido no puede "matar dos veces" ni romper nada. */
+function applyFixedDamage(
+  sides: Record<Side, SideState>,
+  targetSide: Side,
+  targetIndex: number,
+  amount: number,
+): Record<Side, SideState> {
+  const target = sides[targetSide];
+  const ch = target.characters[targetIndex];
+  const dmg = target.damage[targetIndex] ?? 0;
+  if (!ch || isKO(ch, dmg)) return sides;
+  const { shieldsRemaining, healthDamage } = resolveShieldedDamage(target.shields[targetIndex] ?? 0, amount);
+  const shields = target.characters.map((_, i) => target.shields[i] ?? 0);
+  const damage = target.characters.map((_, i) => target.damage[i] ?? 0);
+  shields[targetIndex] = shieldsRemaining;
+  damage[targetIndex] = Math.min(ch.health, damage[targetIndex] + healthDamage);
+  let pool = target.pool;
+  let upgrades = target.upgrades;
+  if (isKO(ch, damage[targetIndex])) {
+    pool = pool.filter((d) => d.characterIndex !== targetIndex);
+    upgrades = upgrades.map((codes, i) => (i === targetIndex ? [] : codes));
+    persistUpgrades(targetSide, upgrades);
+  }
+  return { ...sides, [targetSide]: { ...target, shields, damage, pool, upgrades } };
+}
+
+/** Dispatch de "marcar un Especial" por dueño (SPEC-039): Zuckuss se resuelve de inmediato (gana 1
+ * recurso, sin elección); Luminara y Vader abren el modo a la espera de su objetivo propio (dado o
+ * personaje); un código no cubierto abre el mismo modo de siempre, a la espera del botón "Resolver
+ * especial" (`resolveSpecial`, placeholder sin efecto real). */
+function beginSpecial(state: GameState, side: Side, poolIndex: number): Partial<GameState> {
+  const own = state.sides[side];
+  const die = own.pool[poolIndex];
+  if (!die) return {};
+  if (die.code === ZUCKUSS_CODE) {
+    const parsed = parsePlayerFace(die.face);
+    if (!parsed) return {};
+    if (own.resources < parsed.resourceCost) {
+      return { resolveError: 'Recursos insuficientes para pagar el coste.' };
+    }
+    const poolAfter = own.pool.filter((_, i) => i !== poolIndex);
+    const nextResources = own.resources - parsed.resourceCost + 1;
+    const nextSides: Record<Side, SideState> = { ...state.sides, [side]: { ...own, pool: poolAfter, resources: nextResources } };
+    return {
+      sides: nextSides,
+      resolveError: null,
+      ...specialTurnClose(side, nextSides, state.outcome),
+    };
+  }
+  return { resolve: { side, symbol: 'special', marked: [poolIndex] }, resolveError: null };
 }
 
 interface GameState {
@@ -959,9 +1044,19 @@ interface GameState {
   /** SPEC-023: aplica la resolución de Reroll de dado en curso (paga el coste, re-tira cada dado
    * elegido, consume los dados de Reroll marcados). No-op si no se ha elegido ningún objetivo. */
   confirmReroll: () => void;
-  /** SPEC-023: resuelve los dados de Especial marcados (paga su coste si tiene, los consume) y deja
-   * un aviso genérico en `resolveError` — placeholder sin efecto real de juego. */
+  /** SPEC-023/039: resuelve el dado de Especial marcado. Para un código no cubierto (o Luminara sin
+   * ningún dado objetivo elegible) paga su coste, lo consume y deja el aviso genérico placeholder;
+   * Zuckuss/Vader/Luminara-con-objetivo se resuelven por sus propias acciones (no esta). */
   resolveSpecial: () => void;
+  /** SPEC-039 (Luminara Unduli): elige `poolIndex` (dado propio sin resolver, distinto del Especial
+   * marcado, con valor numérico) como objetivo del +2/+3; se aplica de inmediato combinando ambos
+   * dados en una tanda del símbolo del objetivo. No-op si el Especial marcado no es de Luminara o el
+   * dado no es elegible. */
+  pickLuminaraTarget: (poolIndex: number) => void;
+  /** SPEC-039 (Darth Vader): resuelve el Especial marcado infligiendo 3 de daño a `targetIndex` de
+   * `targetSide` (propio o rival) y, a continuación, 1 de daño al propio Vader. No-op si el Especial
+   * marcado no es de Vader o el objetivo no es válido. */
+  resolveVaderTarget: (targetSide: Side, targetIndex: number) => void;
   /** SPEC-026: resuelve el único dado base de indirecto marcado (sin elegir objetivo, como
    * recurso/especial): el bando contrario reparte el valor solo entre sus personajes no-KO,
    * evitando KOs innecesarios cuando sea posible. No-op si no hay dado marcado. */
@@ -1392,6 +1487,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Ya hay un modo abierto de otro bando/símbolo (SPEC-025): no se reemplaza, hay que cancelarlo
       // primero con "Cancelar" (marcar un dado bloquea el resto de acciones hasta resolver/cancelar).
       if (cur !== null && (cur.side !== side || cur.symbol !== symbol)) return state;
+
+      // Especial (SPEC-039): cada dado se resuelve por separado, nunca combinado con otro (ni del
+      // mismo dueño ni de uno distinto) — bloqueado si ya hay un Especial en curso; el dispatch por
+      // dueño decide el flujo (inmediato, a la espera de objetivo, o el placeholder de siempre).
+      if (symbol === 'special') {
+        if (cur !== null) return state;
+        return beginSpecial(state, side, poolIndex);
+      }
+
       // Sin modo: lo abre con este dado.
       if (cur === null) {
         return { resolve: { side, symbol, marked: [poolIndex] }, resolveError: null };
@@ -1597,27 +1701,128 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
     }),
 
-  // Especial (SPEC-023): placeholder sin efecto real; paga coste si tiene, consume el/los dado(s)
-  // marcados y deja un aviso genérico (reutiliza `resolveError`, no es un error real).
+  // Especial (SPEC-023/039): placeholder sin efecto real para códigos no cubiertos (Luminara/
+  // Zuckuss/Vader); paga coste si tiene, consume el dado marcado y deja un aviso genérico
+  // (reutiliza `resolveError`, no es un error real). Zuckuss/Vader se resuelven por sus propias
+  // acciones (nunca llegan aquí, ver `beginSpecial`/`resolveVaderTarget`); Luminara SOLO usa este
+  // botón cuando no le queda ningún dado objetivo elegible (si lo hay, se resuelve con
+  // `pickLuminaraTarget`).
   resolveSpecial: () =>
     set((state) => {
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.symbol !== 'special') return state;
       if (cur.marked.length === 0) return state;
-      const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
-      if (state.sides[cur.side].resources < sums.resourceCost) {
+      const own = state.sides[cur.side];
+      const die = own.pool[cur.marked[0]];
+      if (die) {
+        if (die.code === ZUCKUSS_CODE || die.code === VADER_CODE) return state;
+        if (die.code === LUMINARA_CODE) {
+          const hasTarget = own.pool.some((d, i) => {
+            if (i === cur.marked[0]) return false;
+            const p = parsePlayerFace(d.face);
+            return p !== null && p.symbol !== 'special';
+          });
+          if (hasTarget) return state;
+        }
+      }
+      const sums = sumPlayerMarked(own.pool, cur.marked);
+      if (own.resources < sums.resourceCost) {
         return { resolveError: 'Recursos insuficientes para pagar el coste.' };
       }
       // Receptor del coste indirecto determinado solo (corrección de SPEC-010, ver applyDieTo).
       const costReceiverIndex =
-        sums.indirectCost > 0 ? indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost) : null;
+        sums.indirectCost > 0 ? indirectCostReceiverIndex(own, sums.indirectCost) : null;
       const res = resolvePlayerBatch(state.sides, cur, null, costReceiverIndex);
       if (res === null || res === 'no-base' || res === 'insufficient') return state;
+      const message =
+        die?.code === LUMINARA_CODE
+          ? 'Sin dado objetivo válido: se resuelve sin efecto.'
+          : 'Habilidad especial de la carta (pendiente de implementar).';
       return {
         sides: res.sides,
         outcome: res.outcome,
-        resolveError: 'Habilidad especial de la carta (pendiente de implementar).',
+        resolveError: message,
         ...afterApply(cur, res),
+      };
+    }),
+
+  // Luminara Unduli (SPEC-039): elige el dado objetivo del +2/+3 y lo aplica de inmediato —
+  // convierte el dado de Especial marcado en un modificador genérico `+2*`/`+3*` (SPEC-027, mismo
+  // mecanismo ya soportado por cualquier tanda) y abre el modo del SÍMBOLO DEL OBJETIVO con ambos
+  // dados marcados juntos; el resto del flujo (elegir personaje, focus, reroll...) sigue exactamente
+  // igual que si el jugador hubiera marcado un modificador real de esa cara.
+  pickLuminaraTarget: (poolIndex: number) =>
+    set((state) => {
+      const cur = state.resolve;
+      if (state.outcome !== null || cur === null || cur.symbol !== 'special') return state;
+      if (state.turn !== cur.side) return state;
+      if (cur.marked.length !== 1) return state;
+      const own = state.sides[cur.side];
+      const specialIdx = cur.marked[0];
+      const specialDie = own.pool[specialIdx];
+      if (!specialDie || specialDie.code !== LUMINARA_CODE) return state;
+      if (poolIndex === specialIdx) return state;
+      const targetDie = own.pool[poolIndex];
+      if (!targetDie) return state;
+      const targetParsed = parsePlayerFace(targetDie.face);
+      if (!targetParsed || targetParsed.symbol === null || targetParsed.symbol === 'special') return state;
+      const specialParsed = parsePlayerFace(specialDie.face);
+      if (!specialParsed) return state;
+      if (own.resources < specialParsed.resourceCost) {
+        return { resolveError: 'Recursos insuficientes para pagar el coste.' };
+      }
+      const targetOwnerIsUnique = getCardFromSnapshot(targetDie.code)?.is_unique ?? false;
+      const boost = luminaraBoostAmount(targetOwnerIsUnique);
+      const boostedPool = own.pool.map((d, i) => (i === specialIdx ? { ...d, face: `+${boost}*` } : d));
+      const nextSides: Record<Side, SideState> = {
+        ...state.sides,
+        [cur.side]: { ...own, pool: boostedPool, resources: own.resources - specialParsed.resourceCost },
+      };
+      return {
+        sides: nextSides,
+        resolve: { side: cur.side, symbol: targetParsed.symbol, marked: [specialIdx, poolIndex] },
+        resolveError: null,
+      };
+    }),
+
+  // Darth Vader (SPEC-039): elige el personaje objetivo (propio o rival) del 3 de daño y lo resuelve
+  // de inmediato, seguido siempre del 1 de daño propio (sin elección), como una sola acción.
+  resolveVaderTarget: (targetSide: Side, targetIndex: number) =>
+    set((state) => {
+      const cur = state.resolve;
+      if (state.outcome !== null || cur === null || cur.symbol !== 'special') return state;
+      if (state.turn !== cur.side) return state;
+      if (cur.marked.length !== 1) return state;
+      const side = cur.side;
+      const own = state.sides[side];
+      const dieIdx = cur.marked[0];
+      const die = own.pool[dieIdx];
+      if (!die || die.code !== VADER_CODE) return state;
+      const parsed = parsePlayerFace(die.face);
+      if (!parsed) return state;
+      if (own.resources < parsed.resourceCost) {
+        return { resolveError: 'Recursos insuficientes para pagar el coste.' };
+      }
+      const target = state.sides[targetSide];
+      const targetChar = target.characters[targetIndex];
+      if (!targetChar || isKO(targetChar, target.damage[targetIndex] ?? 0)) return state;
+      const vaderIndex = die.characterIndex;
+      const vaderChar = own.characters[vaderIndex];
+      if (!vaderChar) return state;
+
+      const poolAfter = own.pool.filter((_, i) => i !== dieIdx);
+      let sides: Record<Side, SideState> = {
+        ...state.sides,
+        [side]: { ...own, pool: poolAfter, resources: own.resources - parsed.resourceCost },
+      };
+      sides = applyFixedDamage(sides, targetSide, targetIndex, 3);
+      sides = applyFixedDamage(sides, side, vaderIndex, 1);
+      const outcome = computeOutcome(sides);
+      return {
+        sides,
+        outcome,
+        resolveError: null,
+        ...specialTurnClose(side, sides, outcome),
       };
     }),
 
@@ -2052,22 +2257,97 @@ export const useGameStore = create<GameState>((set, get) => ({
         return;
       }
       case 'special': {
-        const label = batchLabel(action.dieIndices);
+        // Especial (SPEC-023/039): un único dado (nunca combinado, ver automaton.ts fila 8).
+        // Códigos conocidos (Luminara/Zuckuss/Vader) resuelven su efecto real; el resto usa el mismo
+        // placeholder de siempre. La excepción de turno de Especial (no cierra mientras quede otro
+        // sin resolver) se aplica aquí explícitamente: este `case`, a diferencia del resto, no pasa
+        // por `afterApply`.
         set((s) => {
-          const res = resolvePlayerBatch(
-            s.sides,
-            { side: 'enemy', symbol: 'special', marked: action.dieIndices },
-            null,
-            action.costReceiverIndex,
-          );
-          if (res === null || res === 'no-base' || res === 'insufficient') return s;
+          const enemySide = s.sides.enemy;
+          const dieIdx = action.dieIndices[0];
+          const die = enemySide.pool[dieIdx];
+          if (!die) return s;
+          const parsed = parsePlayerFace(die.face);
+          if (!parsed || parsed.symbol !== 'special') return s;
+          if (enemySide.resources < parsed.resourceCost) return s;
+
+          if (action.ownerCode === ZUCKUSS_CODE) {
+            const poolAfter = enemySide.pool.filter((_, i) => i !== dieIdx);
+            const nextSides: Record<Side, SideState> = {
+              ...s.sides,
+              enemy: { ...enemySide, pool: poolAfter, resources: enemySide.resources - parsed.resourceCost + 1 },
+            };
+            return {
+              sides: nextSides,
+              lastEnemyAction: `El enemigo resuelve el Especial de ${die.name}: gana 1 recurso.`,
+              ...specialTurnClose('enemy', nextSides, s.outcome),
+            };
+          }
+
+          if (action.ownerCode === LUMINARA_CODE && action.luminaraTargetPoolIndex != null) {
+            const targetDie = enemySide.pool[action.luminaraTargetPoolIndex];
+            const targetParsed = targetDie ? parsePlayerFace(targetDie.face) : null;
+            // El autómata solo boostea recurso (ver bestLuminaraTargetForAutomaton, automaton.ts).
+            if (targetDie && targetParsed && targetParsed.symbol === 'resource') {
+              const targetOwnerIsUnique = getCardFromSnapshot(targetDie.code)?.is_unique ?? false;
+              const boost = luminaraBoostAmount(targetOwnerIsUnique);
+              const poolAfter = enemySide.pool.filter((_, i) => i !== dieIdx && i !== action.luminaraTargetPoolIndex);
+              const nextSides: Record<Side, SideState> = {
+                ...s.sides,
+                enemy: {
+                  ...enemySide,
+                  pool: poolAfter,
+                  resources: enemySide.resources - parsed.resourceCost + targetParsed.amount + boost,
+                },
+              };
+              return {
+                sides: nextSides,
+                lastEnemyAction: `El enemigo resuelve el Especial de ${die.name}: sube +${boost} un dado de recurso.`,
+                ...specialTurnClose('enemy', nextSides, s.outcome),
+              };
+            }
+            // Sin objetivo elegible: se resuelve sin efecto, igual que el jugador.
+            const poolAfter = enemySide.pool.filter((_, i) => i !== dieIdx);
+            const nextSides: Record<Side, SideState> = {
+              ...s.sides,
+              enemy: { ...enemySide, pool: poolAfter, resources: enemySide.resources - parsed.resourceCost },
+            };
+            return {
+              sides: nextSides,
+              lastEnemyAction: `El enemigo resuelve el Especial de ${die.name}: sin dado objetivo válido.`,
+              ...specialTurnClose('enemy', nextSides, s.outcome),
+            };
+          }
+
+          if (action.ownerCode === VADER_CODE) {
+            const vaderTarget = action.vaderTarget;
+            const poolAfter = enemySide.pool.filter((_, i) => i !== dieIdx);
+            let sides: Record<Side, SideState> = {
+              ...s.sides,
+              enemy: { ...enemySide, pool: poolAfter, resources: enemySide.resources - parsed.resourceCost },
+            };
+            let lastEnemyAction = `El enemigo resuelve el Especial de Darth Vader: sin objetivo válido.`;
+            if (vaderTarget) {
+              sides = applyFixedDamage(sides, vaderTarget.side, vaderTarget.index, 3);
+              sides = applyFixedDamage(sides, 'enemy', die.characterIndex, 1);
+              lastEnemyAction = `El enemigo resuelve el Especial de Darth Vader: 3 de daño y 1 propio.`;
+            }
+            const outcome = computeOutcome(sides);
+            return { sides, outcome, lastEnemyAction, ...specialTurnClose('enemy', sides, outcome) };
+          }
+
+          // Código no cubierto: mismo placeholder de siempre.
+          const poolAfter = enemySide.pool.filter((_, i) => i !== dieIdx);
+          const nextSides: Record<Side, SideState> = {
+            ...s.sides,
+            enemy: { ...enemySide, pool: poolAfter, resources: enemySide.resources - parsed.resourceCost },
+          };
           return {
-            sides: res.sides,
-            outcome: res.outcome,
-            lastEnemyAction: `El enemigo resuelve ${label} (habilidad especial, pendiente de implementar).`,
+            sides: nextSides,
+            lastEnemyAction: `El enemigo resuelve Especial de ${die.name} (pendiente de implementar).`,
+            ...specialTurnClose('enemy', nextSides, s.outcome),
           };
         });
-        set({ turn: 'player', passStreak: 0 });
         return;
       }
       case 'reroll': {

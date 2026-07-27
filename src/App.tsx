@@ -9,6 +9,7 @@ import { DeckPicker } from './components/DeckPicker';
 import { Hand } from './components/Hand';
 import { SupportList } from './components/SupportList';
 import { currentHealth, isKO } from './game/damage';
+import { VADER_CODE } from './game/characterAbilities';
 
 function BattleSide({ side, label }: { side: Side; label: string }) {
   const s = useGameStore((st) => st.sides[side]);
@@ -20,12 +21,20 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
   const indirectDistribution = useGameStore((st) => st.indirectDistribution);
   const activate = useGameStore((st) => st.activate);
   const applyDieTo = useGameStore((st) => st.applyDieTo);
+  const resolveVaderTarget = useGameStore((st) => st.resolveVaderTarget);
   const playUpgradeOn = useGameStore((st) => st.playUpgradeOn);
   const distributeIndirect = useGameStore((st) => st.distributeIndirect);
   const activateSupport = useGameStore((st) => st.activateSupport);
   const toggleMulliganCard = useGameStore((st) => st.toggleMulliganCard);
   const cancelPlayUpgrade = useGameStore((st) => st.cancelPlayUpgrade);
   const confirmMulligan = useGameStore((st) => st.confirmMulligan);
+  // Dueño del dado de Especial marcado (SPEC-039), si lo hay: decide si Vader necesita objetivo de
+  // personaje en AMBOS bandos (a diferencia del resto de símbolos, con un único bando targetable).
+  const specialOwnerCode = useGameStore((st) => {
+    const r = st.resolve;
+    if (!r || r.symbol !== 'special' || r.marked.length !== 1) return undefined;
+    return st.sides[r.side].pool[r.marked[0]]?.code;
+  });
 
   // Objetivo válido de un PERSONAJE: daño → bando contrario, escudo → propio; recurso, focus,
   // reroll de dado y especial no usan objetivo de personaje (recurso/especial resuelven con su
@@ -37,6 +46,9 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
     ? !noCharacterTarget(resolve!.symbol) &&
       (resolve!.symbol === 'shield' ? resolve!.side === side : opposite(resolve!.side) === side)
     : false;
+  // Vader (SPEC-039): su Especial ataca a un personaje de CUALQUIER bando (propio o rival, como dice
+  // su texto real), a diferencia del resto de símbolos — targetable en los dos tableros a la vez.
+  const vaderTargetable = active && specialOwnerCode === VADER_CODE;
   // Eligiendo objetivo para una mejora (SPEC-020): siempre el propio bando de quien la juega.
   const upgradeTargetableSide = outcome === null && playUpgrade !== null && playUpgrade.side === side;
   // Reparto de daño indirecto del autómata (SPEC-028): el jugador reparte clic a clic sobre sus
@@ -92,7 +104,7 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
                   health={currentHealth(c, dmg)}
                   shields={s.shields[i] ?? 0}
                   ko={ko}
-                  targetable={(targetableSide || upgradeTargetableSide || distributingIndirect) && !ko}
+                  targetable={(targetableSide || vaderTargetable || upgradeTargetableSide || distributingIndirect) && !ko}
                   showActivate={isPlayer}
                   upgrades={upgradeCards}
                   activateDisabled={outcome !== null || playUpgrade !== null || mulligan !== null || turn !== side}
@@ -102,7 +114,9 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
                       ? distributeIndirect(i)
                       : upgradeTargetableSide
                         ? playUpgradeOn(i)
-                        : applyDieTo(side, i)
+                        : vaderTargetable
+                          ? resolveVaderTarget(side, i)
+                          : applyDieTo(side, i)
                   }
                   key={`${c.code}-${i}`}
                 />
