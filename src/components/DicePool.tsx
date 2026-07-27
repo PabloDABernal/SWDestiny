@@ -46,13 +46,16 @@ export function DicePool({ side }: { side: Side }) {
   const isLuminaraSpecial = specialOwnerCode === LUMINARA_CODE;
   const isVaderSpecial = specialOwnerCode === VADER_CODE;
   // Mismo criterio que `canPickLuminaraTarget` de abajo (y que `resolveSpecial` en el store): un
-  // modificador genérico +X* suelto (symbol null) no cuenta como objetivo clicable.
+  // modificador genérico +X* suelto (symbol null) no cuenta como objetivo clicable, ni tampoco un
+  // dado de mejora/apoyo (corrección 2026-07-27: texto real de Luminara es "one of your character
+  // dice", ver SPEC-039).
   const luminaraTargetExists =
     isLuminaraSpecial &&
     pool.some((d, i) => {
       if (i === mode!.marked[0]) return false;
       const p = parsePlayerFace(d.face);
-      return p !== null && p.symbol !== null && p.symbol !== 'special';
+      if (p === null || p.symbol === null || p.symbol === 'special') return false;
+      return readCache(d.code)?.type_code === 'character';
     });
 
   // SPEC-023: mientras se resuelve un Reroll de dado del jugador, CUALQUIER pool (incluido el
@@ -202,12 +205,18 @@ export function DicePool({ side }: { side: Side }) {
               !(side === 'player' && rerollMode.marked.includes(i)) &&
               (isRerollTarget || (symbol !== 'reroll' && !isGeneric && rerollBudget > 0));
 
-            // Elegir dado objetivo del +2/+3 de Luminara (SPEC-039): cualquier dado propio sin
-            // resolver, distinto del Especial marcado, con valor numérico (no otro Especial ni una
-            // cara en blanco/sin valor — un modificador +X* solo tampoco cuenta, igual criterio que
-            // Focus/Reroll de arriba).
+            // Elegir dado objetivo del +2/+3 de Luminara (SPEC-039): cualquier dado de PERSONAJE
+            // propio sin resolver, distinto del Especial marcado, con valor numérico (no otro
+            // Especial ni una cara en blanco/sin valor — un modificador +X* solo tampoco cuenta,
+            // igual criterio que Focus/Reroll de arriba). Corrección (2026-07-27): un dado de
+            // mejora/apoyo NO cuenta, texto real de Luminara ("one of your character dice").
             const canPickLuminaraTarget =
-              interactive && isLuminaraSpecial && mode !== null && i !== mode.marked[0] && symbol !== null;
+              interactive &&
+              isLuminaraSpecial &&
+              mode !== null &&
+              i !== mode.marked[0] &&
+              symbol !== null &&
+              readCache(d.code)?.type_code === 'character';
 
             // Arrancar un modo nuevo, o seguir marcando/desmarcando dados del MISMO símbolo ya en
             // curso (incluye sumar más presupuesto de Focus/Reroll, SPEC-008a/023): mismo `selectDie`

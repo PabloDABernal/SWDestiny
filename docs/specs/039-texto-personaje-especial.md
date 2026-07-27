@@ -38,9 +38,12 @@ Verificables jugando. Formato: acción → resultado observable.
 ### Luminara Unduli — "Resuelve uno de tus dados, +2 (+3 si no es único)"
 
 - [ ] Al marcar el Especial de Luminara (jugador o autómata la controla), se puede elegir
-      **cualquier dado propio ya tirado y sin resolver** (de cualquier personaje, mejora o apoyo del
+      **cualquier dado de personaje propio ya tirado y sin resolver** (de cualquier personaje del
       mismo bando, incluida ella misma) **que tenga un valor numérico asociado** (daño, escudo,
       recurso, focus, reroll, disrupt, descarte) — **no** otro Especial ni una cara en blanco `-`.
+      **Corrección (2026-07-27, decisión del usuario):** los dados de mejora/apoyo NO cuentan como
+      objetivo, alineado con el texto real de la carta ("one of your character dice"); la versión
+      anterior de esta spec los incluía deliberadamente y se ha revertido tras detectarlo jugando.
 - [ ] Al elegir el dado objetivo, se resuelve **en el mismo momento** con su valor **+2**, o **+3**
       si el personaje dueño de ese dado es de tipo no-único (`is_unique: false`); ambos dados (el
       Especial de Luminara y el dado objetivo) se consumen juntos como una sola acción.
@@ -175,10 +178,9 @@ Verificables jugando. Formato: acción → resultado observable.
   de Vader puede caer en su **propio bando** (si no hay rival vivo) además del rival, a diferencia de
   `'attack'`/`'shield'` (bando fijo): el objetivo ampliado necesita expresar también de qué bando es
   (mismo patrón que el campo `side` de `RerollDieTarget`), no asumir "rival" por defecto.
-- **Texto real de Luminara es más estricto** ("one of your character dice": solo dados de personaje);
-  esta spec lo amplía deliberadamente a dados de mejora/apoyo también (decisión del usuario). Dejar
-  un comentario en el código señalándolo, para que no se lea como error de transcripción del texto
-  real.
+- **Texto real de Luminara** ("one of your character dice"): solo cuentan dados de personaje. La
+  primera versión de esta spec lo ampliaba deliberadamente a dados de mejora/apoyo también; revertido
+  el 2026-07-27 (decisión del usuario, detectado jugando) para ceñirse al texto real.
 - **Vader — daño propio y objetivo propio/rival**: reutilizar el motor de resolución existente
   (`resolvePlayerBatch`/lo que ya reparte daño) para el 3 de daño con selección de objetivo libre
   (propio o rival); el 1 de daño a Vader es un segundo paso fijo (receptor = el propio Vader, sin
