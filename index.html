@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SW Destiny — PVE</title>
+    <!-- PWA (SPEC-040). Las rutas de public/ NO las reescribe Vite con `base`: hay que usar
+         %BASE_URL% aquí, y rutas relativas dentro del manifest, o GitHub Pages las sirve desde / -->
+    <meta name="theme-color" content="#14161c" />
+    <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="192x192" href="%BASE_URL%icon-192.png" />
+    <link rel="apple-touch-icon" href="%BASE_URL%icon-192.png" />
   </head>
   <body>
     <div id="root"></div>

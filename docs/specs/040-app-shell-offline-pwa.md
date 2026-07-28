@@ -112,8 +112,10 @@ Decisiones tomadas con el usuario el 2026-07-27; si alguna cambia, actualizar el
   comporta como hoy, sin romper nada.
 - **Sin `skipWaiting()` automático.** El SW solo llama a `skipWaiting()` cuando la página le manda un
   mensaje (`postMessage({ type: 'SKIP_WAITING' })`) al pulsar "Actualizar"; la página escucha
-  `controllerchange` y recarga una sola vez. La detección del SW en espera se hace desde el registro
-  ya existente en `src/main.tsx` (`registration.waiting` / evento `updatefound`). Como el navegador
+  `controllerchange` y recarga una sola vez. La detección del SW en espera necesita el objeto
+  `registration` (`registration.waiting` / evento `updatefound`), así que el `register()` que hoy vive
+  suelto en `src/main.tsx` **se mueve al componente del aviso**, que es quien lo necesita; se sigue
+  registrando tras el evento `load`, igual que ahora, para no competir con la carga inicial. Como el navegador
   **no** busca actualizaciones solo mientras la pestaña sigue abierta (lo hace en cada navegación, y
   un chequeo propio cada ~24 h), hay que llamar a `registration.update()` explícitamente en
   `visibilitychange`/`focus` para que el aviso salga al volver a la app.
