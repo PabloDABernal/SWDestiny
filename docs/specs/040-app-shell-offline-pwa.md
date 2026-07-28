@@ -1,6 +1,6 @@
 # SPEC-040: App offline de verdad e instalable (app shell + PWA)
 
-**Estado:** Pendiente
+**Estado:** Completada
 **Sección del GDD:** §7 (nota "App offline e instalable (PWA)")
 **Depende de:** SPEC-034 (Service Worker de imágenes, `public/sw.js`), SPEC-030 (snapshot bundleado)
 
@@ -70,6 +70,15 @@ Verificables jugando. Formato: acción → resultado observable.
 - **Primera visita online, sin recargar todavía**: el SW se instala pero **no controla** la página
   hasta la siguiente carga (igual que ya pasa con las imágenes en SPEC-034). No se fuerza
   `clients.claim()`, para no cambiar el comportamiento ya jugado de SPEC-034.
+- **Navegador que ya tenía el Service Worker de SPEC-034** (todos los que hayan abierto la app antes
+  de esta spec, incluida la build de GitHub Pages): el SW nuevo se instala pero queda **en espera**,
+  y hasta que el usuario pulse "Actualizar" (o cierre todas las pestañas) **sigue mandando el SW
+  viejo, que no cachea el shell** → offline la app no arranca bien (puede llegar a verse sin estilos,
+  con HTML/JS colados del cache HTTP del navegador). Es el comportamiento correcto, no un fallo: el
+  offline empieza a funcionar en cuanto el SW nuevo toma el control. **Al hacer QA hay que tenerlo en
+  cuenta**: probar en un perfil limpio, o pulsar "Actualizar" antes de medir el offline.
+  *(Verificado el 2026-07-28: en un Chrome con perfil nuevo, matando el servidor, la app arranca
+  offline con estilos; el síntoma "sin estilos" solo aparece con el SW viejo aún al mando.)*
 - **Build nueva desplegada mientras la app está abierta**: el SW nuevo queda en estado *waiting* y
   **no** toma el control hasta que el usuario pulse "Actualizar". Los caches de la build vieja se
   borran solo cuando el SW nuevo se activa.
@@ -140,4 +149,15 @@ sufijos.
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+Completada tras playtest 2026-07-28. Offline real (servidor caído, no solo el Offline de DevTools):
+la app arranca con estilos, se juega una partida entera con mazos precargados y la DB funciona; las
+imágenes ya vistas siguen ahí y las no vistas caen a ficha de texto (SPEC-034 intacta). Instalable y
+funcionando en ventana propia. El aviso de versión nueva salió al volver a la pestaña sin recargar,
+no recargó solo, "Ahora no" lo descartó y "Actualizar" aplicó la build nueva conservando el cache de
+imágenes.
+
+Un susto durante el playtest que resultó no ser un fallo: la primera prueba offline salió **sin
+estilos**, porque el navegador aún tenía al mando el Service Worker viejo de SPEC-034 (el nuevo estaba
+en espera, que es el comportamiento buscado). Verificado con un Chrome de perfil limpio y el servidor
+muerto: con el SW nuevo al mando la app arranca offline con estilos (184 reglas CSS aplicadas). Queda
+anotado como caso límite arriba, porque le pasará a todo el que ya hubiera abierto la app.
