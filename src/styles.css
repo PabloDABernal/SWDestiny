@@ -1152,3 +1152,39 @@ button:disabled {
   padding: 4px 8px;
   font-size: 0.85rem;
 }
+
+/* Aviso de versión nueva (SPEC-040). Fijo abajo, por encima de todo, nunca recarga solo. */
+.update-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 32px);
+  background: #1c1f28;
+  color: #e6e8ee;
+  border: 1px solid #3a4152;
+  border-radius: 8px;
+  padding: 10px 14px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+.update-banner__text {
+  font-size: 0.9rem;
+}
+.update-banner button {
+  background: #2f6feb;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  padding: 5px 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.update-banner__dismiss {
+  background: none;
+  color: #9aa0b0;
+  border: 1px solid #3a4152;
+}
