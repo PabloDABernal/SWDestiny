@@ -1,9 +1,11 @@
 // Descarga TODAS las imágenes de carta a una carpeta local (SPEC-034, dev/opcional, NO se ejecuta en
-// build/CI). Sirve para alojarlas en un mirror propio (idealmente con CORS) y apuntar
-// VITE_CARD_IMAGE_BASE ahí, por si ARH desaparece. Son ~2977 imágenes (~226 MB): tarda y ocupa.
+// build/CI). Sirve para alojarlas en un mirror propio (con CORS, ver SPEC-041) y apuntar
+// VITE_CARD_IMAGE_BASE ahí, por si ARH desaparece. Son ~2560 imágenes (~200 MB): tarda y ocupa.
 //
 // Uso: node scripts/download-card-images.mjs [carpeta-destino]   (default: ./card-images)
-// Estructura de salida: <destino>/<NN>/<code>.jpg (igual que el origen), lista para servir tal cual.
+// Estructura de salida: la MISMA ruta relativa que el origen (<destino>/01/01001.jpg,
+// <destino>/101/14001.jpg), leída del campo `image` del snapshot, lista para servir tal cual.
+// Reanudable: relanzarlo salta las que ya están en disco y reintenta solo las que faltan.
 
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
@@ -16,21 +18,25 @@ const SNAPSHOT = resolve(root, '..', 'src', 'data', 'cards.json');
 
 async function main() {
   const snap = JSON.parse(await import('node:fs/promises').then((fs) => fs.readFile(SNAPSHOT, 'utf8')));
-  const codes = Object.keys(snap).filter((c) => c !== '_meta');
-  console.log(`${codes.length} cartas → descargando a ${OUT}`);
+  // La ruta de cada imagen sale del snapshot (`image`, SPEC-041), no de los 2 primeros dígitos del
+  // código: en los sets fan (14-25) la carpeta es irregular. Las cartas sin `image` (417, las que en
+  // ARH apuntan al arte de otra carta) no se descargan: en el juego tampoco se muestran.
+  const codes = Object.keys(snap).filter((c) => c !== '_meta' && snap[c].image);
+  const sinImagen = Object.keys(snap).filter((c) => c !== '_meta' && !snap[c].image).length;
+  console.log(`${codes.length} cartas con imagen propia → descargando a ${OUT} (${sinImagen} sin imagen, se omiten)`);
 
   let ok = 0;
   let miss = 0;
   for (const code of codes) {
-    const nn = code.slice(0, 2);
-    const dir = join(OUT, nn);
-    const file = join(dir, `${code}.jpg`);
+    const relative = snap[code].image; // p. ej. "101/14001.jpg"
+    const file = join(OUT, relative);
+    const dir = dirname(file);
     if (existsSync(file)) {
       ok++;
       continue; // ya descargada: reanudable
     }
     try {
-      const res = await fetch(`${BASE}/${nn}/${code}.jpg`);
+      const res = await fetch(`${BASE}/${relative}`);
       if (!res.ok) {
         miss++;
         continue; // 404 (p. ej. cartas de dos caras) → se salta

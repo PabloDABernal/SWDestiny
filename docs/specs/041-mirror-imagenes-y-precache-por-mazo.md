@@ -18,6 +18,23 @@ progreso, y a partir de ahí ese mazo se ve **entero con imágenes sin conexión
 
 Verificables jugando. Formato: acción → resultado observable.
 
+### Arreglo de la URL de imagen (descubierto al implementar, 2026-07-29)
+
+Al montar el mirror se descubrió que **1375 cartas (46%) nunca han mostrado imagen** desde SPEC-034:
+la URL se reconstruía como `<BASE>/<2 primeros dígitos del código>/<code>.jpg`, patrón verificado solo
+contra los sets oficiales (01-13). En la continuación fan (sets 14-25) la carpeta real es otra e
+**irregular** (14→`101`, 15→`102`, 16→`103`, 18→`105`, 19→`106`, 21→`107`…), así que esas peticiones
+siempre daban 404 y caían a la ficha de texto. Decidido con el usuario (2026-07-29): se arregla dentro
+de esta spec, porque sin ello el mirror nace cojo.
+
+- [ ] Abrir en la DB una carta de un set fan (p. ej. **Ninth Sister**, `14001`, de *Faltering
+      Allegiances*) → **ahora sí muestra su imagen**, donde antes salía solo la ficha de texto.
+- [ ] Las cartas de sets oficiales (01-13) siguen mostrando su imagen exactamente igual que antes.
+- [ ] **417 cartas cuyo `imagesrc` en ARH apunta al arte de OTRA carta** (dato malo de origen: p. ej.
+      `01/01002.jpg` lo reclaman `01002`, `17002` y `20002`) → se tratan como **sin imagen** y muestran
+      la ficha de texto. Nunca se enseña el arte de una carta distinta. Decisión del usuario
+      (2026-07-29): en una base de datos, arte equivocado confunde más que ninguno.
+
 ### Descargar las imágenes de un mazo
 
 - [ ] En la **ficha de un mazo** (pestaña "Mazos" de la DB, la vista que lista sus cartas) hay un
@@ -96,6 +113,16 @@ Verificables jugando. Formato: acción → resultado observable.
 
 ## Notas técnicas
 
+- **Origen de la URL de imagen**: deja de deducirse del código. `scripts/build-card-snapshot.mjs`
+  guarda en el snapshot la **ruta relativa real** de cada carta, sacada del `imagesrc` de la API
+  (`101/14001.jpg`), y **solo si es su propia imagen** — o sea, si la ruta termina en
+  `/<code>.jpg`. Las 417 que apuntan a otra carta **no guardan ruta**, y `cardImageUrl` devuelve
+  entonces "sin imagen" para que la ficha caiga al texto. Se guarda solo la ruta relativa, nunca el
+  `imagesrc` completo (que además viene en `http://`, bloqueado por mixed-content en Pages), para que
+  `VITE_CARD_IMAGE_BASE` siga siendo un swap de base y el mirror no se ate a ARH.
+- **Hay que regenerar el snapshot** (`npm run cards:snapshot`) como parte de esta spec, y adaptar
+  `scripts/download-card-images.mjs` para que baje por esa ruta real en vez de por el patrón viejo
+  (si no, el mirror se queda en las 1602 de los sets oficiales).
 - **El script YA EXISTE**: `scripts/download-card-images.mjs` se escribió en SPEC-034 (descubierto al
   empezar a implementar 041, el 2026-07-28) y hace exactamente lo que hacía falta: recorre el
   snapshot, baja cada imagen a `card-images/<NN>/<code>.jpg` —la estructura que reconstruye
@@ -111,9 +138,12 @@ Verificables jugando. Formato: acción → resultado observable.
   Pages sobre él. GitHub Pages sirve con `access-control-allow-origin: *`, que es justo lo que hace
   falta para que las respuestas **no sean opacas**. Comprobarlo con las herramientas de red antes de
   dar el mirror por bueno.
-- **Apuntar el juego al mirror**: `VITE_CARD_IMAGE_BASE` ya existe (SPEC-034). Para que el despliegue
-  de GitHub Pages la use hay que **pasarla en el workflow** (`.github/workflows/deploy-pages.yml`,
-  paso `npm run build`), porque hoy no define ninguna variable de entorno.
+- **Apuntar el juego al mirror**: en vez de pasar `VITE_CARD_IMAGE_BASE` en el workflow de Pages, se
+  cambia el **default** de `IMAGE_BASE` al mirror. Así vale igual en dev, en tests y en producción sin
+  tocar CI, y la variable de entorno sigue existiendo para apuntar a otro sitio. El mirror publicado
+  es `https://pablodabernal.github.io/SWDestiny-images` (repo `PabloDABernal/SWDestiny-images`,
+  público, Pages sobre `main`), verificado el 2026-07-29: responde 200 `image/jpeg` con
+  `access-control-allow-origin: *`.
 - **La descarga por mazo NO necesita al Service Worker**: la página puede abrir el mismo cache
   (`caches.open('card-images-v1')`) y hacer `cache.put`/`cache.add` de cada imagen. El SW de SPEC-034
   ya sirve desde ese cache, así que lo descargado se ve offline sin tocar `sw.js`. Descargar de una

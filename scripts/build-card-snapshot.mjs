@@ -42,6 +42,14 @@ function trim(card) {
   if (card.affiliation_code) out.affiliation_code = card.affiliation_code;
   if (card.points) out.points = card.points; // string "13/17" (elite/normal)
   if (card.text) out.text = card.text;
+  // Ruta relativa de la imagen (SPEC-041). NO se deduce del código: en los sets fan (14-25) la
+  // carpeta es irregular (14→101, 15→102, 18→105…) y deducirla dejaba 1375 cartas sin imagen.
+  // Se guarda solo la parte relativa (`101/14001.jpg`), nunca el imagesrc completo: viene en http://
+  // (mixed-content en Pages) y ataría el juego a ARH en vez de a VITE_CARD_IMAGE_BASE.
+  // Solo se guarda si la imagen es SUYA (la ruta acaba en su propio código): 417 cartas apuntan al
+  // arte de otra carta (dato malo de ARH) y esas se quedan sin imagen, cayendo a la ficha de texto.
+  const relative = typeof card.imagesrc === 'string' ? card.imagesrc.split('/en/')[1] : undefined;
+  if (relative && relative.endsWith(`/${card.code}.jpg`)) out.image = relative;
   return out;
 }
 

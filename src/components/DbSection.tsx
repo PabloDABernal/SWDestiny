@@ -19,13 +19,16 @@ function CardImage({ code, thumb }: { code: string; thumb?: boolean }) {
     const t = setTimeout(() => setState((s) => (s === 'loading' ? 'error' : s)), 15000);
     return () => clearTimeout(t);
   }, []);
+  const src = cardImageUrl(code);
+  // Carta sin imagen propia (SPEC-041): no se pinta nada y la ficha se queda con el detalle de texto.
+  if (!src) return null;
   if (state === 'error') return null;
   const cls = thumb ? 'card-image card-image--thumb' : 'card-image';
   return (
     <div className={`${cls} card-image--${state}`}>
       {state === 'loading' && !thumb && <span className="card-image__ph">Cargando imagen…</span>}
       <img
-        src={cardImageUrl(code)}
+        src={src}
         alt={`Carta ${code}`}
         onLoad={() => setState('loaded')}
         onError={() => setState('error')}
