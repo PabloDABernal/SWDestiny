@@ -362,8 +362,13 @@ en la biblioteca. Desde SPEC-034 la ficha del navegador muestra la
 **imagen** de la carta (`<img>`), descargada bajo demanda de ARH (o de un mirror con base URL
 configurable) y cacheada por un **Service Worker** (el host de ARH no manda CORS, así que se cachean
 respuestas opacas) para funcionar offline en las ya vistas; si no hay imagen, cae al detalle de texto.
-Las imágenes no se bundlean (~226 MB); un script de dev permite descargarlas para alojarlas en un
-mirror propio si ARH desaparece. Desde SPEC-038 la DB se organiza en **dos pestañas** ("Mazos" y
+Las imágenes no se bundlean (~226 MB); desde SPEC-041 un script de desarrollo las descarga todas para
+alojarlas en un **mirror propio** (un repo aparte publicado con GitHub Pages, que sirve con CORS
+abierto), al que el juego apunta con `VITE_CARD_IMAGE_BASE` sin tocar código: así deja de depender de
+que ARH siga vivo, y las imágenes cacheadas dejan de ser respuestas opacas. Además, en la ficha de un
+mazo hay un botón **"Descargar imágenes de este mazo"** (~40 imágenes, con progreso) que deja ese
+mazo **completo con imágenes sin conexión**, y otro para **borrar** las imágenes descargadas.
+Descargarlas todas de golpe desde el juego queda descartado: no caben razonablemente en un navegador. Desde SPEC-038 la DB se organiza en **dos pestañas** ("Mazos" y
 "Cartas", sin scroll entre ellas); la lista de mazos muestra las **caras de sus personajes** junto al
 nombre, y la ficha de una carta incluye un apartado **"Mazos que la usan"** que enlaza a la pestaña
 Mazos. El buscador de "Jugar → Elegir mazo" también filtra por **nombre de personaje**, además de por

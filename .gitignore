@@ -11,3 +11,6 @@ dist/
 # OS
 Thumbs.db
 .DS_Store
+
+# Mirror de imagenes de carta (SPEC-041): ~226 MB, van al repo del mirror, no aqui
+card-images/
