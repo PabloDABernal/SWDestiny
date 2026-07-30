@@ -1,6 +1,6 @@
 # SPEC-041: Mirror propio de imágenes (con CORS) y descargar las imágenes de un mazo
 
-**Estado:** Pendiente
+**Estado:** Completada
 **Sección del GDD:** §7 (nota "Sección DB" / imágenes, y "App offline e instalable")
 **Depende de:** SPEC-034 (imágenes bajo demanda, `VITE_CARD_IMAGE_BASE`, cache `card-images-v1`),
 SPEC-036/038 (explorador de mazos y ficha de mazo), SPEC-040 (Service Worker con app shell)
@@ -181,4 +181,14 @@ aquí — avisando antes, no subdividir con sufijos.
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+Completada tras playtest 2026-07-30. Todo OK: las cartas de los sets fan muestran arte por primera
+vez (Ninth Sister), los sets oficiales siguen igual, las peticiones van al mirror, la descarga por
+mazo con progreso deja el mazo entero visible sin conexión, las entradas del cache salen con 200 y
+tamaño real (no opacas), el estado "✓" se recalcula del cache, y borrar no rompe el arranque offline.
+Verificados también los dos casos que corrigió el revisor: cambiar de mazo a mitad de descarga y
+borrar con una ficha abierta.
+
+Falso fallo al empezar: la primera pasada parecía no mostrar ninguna imagen, pero el navegador estaba
+sirviendo aún la build de prueba de SPEC-040 desde el Service Worker viejo (se veía en el título,
+"BUILD 2 DE PRUEBA"). Es el mismo caso límite ya anotado en SPEC-040. Truco para futuros playtests:
+marcar "Update on reload" en DevTools → Application → Service Workers.
