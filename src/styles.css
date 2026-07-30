@@ -1188,3 +1188,43 @@ button:disabled {
   color: #9aa0b0;
   border: 1px solid #3a4152;
 }
+
+/* Descargar/borrar imágenes de carta (SPEC-041). */
+.deck-images {
+  margin: 6px 0 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.deck-images__btn {
+  background: #2f6feb;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  padding: 5px 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.deck-images__btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.deck-images__btn--done {
+  background: #1f4023;
+  color: #b7e3bd;
+}
+.deck-images__msg {
+  font-size: 0.8rem;
+  color: #d0a24c;
+}
+.image-cache {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+}
+.image-cache__count {
+  color: #9aa0b0;
+}

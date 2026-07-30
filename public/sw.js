@@ -20,9 +20,10 @@ const PRECACHE = self.__PRECACHE_MANIFEST__ ?? [];
 const SHELL_CACHE = self.__PRECACHE_CACHE__ ?? 'app-shell-dev';
 const SHELL_INDEX = self.__PRECACHE_INDEX__ ?? null;
 
-// Casa las URLs de imagen de carta de forma agnóstica al host (ARH o un mirror): .../<NN>/<code>.jpg
-// donde NN son 2 dígitos y code son dígitos con posible sufijo A/B (cartas de dos caras).
-const CARD_IMAGE_RE = /\/\d{2}\/\d+[AB]?\.jpg$/;
+// Casa las URLs de imagen de carta de forma agnóstica al host (ARH o el mirror): .../<carpeta>/<code>.jpg
+// donde la carpeta son 2 dígitos en los sets oficiales (01-13) y 3 en la continuación fan
+// (14-25 → 101, 102, 105…, SPEC-041), y code son dígitos con posible sufijo A/B (cartas de dos caras).
+const CARD_IMAGE_RE = /\/\d{2,3}\/\d+[AB]?\.jpg$/;
 
 self.addEventListener('install', (event) => {
   if (PRECACHE.length === 0) return; // dev: nada que precachear

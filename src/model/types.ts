@@ -37,4 +37,8 @@ export interface ArhCard {
   points?: string;
   /** Texto de reglas de la carta. */
   text?: string;
+  /** Ruta relativa de su imagen dentro del host de imágenes (`01/01001.jpg`, `101/14001.jpg`),
+   *  SPEC-041. Ausente cuando la carta no tiene imagen propia (417 cartas cuyo `imagesrc` en ARH
+   *  apunta al arte de otra); en ese caso la ficha cae al detalle de texto. */
+  image?: string;
 }
