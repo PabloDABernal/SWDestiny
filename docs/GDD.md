@@ -292,6 +292,19 @@ gasta). Reroll(dado) automático apunta a los dados ya tirados del jugador que m
 anular. Especial automático también se "resuelve" (mismo placeholder) si no le queda ninguna acción
 mejor.
 
+### Texto de personaje por sets (v4, desde SPEC-042)
+
+A partir de aquí el **texto impreso de las cartas** se implementa de verdad, y se hace **por orden de
+set** (01 primero) porque es el orden en que el juego original fue introduciendo sus reglas: dentro de
+cada set, primero los **personajes**, luego las **cartas con dado** y por último las **cartas sin
+dado**. Así las mecánicas nuevas aparecen de una en una en vez de todas de golpe. Sigue sin haber un
+intérprete de texto: es una **tabla de efectos por código de carta** (como SPEC-039), a la que cada
+spec añade entradas. Un personaje cuyo texto aún no esté en la tabla se comporta como hasta ahora
+(sin efecto, y su Especial muestra el aviso de pendiente). SPEC-042 abre la serie con el **mecanismo
+de habilidades** y los 7 personajes del set 01 que se disparan como **acción de turno** (`Action -`,
+que gasta la acción) o **al activar el personaje** (opcional: se pregunta con Usar / No usar). El
+autómata usa esas mismas habilidades cuando le tocan.
+
 ### Reparto inicial y mulligan (primera pieza del bloque de turnos reales, SPEC-024)
 
 Botón nuevo **"Nueva partida"**, habilitado solo cuando ambos bandos tienen mazo importado y
