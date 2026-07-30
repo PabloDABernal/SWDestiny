@@ -96,7 +96,11 @@ de esta spec, porque sin ello el mirror nace cojo.
 - **Una imagen concreta falla (404 o error)** → el resto sí se descargan; al terminar el botón dice
   cuántas faltaron ("38/41, 3 fallaron") y sigue pulsable para reintentar. Volver a pulsarlo solo
   pide las que faltan, no las ya cacheadas.
-- **Cartas del mazo sin imagen posible** (código raro): cuentan como fallo, no rompen la descarga.
+- **Cartas del mazo sin imagen posible**: **no cuentan ni como fallo ni en el total**, simplemente no
+  entran en la descarga. *(Corregido el 2026-07-30 sobre la redacción inicial de esta spec, que decía
+  "cuentan como fallo": se escribió antes de descubrir que hay 417 cartas legítimamente sin imagen.
+  Contarlas como fallo haría que muchos mazos normales dijeran "38/41, 3 fallaron" sin que pase nada
+  malo, que es justo la alarma que no queremos.)* El contador del botón enseña solo las descargables.
 - **Cuota de almacenamiento llena** (`QuotaExceededError`) → la descarga se detiene con un aviso
   claro ("No cabe: borra imágenes descargadas"), sin dejar la app en estado roto.
 - **Salir de la ficha del mazo a mitad de descarga** → la descarga se cancela; lo ya bajado se queda

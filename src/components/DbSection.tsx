@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { getAllCards, getCardFromSnapshot } from '../data/cards';
 import { cardImageUrl } from '../data/cardImages';
+import { DeckImagesButton, ImageCacheControls } from './ImageDownload';
 import { PRESET_DECKS } from '../data/decks';
 import { COMMUNITY_DECKS } from '../data/communityDecks';
 import type { ArhCard } from '../model/types';
@@ -520,6 +521,9 @@ function DeckExplorer({ entries, selected: selectedKey, onSelect, onCreate, onEd
             <p className="db-deck-detail__meta">
               {ORIGIN_TAG[selected.origin]} · {selected.slots.reduce((n, s) => n + s.qty, 0)} cartas
             </p>
+            {/* `key` por mazo: cambiar de mazo REMONTA el botón, lo que cancela la descarga en curso
+                (su cleanup aborta) y evita que el progreso del mazo anterior pinte sobre el nuevo. */}
+            <DeckImagesButton key={selectedKey} codes={selected.slots.map((s) => s.code)} />
             <ul className="db-deck-detail__cards">
               {cards.map((c, i) => (
                 <li key={i} className={c.isCharacter ? 'db-deck-detail__card db-deck-detail__card--char' : 'db-deck-detail__card'}>
@@ -746,6 +750,7 @@ export function DbSection() {
         >
           Cartas
         </button>
+        <ImageCacheControls />
       </div>
 
       <div style={{ display: tab === 'decks' ? 'block' : 'none' }}>
