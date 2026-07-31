@@ -100,9 +100,9 @@ Verificables jugando. Formato: acción → resultado observable.
 ## Fuera de alcance (explícito)
 
 - **Los otros 15 personajes del set 01**: los reactivos (`Before…`, `After` que no es "tras activar":
-  Grievous, Dooku, Qui-Gon, Bala-Tik, Jango Fett, Ackbar, Rey, Han Solo) van a **SPEC-043**, y las
+  Grievous, Dooku, Qui-Gon, Bala-Tik, Jango Fett, Ackbar, Rey, Han Solo) van a **SPEC-044**, y las
   **keywords pasivas** (Guardian de Phasma y Rebel Trooper, y los modificadores de coste de Padawan y
-  Finn) a **SPEC-044**. Los `[special]` del set 01 (Kylo Ren, Poe Dameron, Padmé) van con la tanda de
+  Finn) a **SPEC-045**. Los `[special]` del set 01 (Kylo Ren, Poe Dameron, Padmé) van con la tanda de
   Especiales que corresponda.
 - **Mejoras, apoyos, eventos y campos de batalla del set 01**: van después de los personajes, en el
   orden acordado con el usuario (2026-07-30): set → personajes → cartas con dado → cartas sin dado.
@@ -138,7 +138,7 @@ Verificables jugando. Formato: acción → resultado observable.
   **registro de habilidades por código** con, al menos: cuándo se dispara (`action` |
   `afterActivate`), si se puede usar ahora mismo (para decidir si se pinta el botón/aviso), el texto
   corto que se muestra al jugador, y cómo se aplica (tanto para el jugador como para el autómata).
-  El objetivo declarado es que **SPEC-043/044 y los sets siguientes solo añadan entradas**, sin tocar
+  El objetivo declarado es que **SPEC-044/045 y los sets siguientes solo añadan entradas**, sin tocar
   el motor otra vez.
 - **Hay que romper la atomicidad de `activate()`** (lo más delicado de esta spec). Hoy `activate()`
   hace `turn: opposite(side)` en el mismo `set()` que tira los dados —"Activar es SIEMPRE una acción
