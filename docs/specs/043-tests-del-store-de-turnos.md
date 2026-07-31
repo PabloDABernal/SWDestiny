@@ -1,6 +1,6 @@
 # SPEC-043: Red de seguridad — tests del store (turnos, activación, resoluciones)
 
-**Estado:** Pendiente
+**Estado:** Completada
 **Sección del GDD:** ninguna (no cambia el juego; es deuda técnica del SDD)
 **Depende de:** SPEC-025 (máquina de turnos), y en general todo lo ya implementado en
 `src/store/gameStore.ts`
@@ -98,5 +98,20 @@ decide, no se arregla sobre la marcha.
 
 ## Resultado del playtest
 
-No aplica: esta spec no cambia nada jugable. Se da por completada con `npm test` en verde y los tests
-nuevos fallando cuando deben (comprobado rompiendo algo a propósito).
+No aplica: esta spec no cambia nada jugable. Completada el 2026-07-31 con **19 tests nuevos** en
+`src/store/gameStore.test.ts` (214 en total, antes 195), `npm run build` en verde y sin tocar una sola
+línea de código de producción.
+
+La red se verificó **rompiendo el store a propósito**, dos veces, y comprobando qué saltaba:
+1. Que `pass` no incrementara la racha → fallaron los dos tests de pases/mantenimiento.
+2. Que `activate` no pasara el turno (justo lo que SPEC-042 va a cambiar) → falló
+   *"activar un personaje pasa el turno al rival"*, con ese nombre.
+En ambos casos el store se restauró a su estado original y `git diff` quedó limpio.
+
+Dos hallazgos al escribirlos, útiles para las specs siguientes:
+- **No hace falta `jsdom`**: el store carga en el entorno node de vitest tal cual, porque sus accesos
+  a `localStorage` ya iban en `try/catch` y degradan a vacío.
+- **Los tests de Focus necesitan cartas REALES**: `chooseFocusFace` valida la cara contra las 6 caras
+  del dado, que busca en el snapshot por `code` (SPEC-023). Con un personaje inventado no encuentra el
+  dado y la acción se ignora **en silencio**, sin error. Costó un rato descubrirlo y está anotado en
+  el propio fichero de tests para que no vuelva a pasar.
