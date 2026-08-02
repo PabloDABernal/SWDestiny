@@ -9,7 +9,7 @@ import {
   MAX_SHIELDS,
   type DieSymbol,
 } from './damage';
-import { LUMINARA_CODE, VADER_CODE } from './characterAbilities';
+import { LUMINARA_CODE, VADER_CODE, abilityWithTrigger } from './characterAbilities';
 import { getCardFromSnapshot } from '../data/cards';
 
 /** Vista del bando del jugador que necesita el autómata para el margen "sin overkill" (SPEC-014):
@@ -118,8 +118,33 @@ export type AutomatonAction =
        * o null si no hay ningún personaje vivo al que atacar (no debería ocurrir en partida). */
       vaderTarget?: { side: 'enemy' | 'player'; index: number } | null;
     }
+  | {
+      /** Habilidad `Action -` de un personaje (SPEC-042). Va al final de la tabla de prioridades,
+       * justo antes del reroll de blancos: es un recurso para cuando no hay nada mejor. */
+      type: 'characterAbility';
+      index: number;
+    }
   | { type: 'reroll'; dieIndices: number[]; kind: 'free' | 'extra' }
   | { type: 'pass' };
+
+/** Índice del primer personaje del autómata con una habilidad `Action -` de reroll que pueda usar
+ *  ahora mismo (SPEC-042), o null. Criterio deliberadamente conservador:
+ *  - solo habilidades de reroll (las de girar dados de apoyo no las sabe aprovechar),
+ *  - nunca si el daño que se hace a sí mismo lo dejaría KO (Nightsister con 1 de vida),
+ *  - "retira este dado" exige tenerlo en el pool. */
+export function usableActionAbilityIndex(enemy: AutomatonSide): number | null {
+  for (let i = 0; i < enemy.characters.length; i++) {
+    const c = enemy.characters[i];
+    const damage = enemy.damage[i] ?? 0;
+    if (damage >= c.health) continue; // KO
+    const ability = abilityWithTrigger(c.code, 'action');
+    if (!ability || ability.targeting.kind !== 'reroll') continue;
+    if (ability.selfDamage && damage + ability.selfDamage >= c.health) continue; // se suicidaría
+    if (ability.removesOwnDie && !enemy.pool.some((d) => d.characterIndex === i)) continue;
+    return i;
+  }
+  return null;
+}
 
 function isBlank(face: string): boolean {
   return face === '-';
@@ -629,6 +654,15 @@ export function nextAutomatonAction(
       };
     }
     return { type: 'special', dieIndices: [specialIndex], costReceiverIndex: null, ownerCode };
+  }
+
+  // Habilidades `Action -` (SPEC-042): último recurso, justo antes del reroll de blancos (decisión
+  // del usuario, 2026-07-30). Solo las de reroll, y solo si hay algún dado en blanco que arreglar:
+  // el autómata no sabe sacarle partido a girar un dado de apoyo (Veers), así que no la usa.
+  const blanksNow = blankDieIndices(enemy.pool);
+  if (blanksNow.length > 0) {
+    const abilityIndex = usableActionAbilityIndex(enemy);
+    if (abilityIndex !== null) return { type: 'characterAbility', index: abilityIndex };
   }
 
   const blanks = blankDieIndices(enemy.pool);

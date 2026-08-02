@@ -934,3 +934,59 @@ describe('nextAutomatonAction — modificador genérico +X* (SPEC-027, Lure of P
     });
   });
 });
+
+describe('nextAutomatonAction — habilidades `Action -` de personaje (SPEC-042)', () => {
+  // Nightsister (01012): "Reroll a die. Deal 1 damage to this character." No exige estar activada.
+  const nightsister = (health: number): Character => ({
+    code: '01012',
+    name: 'Nightsister',
+    health,
+    isUnique: false,
+    isElite: false,
+    dice: [],
+  });
+
+  it('la usa cuando hay un dado en blanco y no tiene nada mejor que hacer', () => {
+    const enemy = enemySide({
+      characters: [nightsister(7)],
+      damage: [0],
+      activated: [true],
+      pool: [die(0, '-')],
+    });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toMatchObject({
+      type: 'characterAbility',
+      index: 0,
+    });
+  });
+
+  it('NO la usa si el daño que se hace a sí misma la dejaría KO', () => {
+    // 7 de vida y 6 de daño: el +1 de su propia habilidad la mataría.
+    const enemy = enemySide({
+      characters: [nightsister(7)],
+      damage: [6],
+      activated: [true],
+      pool: [die(0, '-')],
+    });
+    expect(next(enemy, playerSide(), noRerollsUsed)).not.toMatchObject({ type: 'characterAbility' });
+  });
+
+  it('NO la usa si no hay ningún dado en blanco que arreglar', () => {
+    const enemy = enemySide({
+      characters: [nightsister(7)],
+      damage: [0],
+      activated: [true],
+      pool: [],
+    });
+    expect(next(enemy, playerSide(), noRerollsUsed)).not.toMatchObject({ type: 'characterAbility' });
+  });
+
+  it('va DESPUÉS de atacar: con daño disponible, ataca en vez de usar la habilidad', () => {
+    const enemy = enemySide({
+      characters: [nightsister(7)],
+      damage: [0],
+      activated: [true],
+      pool: [die(0, '2MD'), die(0, '-')],
+    });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toMatchObject({ type: 'attack' });
+  });
+});

@@ -2655,6 +2655,26 @@ export const useGameStore = create<GameState>((set, get) => ({
         set({ lastEnemyAction: `El enemigo activa a ${character.name}.` });
         return;
       }
+      case 'characterAbility': {
+        // Habilidad `Action -` del autómata (SPEC-042): gasta su acción, igual que al jugador.
+        const character = enemy.characters[action.index];
+        get().startAbility('enemy', action.index);
+        const blancos = get()
+          .sides.enemy.pool.map((d, i) => ({ d, i }))
+          .filter(({ d }) => d.face === '-');
+        const ability = abilityFor(character.code);
+        const max = ability?.targeting.kind === 'reroll' ? ability.targeting.max : 0;
+        for (const { i } of blancos.slice(0, max)) get().pickAbilityDie('enemy', i);
+        if ((get().abilityTargeting?.dice.length ?? 0) === 0) {
+          // Sin objetivo válido: se cancela y se pasa, en vez de dejar el modo colgado.
+          get().cancelAbility();
+          set({ turn: 'player', passStreak: 0, lastEnemyAction: 'El enemigo pasa.' });
+          return;
+        }
+        get().confirmAbility();
+        set({ lastEnemyAction: `El enemigo usa la habilidad de ${character.name}.` });
+        return;
+      }
       case 'resource': {
         const total = batchTotal(action.dieIndices);
         const label = batchLabel(action.dieIndices);
