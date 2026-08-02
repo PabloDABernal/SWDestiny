@@ -20,6 +20,11 @@ interface CharacterCardProps {
   activateDisabled?: boolean;
   onActivate: () => void;
   onTarget: () => void;
+  /** SPEC-042: solo se pasa si este personaje tiene una habilidad `Action -` implementada. */
+  onUseAbility?: () => void;
+  /** Texto de esa habilidad, como tooltip del botón. */
+  abilityText?: string;
+  abilityDisabled?: boolean;
 }
 
 export function CharacterCard({
@@ -34,6 +39,9 @@ export function CharacterCard({
   activateDisabled,
   onActivate,
   onTarget,
+  onUseAbility,
+  abilityText,
+  abilityDisabled,
 }: CharacterCardProps) {
   // Un KO no es objetivo; si hay dado seleccionado y no es KO, la ficha es clicable como objetivo.
   const canTarget = targetable && !ko;
@@ -111,6 +119,21 @@ export function CharacterCard({
           >
             {ko ? 'KO' : activated ? 'Activado' : 'Activar'}
           </button>
+          {/* Habilidad `Action -` de su texto (SPEC-042). Solo se pinta si ese personaje tiene una y
+              se puede usar ahora mismo: gasta la acción del turno, igual que activar. */}
+          {onUseAbility && (
+            <button
+              className="character-card__ability"
+              onClick={(e) => {
+                e.stopPropagation();
+                onUseAbility();
+              }}
+              disabled={ko || abilityDisabled}
+              title={abilityText}
+            >
+              Habilidad
+            </button>
+          )}
         </div>
       )}
     </div>

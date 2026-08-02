@@ -1,5 +1,6 @@
 import { readCache } from '../import/resolveCards';
 import { useGameStore, type Side } from '../store/gameStore';
+import { abilityFor } from '../game/characterAbilities';
 
 /** Mano visible del jugador (SPEC-018): nombre de cada carta, resuelto desde la caché de import
  * (sin llamadas nuevas a la API; la carta ya se resolvió al importar el mazo). Las mejoras
@@ -24,6 +25,12 @@ export function Hand({
   const turn = useGameStore((s) => s.turn);
   const selectUpgradeCard = useGameStore((s) => s.selectUpgradeCard);
   const playSupport = useGameStore((s) => s.playSupport);
+  const abilityTargeting = useGameStore((s) => s.abilityTargeting);
+  const pickAbilityHandCard = useGameStore((s) => s.pickAbilityHandCard);
+  const pickingHandCard =
+    abilityTargeting !== null &&
+    abilityTargeting.side === side &&
+    abilityFor(abilityTargeting.code)?.targeting.kind === 'discardHandCardForDie';
 
   if (codes.length === 0) return null;
   const mulliganActive = mulligan != null;
@@ -48,6 +55,17 @@ export function Hand({
               </label>
             )}
             {card?.name ?? code}
+            {/* Elegir carta de la mano para una habilidad (SPEC-042, Tusken Raider). El store filtra
+                cuáles valen (personaje o mejora con dado); aquí solo se ofrece el botón. */}
+            {pickingHandCard && (
+              <button
+                className="hand__play-button"
+                onClick={() => pickAbilityHandCard(i)}
+                disabled={mulliganActive}
+              >
+                {abilityTargeting?.handCardIndex === i ? 'Elegida' : 'Elegir'}
+              </button>
+            )}
             {isUpgrade && (
               <button
                 className="hand__play-button"

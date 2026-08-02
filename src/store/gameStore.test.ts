@@ -53,9 +53,12 @@ function setUpGame(options: { playerChars?: Character[]; enemyChars?: Character[
     playUpgrade: null,
     mulligan: null,
     indirectDistribution: null,
-    // Imprescindible resetearlo: `setState` MEZCLA, así que un test que deje una habilidad pendiente
-    // envenena a los siguientes (pasó de verdad al añadir SPEC-042: reventaron los tests de Focus).
+    // Imprescindible resetearlos: `setState` MEZCLA, así que un test que deje una habilidad abierta
+    // envenena a los siguientes (pasó de verdad al añadir SPEC-042: reventaron los tests de Focus,
+    // porque los guardas bloquean todo mientras haya una habilidad en curso). Cualquier modo nuevo
+    // del store tiene que añadirse aquí.
     pendingAbility: null,
+    abilityTargeting: null,
     turn: 'player',
     passStreak: 0,
     outcome: null,
@@ -333,6 +336,22 @@ describe('habilidades de personaje "tras activar" (SPEC-042)', () => {
     expect(state().turn).toBe('player');
   });
 
+  it('el autómata tampoco se cuelga con una habilidad que pide objetivos', () => {
+    // Jabba abre modo de selección al usar su habilidad. Si el autómata no lo cierra (eligiendo o
+    // renunciando), el turno se queda en 'enemy' esperando una elección que nadie puede hacer.
+    setUpGame({
+      playerChars: [character('Héroe', 10)],
+      enemyChars: [conCodigo('01020', 'Jabba the Hutt')],
+    });
+    useGameStore.setState({ turn: 'enemy' });
+
+    state().enemyTurn();
+
+    expect(state().abilityTargeting).toBeNull();
+    expect(state().pendingAbility).toBeNull();
+    expect(state().turn).toBe('player');
+  });
+
   it('con una habilidad pendiente no se puede hacer otra cosa', () => {
     setUpGame({
       playerChars: [conCodigo(VADER_01, 'Darth Vader'), character('Otro', 10)],
@@ -346,6 +365,130 @@ describe('habilidades de personaje "tras activar" (SPEC-042)', () => {
     expect(state().sides.player.activated[1]).toBe(false);
     expect(state().turn).toBe('player');
     expect(state().pendingAbility).not.toBeNull();
+  });
+});
+
+describe('habilidades con objetivo (SPEC-042)', () => {
+  const NIGHTSISTER = '01012'; // Action - Reroll a die. Deal 1 damage to this character.
+  const LEIA = '01028'; // Action - Remove this die to reroll up to 2 of your dice.
+  const VEERS = '01004'; // Action - Remove this die to turn one of your support dice to any side.
+  const JABBA = '01020'; // After activate: you may reroll a Yellow die (Jabba es amarillo)
+  const CARAS = ['1RD', '2RD', '1Dr', '1Dc', '1R', '-'];
+
+  const conCodigo = (code: string, name: string, health = 10): Character => ({
+    code,
+    name,
+    health,
+    isUnique: true,
+    isElite: false,
+    dice: [{ sides: CARAS }],
+  });
+
+  it('Nightsister se puede usar SIN haberla activado (su texto no retira su dado)', () => {
+    setUpGame({ playerChars: [conCodigo(NIGHTSISTER, 'Nightsister', 7)] });
+    expect(state().sides.player.activated[0]).toBe(false);
+
+    state().startAbility('player', 0);
+
+    expect(state().abilityTargeting).not.toBeNull();
+    expect(state().abilityTargeting?.code).toBe(NIGHTSISTER);
+  });
+
+  it('Leia NO se puede usar sin su dado en el pool (su texto dice "retira este dado")', () => {
+    setUpGame({ playerChars: [conCodigo(LEIA, 'Leia Organa')] });
+    state().startAbility('player', 0);
+    expect(state().abilityTargeting).toBeNull();
+  });
+
+  it('Nightsister se lleva 1 de daño al usarla, y gasta el turno', () => {
+    setUpGame({
+      playerChars: [conCodigo(NIGHTSISTER, 'Nightsister', 7), character('Otro', 10)],
+    });
+    state().activate('player', 1); // hay un dado en el pool para rerollear
+    useGameStore.setState({ turn: 'player' });
+
+    state().startAbility('player', 0);
+    state().pickAbilityDie('player', 0);
+    state().confirmAbility();
+
+    expect(state().sides.player.damage[0]).toBe(1);
+    expect(state().abilityTargeting).toBeNull();
+    expect(state().turn).toBe('enemy');
+  });
+
+  it('cancelar una `Action -` no gasta el turno ni retira el dado', () => {
+    setUpGame({ playerChars: [conCodigo(LEIA, 'Leia Organa')] });
+    state().activate('player', 0);
+    useGameStore.setState({ turn: 'player' });
+    const dadosAntes = state().sides.player.pool.length;
+
+    state().startAbility('player', 0);
+    state().cancelAbility();
+
+    expect(state().abilityTargeting).toBeNull();
+    expect(state().turn).toBe('player');
+    expect(state().sides.player.pool).toHaveLength(dadosAntes);
+  });
+
+  it('Leia retira su dado al confirmar y rerollea hasta 2, no más', () => {
+    setUpGame({
+      playerChars: [conCodigo(LEIA, 'Leia Organa'), character('A', 10), character('B', 10)],
+    });
+    state().activate('player', 0);
+    useGameStore.setState({ turn: 'player' });
+    state().activate('player', 1);
+    useGameStore.setState({ turn: 'player' });
+    state().activate('player', 2);
+    useGameStore.setState({ turn: 'player' });
+    const dadosAntes = state().sides.player.pool.length;
+
+    state().startAbility('player', 0);
+    state().pickAbilityDie('player', 1);
+    state().pickAbilityDie('player', 2);
+    expect(state().abilityTargeting?.dice).toHaveLength(2);
+    // El tercero no entra: el máximo es 2.
+    state().pickAbilityDie('player', 0);
+    expect(state().abilityTargeting?.dice).toHaveLength(2);
+
+    state().confirmAbility();
+    expect(state().sides.player.pool).toHaveLength(dadosAntes - 1); // su dado se retiró
+    expect(state().turn).toBe('enemy');
+  });
+
+  it('Jabba solo acepta dados amarillos', () => {
+    // Jabba (01020) es amarillo; el Héroe de prueba no tiene carta en el snapshot, así que no lo es.
+    setUpGame({ playerChars: [conCodigo(JABBA, 'Jabba the Hutt'), character('Gris', 10)] });
+    state().activate('player', 0); // deja la habilidad pendiente (es "tras activar" opcional)
+    expect(state().pendingAbility?.code).toBe(JABBA);
+    state().useAbility(); // abre el modo de selección
+    expect(state().abilityTargeting).not.toBeNull();
+
+    const poolJabba = state().sides.player.pool.findIndex((d) => d.code === JABBA);
+    state().pickAbilityDie('player', poolJabba);
+    expect(state().abilityTargeting?.dice).toHaveLength(1); // el suyo sí es amarillo
+  });
+
+  it('cancelar una habilidad "tras activar" vuelve al aviso, sin cerrar la activación', () => {
+    setUpGame({ playerChars: [conCodigo(JABBA, 'Jabba the Hutt')] });
+    state().activate('player', 0);
+    state().useAbility();
+    expect(state().pendingAbility).toBeNull();
+
+    state().cancelAbility();
+
+    expect(state().abilityTargeting).toBeNull();
+    expect(state().pendingAbility?.code).toBe(JABBA); // vuelve el aviso Usar / No usar
+    expect(state().turn).toBe('player'); // la activación sigue sin cerrarse
+  });
+
+  it('Veers solo deja elegir dados de APOYO', () => {
+    setUpGame({ playerChars: [conCodigo(VEERS, 'General Veers')] });
+    state().activate('player', 0);
+    useGameStore.setState({ turn: 'player' });
+
+    state().startAbility('player', 0);
+    state().pickAbilityDie('player', 0); // su propio dado NO es de apoyo
+    expect(state().abilityTargeting?.faceTarget).toBeNull();
   });
 });
 
