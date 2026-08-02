@@ -187,19 +187,20 @@ export function App() {
   const chooseAbilityFace = useGameStore((s) => s.chooseAbilityFace);
   // Caras entre las que elegir ahora mismo (Veers: las del dado de apoyo elegido; Tusken: las de la
   // carta de la mano elegida). Vacío si no toca elegir cara.
-  const abilityFaceOptions = useGameStore((s) => {
-    const cur = s.abilityTargeting;
-    if (!cur || cur.side !== 'player' || cur.face !== null) return [];
-    if (cur.faceTarget !== null) {
-      const die = s.sides[cur.side].pool[cur.faceTarget];
-      return die ? (readCache(die.code)?.sides ?? []) : [];
-    }
-    if (cur.handCardIndex !== null) {
-      const code = s.sides[cur.side].hand[cur.handCardIndex];
-      return code ? (readCache(code)?.sides ?? []) : [];
-    }
-    return [];
-  });
+  //
+  // OJO: esto NO puede calcularse dentro de un selector de Zustand. Devolver un array nuevo en cada
+  // llamada hace que el store crea que el estado cambió siempre y se entra en un bucle infinito de
+  // renders (React #185, reventaba la app entera). Se deriva aquí, en el cuerpo del componente, de
+  // valores que sí son estables.
+  const playerSides = useGameStore((s) => s.sides.player);
+  const abilityFaceOptions: string[] =
+    abilityTargeting === null || abilityTargeting.side !== 'player' || abilityTargeting.face !== null
+      ? []
+      : abilityTargeting.faceTarget !== null
+        ? (readCache(playerSides.pool[abilityTargeting.faceTarget]?.code ?? '')?.sides ?? [])
+        : abilityTargeting.handCardIndex !== null
+          ? (readCache(playerSides.hand[abilityTargeting.handCardIndex] ?? '')?.sides ?? [])
+          : [];
   // ¿Se puede confirmar ya? Depende de qué pida la habilidad.
   const abilityReady = useGameStore((s) => {
     const cur = s.abilityTargeting;
