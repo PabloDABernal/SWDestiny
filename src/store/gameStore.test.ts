@@ -352,6 +352,59 @@ describe('habilidades de personaje "tras activar" (SPEC-042)', () => {
     expect(state().turn).toBe('player');
   });
 
+  it('Jabba rerollea su dado amarillo aunque haya otro blanco no-amarillo antes en el pool', () => {
+    // Bug encontrado por revisor-codigo: el autómata cogía los blancos y LUEGO filtraba por color,
+    // así que un blanco no elegible se comía el único hueco y la habilidad se desperdiciaba según
+    // el orden del pool.
+    setUpGame({
+      playerChars: [character('Héroe', 10)],
+      enemyChars: [conCodigo('01020', 'Jabba the Hutt')],
+    });
+    useGameStore.setState({
+      turn: 'enemy',
+      sides: {
+        ...state().sides,
+        enemy: {
+          ...state().sides.enemy,
+          pool: [
+            // Un blanco de una carta que no está en el snapshot (no es amarilla), ANTES que el suyo.
+            { characterIndex: 0, code: 'NO-EXISTE', name: 'Gris', dieIndex: 0, face: '-' },
+            { characterIndex: 0, code: '01020', name: 'Jabba the Hutt', dieIndex: 0, face: '-' },
+          ],
+        },
+      },
+    });
+
+    state().enemyTurn();
+
+    // El dado amarillo se ha vuelto a tirar (ya no es blanco) o al menos la habilidad se usó.
+    expect(state().abilityTargeting).toBeNull();
+    expect(state().lastEnemyAction).toContain('habilidad');
+  });
+
+  it('el autómata SÍ usa la habilidad de Tusken si tiene una carta elegible en la mano', () => {
+    // Bug encontrado por revisor-codigo: el bloque genérico solo sabía manejar rerolls, así que
+    // Tusken nunca llegaba a usar su habilidad.
+    setUpGame({
+      playerChars: [character('Héroe', 10)],
+      enemyChars: [conCodigo('01022', 'Tusken Raider')],
+    });
+    useGameStore.setState({
+      turn: 'enemy',
+      sides: {
+        ...state().sides,
+        enemy: { ...state().sides.enemy, hand: ['01035'] }, // Luke: personaje con dado, elegible
+      },
+    });
+
+    state().enemyTurn();
+
+    expect(state().sides.enemy.hand).toHaveLength(0); // la descartó
+    expect(state().sides.enemy.discardPile).toContain('01035');
+    expect(state().abilityTargeting).toBeNull();
+    expect(state().turn).toBe('player');
+  });
+
   it('con una habilidad pendiente no se puede hacer otra cosa', () => {
     setUpGame({
       playerChars: [conCodigo(VADER_01, 'Darth Vader'), character('Otro', 10)],

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { readCache } from './import/resolveCards';
-import { useGameStore, opposite, type Side } from './store/gameStore';
+import { useGameStore, opposite, abilityHasTargets, type Side } from './store/gameStore';
 import { CharacterCard } from './components/CharacterCard';
 import { DicePool } from './components/DicePool';
 import { DifficultySelector } from './components/DifficultySelector';
@@ -21,6 +21,7 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
   const indirectDistribution = useGameStore((st) => st.indirectDistribution);
   const pendingAbility = useGameStore((st) => st.pendingAbility);
   const abilityTargeting = useGameStore((st) => st.abilityTargeting);
+  const allSides = useGameStore((st) => st.sides);
   const startAbility = useGameStore((st) => st.startAbility);
   const activate = useGameStore((st) => st.activate);
   const applyDieTo = useGameStore((st) => st.applyDieTo);
@@ -126,7 +127,10 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
                           pendingAbility !== null ||
                           abilityTargeting !== null ||
                           (abilityFor(c.code)?.removesOwnDie === true &&
-                            !s.pool.some((d) => d.characterIndex === i)),
+                            !s.pool.some((d) => d.characterIndex === i)) ||
+                          // Sin nada que elegir (Veers sin apoyos, Leia sin más dados que el suyo),
+                          // el botón se deshabilita en vez de llevar a una selección vacía.
+                          !abilityHasTargets(allSides, side, i, abilityFor(c.code)!),
                       }
                     : {})}
                   onTarget={() =>
@@ -170,6 +174,14 @@ export function App() {
   const useAbility = useGameStore((s) => s.useAbility);
   const skipAbility = useGameStore((s) => s.skipAbility);
   const abilityTargeting = useGameStore((s) => s.abilityTargeting);
+  // Jabba sin dados amarillos, Tusken con la mano sin cartas elegibles: el aviso sale igual (el
+  // personaje se activó) pero "Usar" se deshabilita y solo cabe "No usar", como pide la spec.
+  const pendingAbilityHasTargets = useGameStore((s) => {
+    const p = s.pendingAbility;
+    if (!p) return false;
+    const ability = abilityFor(p.code);
+    return ability ? abilityHasTargets(s.sides, p.side, p.characterIndex, ability) : false;
+  });
   const confirmAbility = useGameStore((s) => s.confirmAbility);
   const cancelAbility = useGameStore((s) => s.cancelAbility);
   const chooseAbilityFace = useGameStore((s) => s.chooseAbilityFace);
@@ -277,7 +289,10 @@ export function App() {
       {pendingAbility && pendingAbility.side === 'player' && outcome === null && (
         <p className="app__hint app__hint--ability">
           {abilityFor(pendingAbility.code)?.prompt ?? 'Habilidad de personaje disponible.'}{' '}
-          <button onClick={useAbility}>Usar</button>{' '}
+          {!pendingAbilityHasTargets && <em>(sin objetivos válidos)</em>}{' '}
+          <button onClick={useAbility} disabled={!pendingAbilityHasTargets}>
+            Usar
+          </button>{' '}
           <button onClick={skipAbility}>No usar</button>
         </p>
       )}

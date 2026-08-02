@@ -11,6 +11,7 @@ import {
   luminaraBoostAmount,
   abilityFor,
   abilityWithTrigger,
+  type CharacterAbility,
 } from '../game/characterAbilities';
 import { loadLibrary, persistLibrary, type SavedDeck } from '../data/deckLibrary';
 import { resolveCards } from '../import/resolveCards';
@@ -1169,6 +1170,95 @@ function isSupportDie(d: PooledDie): boolean {
   return readCache(d.code)?.type_code === 'support';
 }
 
+/** Elige objetivos para la habilidad que el autómata tiene abierta y devuelve si pudo elegir alguno.
+ *  Criterio simple y conservador; lo importante es que NUNCA deje el modo abierto (colgaría la
+ *  partida) y que no dependa del orden de los dados en el pool. */
+function automatonPickAbilityTargets(
+  targeting: AbilityTargeting,
+  sides: Record<Side, SideState>,
+  ability: CharacterAbility,
+  pickDie: (side: Side, poolIndex: number) => void,
+  pickHandCard: (handIndex: number) => void,
+  chooseFace: (face: string) => void,
+): boolean {
+  const side = targeting.side;
+  switch (ability.targeting.kind) {
+    case 'reroll': {
+      // Solo dados en blanco Y que encajen en el scope (amarillo/propio/cualquiera). Filtrar por
+      // scope ANTES de recortar al máximo: si no, un blanco no elegible se come el único hueco y la
+      // habilidad se desperdicia según el orden del pool (bug real detectado por revisor-codigo).
+      const candidatos: { side: Side; poolIndex: number }[] = [];
+      for (const s of SIDES) {
+        if (ability.targeting.scope === 'own' && s !== side) continue;
+        sides[s].pool.forEach((d, i) => {
+          if (d.face !== '-') return;
+          if (!dieMatchesScope(d, s, side, (ability.targeting as { scope: 'own' | 'any' | 'yellow' }).scope)) return;
+          if (ability.removesOwnDie && s === side && d.characterIndex === targeting.characterIndex) return;
+          candidatos.push({ side: s, poolIndex: i });
+        });
+      }
+      const elegidos = candidatos.slice(0, ability.targeting.max);
+      for (const t of elegidos) pickDie(t.side, t.poolIndex);
+      return elegidos.length > 0;
+    }
+    case 'discardHandCardForDie': {
+      // Tusken: descarta la primera carta elegible y resuelve su mejor cara de daño (o la primera
+      // que no sea blanco). Sin esto el autómata nunca usaba su habilidad.
+      const hand = sides[side].hand;
+      for (let i = 0; i < hand.length; i++) {
+        const card = readCache(hand[i]);
+        if (!card || !Array.isArray(card.sides) || card.sides.length === 0) continue;
+        if (ability.handCardTypes && !ability.handCardTypes.includes(card.type_code)) continue;
+        const mejor = [...card.sides]
+          .filter((f) => f !== '-')
+          .sort((a, b) => (parsePlayerFace(b)?.amount ?? 0) - (parsePlayerFace(a)?.amount ?? 0))[0];
+        if (!mejor) continue;
+        pickHandCard(i);
+        chooseFace(mejor);
+        return true;
+      }
+      return false;
+    }
+    default:
+      // `turnSupportDie` (Veers): el autómata no sabe sacarle partido, así que no la usa.
+      return false;
+  }
+}
+
+/** ¿Hay algo que elegir para esa habilidad ahora mismo? (SPEC-042). Sirve para no ofrecer un botón
+ *  que solo lleva a una pantalla de selección vacía: Veers sin apoyos, Jabba sin dados amarillos,
+ *  Tusken sin cartas elegibles, Leia sin más dados que el suyo. */
+export function abilityHasTargets(
+  sides: Record<Side, SideState>,
+  side: Side,
+  characterIndex: number,
+  ability: CharacterAbility,
+): boolean {
+  switch (ability.targeting.kind) {
+    case 'none':
+      return true;
+    case 'reroll': {
+      const scope = ability.targeting.scope;
+      return SIDES.some((s) => {
+        if (scope === 'own' && s !== side) return false;
+        return sides[s].pool.some((d, i) => {
+          if (ability.removesOwnDie && s === side && d.characterIndex === characterIndex) return false;
+          void i;
+          return dieMatchesScope(d, s, side, scope);
+        });
+      });
+    }
+    case 'turnSupportDie':
+      return sides[side].pool.some((d) => isSupportDie(d));
+    case 'discardHandCardForDie':
+      return sides[side].hand.some((code) => {
+        const card = readCache(code);
+        if (!card || !Array.isArray(card.sides) || card.sides.length === 0) return false;
+        return !ability.handCardTypes || ability.handCardTypes.includes(card.type_code);
+      });
+  }
+}
+
 /** ¿Ese dado del pool vale como objetivo de la habilidad, según su `scope`? */
 function dieMatchesScope(d: PooledDie, dieSide: Side, abilitySide: Side, scope: 'own' | 'any' | 'yellow'): boolean {
   if (scope === 'own') return dieSide === abilitySide;
@@ -1785,7 +1875,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   skipAbility: () =>
     set((state) => {
       const pending = state.pendingAbility;
-      if (pending === null) return state;
+      if (pending === null || state.outcome !== null) return state;
       // Renunciar cierra la activación igual: el turno se cede aunque no se use la habilidad.
       return { pendingAbility: null, turn: opposite(pending.side) };
     }),
@@ -2627,15 +2717,19 @@ export const useGameStore = create<GameState>((set, get) => ({
           get().useAbility();
           const targeting = get().abilityTargeting;
           if (targeting !== null) {
-            // La habilidad pide objetivos. El autómata elige de forma simple: vuelve a tirar sus
-            // propios dados en blanco (lo único que siempre le conviene). Si no encuentra ninguno,
-            // renuncia — pero NUNCA se queda esperando, o la partida se cuelga igual que antes.
-            const blancos = get()
-              .sides.enemy.pool.map((d, i) => ({ d, i }))
-              .filter(({ d }) => d.face === '-');
-            const max = ability?.targeting.kind === 'reroll' ? ability.targeting.max : 0;
-            for (const { i } of blancos.slice(0, max)) get().pickAbilityDie('enemy', i);
-            if ((get().abilityTargeting?.dice.length ?? 0) > 0) {
+            // La habilidad pide objetivos: los elige el autómata. Si no encuentra ninguno, renuncia
+            // — pero NUNCA se queda esperando, o la partida se cuelga.
+            const pudo =
+              ability !== undefined &&
+              automatonPickAbilityTargets(
+                targeting,
+                get().sides,
+                ability,
+                get().pickAbilityDie,
+                get().pickAbilityHandCard,
+                get().chooseAbilityFace,
+              );
+            if (pudo) {
               get().confirmAbility();
               set({
                 lastEnemyAction: `El enemigo activa a ${character.name} y usa su habilidad: ${ability?.prompt ?? ''}`,
@@ -2659,13 +2753,20 @@ export const useGameStore = create<GameState>((set, get) => ({
         // Habilidad `Action -` del autómata (SPEC-042): gasta su acción, igual que al jugador.
         const character = enemy.characters[action.index];
         get().startAbility('enemy', action.index);
-        const blancos = get()
-          .sides.enemy.pool.map((d, i) => ({ d, i }))
-          .filter(({ d }) => d.face === '-');
         const ability = abilityFor(character.code);
-        const max = ability?.targeting.kind === 'reroll' ? ability.targeting.max : 0;
-        for (const { i } of blancos.slice(0, max)) get().pickAbilityDie('enemy', i);
-        if ((get().abilityTargeting?.dice.length ?? 0) === 0) {
+        const targeting = get().abilityTargeting;
+        const pudo =
+          targeting !== null &&
+          ability !== undefined &&
+          automatonPickAbilityTargets(
+            targeting,
+            get().sides,
+            ability,
+            get().pickAbilityDie,
+            get().pickAbilityHandCard,
+            get().chooseAbilityFace,
+          );
+        if (!pudo) {
           // Sin objetivo válido: se cancela y se pasa, en vez de dejar el modo colgado.
           get().cancelAbility();
           set({ turn: 'player', passStreak: 0, lastEnemyAction: 'El enemigo pasa.' });
