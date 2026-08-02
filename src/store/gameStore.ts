@@ -4,7 +4,14 @@ import { parseDeck, type DeckSlot } from '../import/parseDeck';
 import { parseTextDeck } from '../import/parseTextDeck';
 import { getPresetDeck } from '../data/decks';
 import { getCardFromSnapshot } from '../data/cards';
-import { LUMINARA_CODE, ZUCKUSS_CODE, VADER_CODE, luminaraBoostAmount } from '../game/characterAbilities';
+import {
+  LUMINARA_CODE,
+  ZUCKUSS_CODE,
+  VADER_CODE,
+  luminaraBoostAmount,
+  abilityFor,
+  abilityWithTrigger,
+} from '../game/characterAbilities';
 import { loadLibrary, persistLibrary, type SavedDeck } from '../data/deckLibrary';
 import { resolveCards } from '../import/resolveCards';
 import { buildCharacters } from '../import/buildCharacters';
@@ -987,6 +994,11 @@ interface GameState {
    * los guards existentes de turno (SPEC-025) ya bloquean el resto de acciones del jugador sin
    * necesidad de tocarlos uno a uno; no hay forma de cancelar este reparto. */
   indirectDistribution: { pending: number } | null;
+  /** Habilidad de personaje "tras activar" esperando decisión del jugador (SPEC-042). Mientras no
+   * sea `null`, la activación **no ha terminado**: el turno sigue siendo de `side` y el resto de
+   * acciones están bloqueadas, igual que con `playUpgrade`/`mulligan`. Solo se usa para las
+   * OPCIONALES ("you may…"); las obligatorias (Luke) se aplican solas dentro de `activate`. */
+  pendingAbility: { side: Side; characterIndex: number; code: string } | null;
   /** Pases consecutivos sin ninguna acción real entre medias (SPEC-025). Al llegar a 2 dispara el
    * mantenimiento automático y se reinicia a 0. Cualquier acción real lo reinicia a 0. */
   passStreak: number;
@@ -1111,7 +1123,62 @@ interface GameState {
   /** Activa el apoyo en juego `index` de `side`: tira su dado y lo añade al pool del bando
    * (SPEC-021). No-op si ya está activado esta ronda. */
   activateSupport: (side: Side, index: number) => void;
+  /** SPEC-042: aplica la habilidad "tras activar" pendiente y cierra la activación (cede el turno).
+   *  No-op si no hay ninguna pendiente. */
+  useAbility: () => void;
+  /** SPEC-042: renuncia a la habilidad pendiente y cierra la activación (cede el turno igual). */
+  skipAbility: () => void;
   enemyTurn: () => void;
+}
+
+/** Roba `n` cartas del mazo a la mano (SPEC-042). Si el mazo no llega, roba lo que haya; el deck-out
+ *  se sigue comprobando en el mantenimiento (SPEC-022), no aquí. */
+function drawCards(side: Side, s: SideState, n: number): SideState {
+  const drawn = s.drawPile.slice(0, n);
+  if (drawn.length === 0) return s;
+  const drawPile = s.drawPile.slice(drawn.length);
+  const hand = [...s.hand, ...drawn];
+  persistDrawPile(side, drawPile);
+  persistHand(side, hand);
+  return { ...s, drawPile, hand };
+}
+
+/** El rival descarta `n` cartas de su mano al azar (SPEC-042, Darth Vader 01010). Su texto dice que
+ *  las elige él; al ser el autómata (o el jugador cuando ataca el autómata) quien elige, se toma al
+ *  azar, igual que ya hace el descarte por símbolo de SPEC-029 (`applyDiscard`). */
+function discardFromHand(side: Side, s: SideState, n: number): SideState {
+  const hand = s.hand.slice();
+  const discarded: string[] = [];
+  const count = Math.min(n, hand.length);
+  for (let i = 0; i < count; i++) {
+    const idx = Math.floor(Math.random() * hand.length);
+    discarded.push(...hand.splice(idx, 1));
+  }
+  if (discarded.length === 0) return s;
+  const discardPile = [...s.discardPile, ...discarded];
+  persistHand(side, hand);
+  persistDiscardPile(side, discardPile);
+  return { ...s, hand, discardPile };
+}
+
+/** Aplica el efecto SIN objetivo de una habilidad de personaje (SPEC-042). Los que necesitan elegir
+ *  (rerolls, girar dado de apoyo, descartar carta de la mano) no pasan por aquí. */
+function applyAbilityEffect(
+  sides: Record<Side, SideState>,
+  side: Side,
+  code: string,
+): Record<Side, SideState> {
+  switch (code) {
+    case '01035': // Luke Skywalker: roba una carta
+      return { ...sides, [side]: drawCards(side, sides[side], 1) };
+    case '01010': {
+      // Darth Vader (Awakenings): el rival descarta una carta de su mano
+      const opp = opposite(side);
+      return { ...sides, [opp]: discardFromHand(opp, sides[opp], 1) };
+    }
+    default:
+      return sides;
+  }
 }
 
 // Mantenimiento (SPEC-009/011/019/022, ahora disparado por SPEC-025 tras dos pases consecutivos en
@@ -1180,6 +1247,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   mulligan: null,
   turn: 'player',
   indirectDistribution: null,
+  pendingAbility: null,
   passStreak: 0,
   outcome: null,
   lastEnemyAction: null,
@@ -1386,7 +1454,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.resolve?.focusFaceChoice != null) return state;
       // Bloqueado mientras se elige objetivo para jugar una mejora (SPEC-020) o hay un mulligan
       // pendiente de confirmar (SPEC-024).
-      if (state.playUpgrade !== null || state.mulligan !== null) return state;
+      if (state.playUpgrade !== null || state.mulligan !== null || state.pendingAbility !== null) return state;
       // Bloqueado fuera de tu turno, o si ya tienes un dado marcado sin resolver (SPEC-025): hay
       // que terminar o cancelar esa resolución antes de hacer otra cosa.
       if (state.turn !== side) return state;
@@ -1407,12 +1475,59 @@ export const useGameStore = create<GameState>((set, get) => ({
         return [rollUpgradeDie({ sides: [...card.sides] }, card.code, card.name, index)];
       });
       const pool = [...s.pool, ...rollCharacter(character, index), ...upgradeDice];
-      // Activar es SIEMPRE una acción completa (SPEC-025): cierra el turno de `side`.
+      const activatedSides = { ...state.sides, [side]: { ...s, activated, pool } };
+
+      // Habilidad "tras activar" (SPEC-042). Hasta aquí activar era SIEMPRE una acción completa que
+      // cerraba el turno en el mismo `set()` (SPEC-025); ahora, si el personaje tiene una habilidad
+      // OPCIONAL de este tipo, el turno se DIFIERE hasta que el jugador decida usarla o no
+      // (`useAbility`/`skipAbility`). Sin diferirlo, el aviso "Usar / No usar" saldría cuando el
+      // turno ya es del rival y no habría forma legal de aplicar el efecto.
+      const ability = abilityWithTrigger(character.code, 'afterActivate');
+      if (ability) {
+        if (!ability.optional) {
+          // Obligatoria (Luke: "draw a card", sin "you may"): se aplica sola, sin preguntar, y el
+          // turno se cierra como siempre.
+          return {
+            sides: applyAbilityEffect(activatedSides, side, character.code),
+            turn: opposite(side),
+            passStreak: 0,
+          };
+        }
+        return {
+          sides: activatedSides,
+          pendingAbility: { side, characterIndex: index, code: character.code },
+          turn: side, // se cede al resolver la habilidad, no ahora
+          passStreak: 0,
+        };
+      }
+
+      // Sin habilidad: activar sigue siendo una acción completa (SPEC-025), como hasta ahora.
       return {
-        sides: { ...state.sides, [side]: { ...s, activated, pool } },
+        sides: activatedSides,
         turn: opposite(side),
         passStreak: 0,
       };
+    }),
+
+  useAbility: () =>
+    set((state) => {
+      const pending = state.pendingAbility;
+      if (pending === null || state.outcome !== null) return state;
+      // Ninguno de los efectos sin objetivo (robar, descartar) puede dejar KO a nadie, así que el
+      // resultado de partida no cambia aquí. El deck-out se sigue comprobando en el mantenimiento.
+      return {
+        sides: applyAbilityEffect(state.sides, pending.side, pending.code),
+        pendingAbility: null,
+        turn: opposite(pending.side),
+      };
+    }),
+
+  skipAbility: () =>
+    set((state) => {
+      const pending = state.pendingAbility;
+      if (pending === null) return state;
+      // Renunciar cierra la activación igual: el turno se cede aunque no se use la habilidad.
+      return { pendingAbility: null, turn: opposite(pending.side) };
     }),
 
   // "Pasar" (SPEC-025): cede el turno de `side` sin hacer nada. Dos pases consecutivos (uno de cada
@@ -1425,7 +1540,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.turn !== side) return state;
       // Mismo guard de exclusión mutua que el resto de acciones (SPEC-025): no tiene sentido pasar
       // con una acción a medio construir, hay que cancelarla primero.
-      if (state.resolve !== null || state.playUpgrade !== null || state.mulligan !== null) return state;
+      if (state.resolve !== null || state.playUpgrade !== null || state.mulligan !== null || state.pendingAbility !== null) return state;
       const passStreak = state.passStreak + 1;
       if (passStreak >= 2) {
         return { ...runMaintenance(state.sides), turn: 'player', passStreak: 0 };
@@ -1480,7 +1595,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.resolve?.focusFaceChoice != null) return state;
       // Bloqueado mientras se elige objetivo para jugar una mejora (SPEC-020) o hay un mulligan
       // pendiente de confirmar (SPEC-024).
-      if (state.playUpgrade !== null || state.mulligan !== null) return state;
+      if (state.playUpgrade !== null || state.mulligan !== null || state.pendingAbility !== null) return state;
       // Bloqueado fuera de tu turno (SPEC-025).
       if (state.turn !== side) return state;
       const die = state.sides[side].pool[poolIndex];
@@ -2063,7 +2178,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.outcome !== null) return state;
       // Mismos guards de exclusión mutua que jugar una mejora (SPEC-020/021/023/024).
       if (state.resolve?.focusFaceChoice != null) return state;
-      if (state.playUpgrade !== null || state.mulligan !== null) return state;
+      if (state.playUpgrade !== null || state.mulligan !== null || state.pendingAbility !== null) return state;
       // Bloqueado fuera de tu turno, o si ya tienes un dado marcado sin resolver (SPEC-025).
       if (state.turn !== side) return state;
       if (state.resolve !== null && state.resolve.side === side) return state;
@@ -2097,7 +2212,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.outcome !== null) return state;
       // Mismos guards de exclusión mutua que activar un personaje (SPEC-020/021/023/024).
       if (state.resolve?.focusFaceChoice != null) return state;
-      if (state.playUpgrade !== null || state.mulligan !== null) return state;
+      if (state.playUpgrade !== null || state.mulligan !== null || state.pendingAbility !== null) return state;
       // Bloqueado fuera de tu turno, o si ya tienes un dado marcado sin resolver (SPEC-025).
       if (state.turn !== side) return state;
       if (state.resolve !== null && state.resolve.side === side) return state;
@@ -2242,6 +2357,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       case 'activate': {
         const character = enemy.characters[action.index];
         get().activate('enemy', action.index);
+        // Habilidad "tras activar" del autómata (SPEC-042): `activate` DIFIERE el turno cuando el
+        // personaje tiene una opcional, así que si no se resuelve aquí mismo la partida se queda
+        // colgada (el turno sigue en 'enemy' y el jugador no tiene forma de tocar ese aviso, que es
+        // del bando enemigo). El autómata siempre la usa: ninguna de las de esta tanda le perjudica.
+        const pending = get().pendingAbility;
+        if (pending !== null && pending.side === 'enemy') {
+          get().useAbility();
+          const ability = abilityFor(pending.code);
+          set({
+            lastEnemyAction: `El enemigo activa a ${character.name} y usa su habilidad: ${ability?.prompt ?? ''}`,
+          });
+          return;
+        }
         set({ lastEnemyAction: `El enemigo activa a ${character.name}.` });
         return;
       }

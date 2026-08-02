@@ -9,7 +9,7 @@ import { DeckPicker } from './components/DeckPicker';
 import { Hand } from './components/Hand';
 import { SupportList } from './components/SupportList';
 import { currentHealth, isKO } from './game/damage';
-import { VADER_CODE } from './game/characterAbilities';
+import { VADER_CODE, abilityFor } from './game/characterAbilities';
 
 function BattleSide({ side, label }: { side: Side; label: string }) {
   const s = useGameStore((st) => st.sides[side]);
@@ -19,6 +19,7 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
   const turn = useGameStore((st) => st.turn);
   const outcome = useGameStore((st) => st.outcome);
   const indirectDistribution = useGameStore((st) => st.indirectDistribution);
+  const pendingAbility = useGameStore((st) => st.pendingAbility);
   const activate = useGameStore((st) => st.activate);
   const applyDieTo = useGameStore((st) => st.applyDieTo);
   const resolveVaderTarget = useGameStore((st) => st.resolveVaderTarget);
@@ -107,7 +108,7 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
                   targetable={(targetableSide || vaderTargetable || upgradeTargetableSide || distributingIndirect) && !ko}
                   showActivate={isPlayer}
                   upgrades={upgradeCards}
-                  activateDisabled={outcome !== null || playUpgrade !== null || mulligan !== null || turn !== side}
+                  activateDisabled={outcome !== null || playUpgrade !== null || mulligan !== null || pendingAbility !== null || turn !== side}
                   onActivate={() => activate(side, i)}
                   onTarget={() =>
                     distributingIndirect
@@ -127,7 +128,7 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
             codes={s.supports}
             activated={s.supportsActivated}
             showActivate={isPlayer}
-            activateDisabled={outcome !== null || playUpgrade !== null || mulligan !== null || turn !== side}
+            activateDisabled={outcome !== null || playUpgrade !== null || mulligan !== null || pendingAbility !== null || turn !== side}
             onActivate={(i) => activateSupport(side, i)}
           />
         </>
@@ -146,6 +147,9 @@ export function App() {
   const mulligan = useGameStore((s) => s.mulligan);
   const turn = useGameStore((s) => s.turn);
   const indirectDistribution = useGameStore((s) => s.indirectDistribution);
+  const pendingAbility = useGameStore((s) => s.pendingAbility);
+  const useAbility = useGameStore((s) => s.useAbility);
+  const skipAbility = useGameStore((s) => s.skipAbility);
   const startGame = useGameStore((s) => s.startGame);
   const pass = useGameStore((s) => s.pass);
   const resetAll = useGameStore((s) => s.resetAll);
@@ -222,6 +226,13 @@ export function App() {
         </div>
       )}
       {hint && <p className="app__hint">{hint}</p>}
+      {pendingAbility && pendingAbility.side === 'player' && outcome === null && (
+        <p className="app__hint app__hint--ability">
+          {abilityFor(pendingAbility.code)?.prompt ?? 'Habilidad de personaje disponible.'}{' '}
+          <button onClick={useAbility}>Usar</button>{' '}
+          <button onClick={skipAbility}>No usar</button>
+        </p>
+      )}
       {indirectDistribution && outcome === null && (
         <p className="app__hint">
           El enemigo te ataca con daño indirecto: reparte {indirectDistribution.pending} punto(s)

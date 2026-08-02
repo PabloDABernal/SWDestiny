@@ -1228,3 +1228,9 @@ button:disabled {
 .image-cache__count {
   color: #9aa0b0;
 }
+
+/* Aviso de habilidad de personaje pendiente (SPEC-042). */
+.app__hint--ability {
+  border-left: 3px solid #2f6feb;
+  padding-left: 8px;
+}

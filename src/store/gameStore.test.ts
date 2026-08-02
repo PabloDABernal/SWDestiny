@@ -53,6 +53,9 @@ function setUpGame(options: { playerChars?: Character[]; enemyChars?: Character[
     playUpgrade: null,
     mulligan: null,
     indirectDistribution: null,
+    // Imprescindible resetearlo: `setState` MEZCLA, así que un test que deje una habilidad pendiente
+    // envenena a los siguientes (pasó de verdad al añadir SPEC-042: reventaron los tests de Focus).
+    pendingAbility: null,
     turn: 'player',
     passStreak: 0,
     outcome: null,
@@ -223,6 +226,126 @@ describe('resolución de dados', () => {
     state().resolveResources();
     expect(state().sides.player.resources).toBe(antes + 2);
     expect(state().sides.player.pool).toHaveLength(0);
+  });
+});
+
+describe('habilidades de personaje "tras activar" (SPEC-042)', () => {
+  // Códigos reales del set 01. Las caras no importan aquí: lo que se prueba es el disparo.
+  const LUKE = '01035'; // "draw a card" — OBLIGATORIA (su texto no dice "you may")
+  const VADER_01 = '01010'; // "you may force an opponent to discard" — opcional
+  const CARAS = ['2MD', '3MD', '1F', '1Sh', '1R', '-'];
+
+  const conCodigo = (code: string, name: string): Character => ({
+    code,
+    name,
+    health: 12,
+    isUnique: true,
+    isElite: false,
+    dice: [{ sides: CARAS }],
+  });
+
+  it('un personaje SIN habilidad cierra el turno como siempre', () => {
+    setUpGame();
+    state().activate('player', 0);
+    expect(state().pendingAbility).toBeNull();
+    expect(state().turn).toBe('enemy');
+  });
+
+  it('Luke roba una carta sola, sin preguntar, y cierra el turno', () => {
+    setUpGame({ playerChars: [conCodigo(LUKE, 'Luke Skywalker')] });
+    const manoAntes = state().sides.player.hand.length;
+    const mazoAntes = state().sides.player.drawPile.length;
+
+    state().activate('player', 0);
+
+    expect(state().sides.player.hand).toHaveLength(manoAntes + 1);
+    expect(state().sides.player.drawPile).toHaveLength(mazoAntes - 1);
+    expect(state().pendingAbility).toBeNull(); // no pregunta: es obligatoria
+    expect(state().turn).toBe('enemy');
+  });
+
+  it('Vader deja la activación abierta y NO cede el turno hasta decidir', () => {
+    setUpGame({ playerChars: [conCodigo(VADER_01, 'Darth Vader')] });
+    state().activate('player', 0);
+
+    expect(state().pendingAbility).toEqual({ side: 'player', characterIndex: 0, code: VADER_01 });
+    expect(state().turn).toBe('player'); // el turno se difiere: es la cirugía de SPEC-042
+    expect(state().sides.player.pool.length).toBeGreaterThan(0); // pero el dado ya se tiró
+  });
+
+  it('usar la habilidad de Vader hace descartar al rival y cierra el turno', () => {
+    setUpGame({ playerChars: [conCodigo(VADER_01, 'Darth Vader')] });
+    useGameStore.setState({
+      sides: {
+        ...state().sides,
+        enemy: { ...state().sides.enemy, hand: ['01001', '01002'] },
+      },
+    });
+    state().activate('player', 0);
+    state().useAbility();
+
+    expect(state().sides.enemy.hand).toHaveLength(1);
+    expect(state().sides.enemy.discardPile).toHaveLength(1);
+    expect(state().pendingAbility).toBeNull();
+    expect(state().turn).toBe('enemy');
+  });
+
+  it('renunciar a la habilidad cede el turno igual, sin aplicar nada', () => {
+    setUpGame({ playerChars: [conCodigo(VADER_01, 'Darth Vader')] });
+    useGameStore.setState({
+      sides: { ...state().sides, enemy: { ...state().sides.enemy, hand: ['01001'] } },
+    });
+    state().activate('player', 0);
+    state().skipAbility();
+
+    expect(state().sides.enemy.hand).toHaveLength(1); // intacta
+    expect(state().pendingAbility).toBeNull();
+    expect(state().turn).toBe('enemy');
+  });
+
+  it('con el rival sin cartas, usar la habilidad no rompe nada', () => {
+    setUpGame({ playerChars: [conCodigo(VADER_01, 'Darth Vader')] });
+    useGameStore.setState({
+      sides: { ...state().sides, enemy: { ...state().sides.enemy, hand: [] } },
+    });
+    state().activate('player', 0);
+    state().useAbility();
+
+    expect(state().sides.enemy.hand).toHaveLength(0);
+    expect(state().turn).toBe('enemy');
+  });
+
+  it('el autómata resuelve su habilidad en el acto y NO deja la partida colgada', () => {
+    // Sin esto, `activate` difiere el turno también para el enemigo: el aviso quedaría abierto del
+    // lado enemigo, el jugador no tendría forma de tocarlo y el turno no volvería nunca.
+    setUpGame({
+      playerChars: [character('Héroe', 10)],
+      enemyChars: [conCodigo(VADER_01, 'Darth Vader')],
+    });
+    useGameStore.setState({
+      turn: 'enemy',
+      sides: { ...state().sides, player: { ...state().sides.player, hand: ['01001', '01002'] } },
+    });
+
+    state().enemyTurn();
+
+    expect(state().pendingAbility).toBeNull();
+    expect(state().turn).toBe('player');
+  });
+
+  it('con una habilidad pendiente no se puede hacer otra cosa', () => {
+    setUpGame({
+      playerChars: [conCodigo(VADER_01, 'Darth Vader'), character('Otro', 10)],
+    });
+    state().activate('player', 0);
+    expect(state().pendingAbility).not.toBeNull();
+
+    state().activate('player', 1); // no debe activar al segundo
+    state().pass('player'); // ni pasar
+
+    expect(state().sides.player.activated[1]).toBe(false);
+    expect(state().turn).toBe('player');
+    expect(state().pendingAbility).not.toBeNull();
   });
 });
 
