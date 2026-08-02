@@ -127,23 +127,49 @@ export type AutomatonAction =
   | { type: 'reroll'; dieIndices: number[]; kind: 'free' | 'extra' }
   | { type: 'pass' };
 
-/** Índice del primer personaje del autómata con una habilidad `Action -` de reroll que pueda usar
- *  ahora mismo (SPEC-042), o null. Criterio deliberadamente conservador:
- *  - solo habilidades de reroll (las de girar dados de apoyo no las sabe aprovechar),
+/** Índice del primer personaje del autómata con una habilidad `Action -` que pueda usar ahora mismo
+ *  (SPEC-042), o null. Criterio conservador:
  *  - nunca si el daño que se hace a sí mismo lo dejaría KO (Nightsister con 1 de vida),
- *  - "retira este dado" exige tenerlo en el pool. */
+ *  - "retira este dado" exige tenerlo en el pool,
+ *  - las de reroll piden algún dado en blanco que arreglar; la de girar un dado de apoyo (Veers)
+ *    pide tener un dado de apoyo en el pool, y lo gira a su mejor cara con la MISMA prioridad que su
+ *    Focus automático (daño > escudo > recurso), decisión del usuario del 2026-08-03. */
 export function usableActionAbilityIndex(enemy: AutomatonSide): number | null {
   for (let i = 0; i < enemy.characters.length; i++) {
     const c = enemy.characters[i];
     const damage = enemy.damage[i] ?? 0;
     if (damage >= c.health) continue; // KO
     const ability = abilityWithTrigger(c.code, 'action');
-    if (!ability || ability.targeting.kind !== 'reroll') continue;
+    if (!ability) continue;
+    if (ability.targeting.kind !== 'reroll' && ability.targeting.kind !== 'turnSupportDie') continue;
     if (ability.selfDamage && damage + ability.selfDamage >= c.health) continue; // se suicidaría
     if (ability.removesOwnDie && !enemy.pool.some((d) => d.characterIndex === i)) continue;
+    if (ability.targeting.kind === 'reroll' && blankDieIndices(enemy.pool).length === 0) continue;
+    if (ability.targeting.kind === 'turnSupportDie' && !hasImprovableSupportDie(enemy)) continue;
     return i;
   }
   return null;
+}
+
+/** ¿Tiene el autómata algún dado de apoyo en el pool que MEJORE al girarlo? (SPEC-042, Veers).
+ *  "Mejora" con el mismo criterio que su Focus: que su mejor cara valga más que la que muestra. */
+function hasImprovableSupportDie(enemy: AutomatonSide): boolean {
+  return enemy.pool.some((d) => {
+    if (getCardFromSnapshot(d.code)?.type_code !== 'support') return false;
+    const sides = poolDieSidesFor(d);
+    if (!sides) return false;
+    const best = bestFocusFace(sides);
+    if (best === null) return false;
+    const actual = parsePlayerFace(d.face);
+    const mejor = parsePlayerFace(best);
+    return (mejor?.amount ?? 0) > (actual?.amount ?? 0);
+  });
+}
+
+/** Las 6 caras reales de un dado del pool, buscadas por código en el snapshot. */
+function poolDieSidesFor(d: PooledDie): string[] | null {
+  const sides = getCardFromSnapshot(d.code)?.sides;
+  return Array.isArray(sides) && sides.length > 0 ? sides : null;
 }
 
 function isBlank(face: string): boolean {
@@ -332,7 +358,7 @@ const isRerollDieSymbol = (s: DieSymbol | null) => s === 'reroll';
 
 /** Mejor cara disponible de un dado candidato para Focus (SPEC-023): sigue la misma prioridad que
  * el resto de la tabla (daño > escudo > recurso). null si ninguna de sus 6 caras mejora nada. */
-function bestFocusFace(sides: string[]): string | null {
+export function bestFocusFace(sides: string[]): string | null {
   let bestDamage: { face: string; amount: number } | null = null;
   let bestShield: { face: string; amount: number } | null = null;
   let bestResource: { face: string; amount: number } | null = null;
@@ -657,13 +683,9 @@ export function nextAutomatonAction(
   }
 
   // Habilidades `Action -` (SPEC-042): último recurso, justo antes del reroll de blancos (decisión
-  // del usuario, 2026-07-30). Solo las de reroll, y solo si hay algún dado en blanco que arreglar:
-  // el autómata no sabe sacarle partido a girar un dado de apoyo (Veers), así que no la usa.
-  const blanksNow = blankDieIndices(enemy.pool);
-  if (blanksNow.length > 0) {
-    const abilityIndex = usableActionAbilityIndex(enemy);
-    if (abilityIndex !== null) return { type: 'characterAbility', index: abilityIndex };
-  }
+  // del usuario, 2026-07-30). `usableActionAbilityIndex` ya comprueba que haya algo que ganar.
+  const abilityIndex = usableActionAbilityIndex(enemy);
+  if (abilityIndex !== null) return { type: 'characterAbility', index: abilityIndex };
 
   const blanks = blankDieIndices(enemy.pool);
   if (blanks.length >= 2) {

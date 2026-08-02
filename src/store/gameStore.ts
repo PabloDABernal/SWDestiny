@@ -30,6 +30,7 @@ import {
 import { computeOutcome as computeOutcomePure, type Outcome } from '../game/outcome';
 import {
   applyEnemyHealthMultiplier,
+  bestFocusFace,
   nextAutomatonAction,
   indirectCostReceiverIndex,
   distributeIncomingDamage,
@@ -1219,8 +1220,23 @@ function automatonPickAbilityTargets(
       }
       return false;
     }
+    case 'turnSupportDie': {
+      // Veers: gira el dado de apoyo que más mejore, a su mejor cara, con la misma prioridad que su
+      // Focus automático (daño > escudo > recurso). Decisión del usuario, 2026-08-03.
+      const pool = sides[side].pool;
+      for (let i = 0; i < pool.length; i++) {
+        if (!isSupportDie(pool[i])) continue;
+        const caras = poolDieSides(pool[i]);
+        if (!caras) continue;
+        const mejor = bestFocusFace([...caras]);
+        if (mejor === null || mejor === pool[i].face) continue;
+        pickDie(side, i);
+        chooseFace(mejor);
+        return true;
+      }
+      return false;
+    }
     default:
-      // `turnSupportDie` (Veers): el autómata no sabe sacarle partido, así que no la usa.
       return false;
   }
 }

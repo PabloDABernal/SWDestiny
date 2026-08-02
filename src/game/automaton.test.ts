@@ -990,3 +990,68 @@ describe('nextAutomatonAction — habilidades `Action -` de personaje (SPEC-042)
     expect(next(enemy, playerSide(), noRerollsUsed)).toMatchObject({ type: 'attack' });
   });
 });
+
+describe('nextAutomatonAction — Veers gira un dado de apoyo (SPEC-042)', () => {
+  // General Veers (01004): "Remove this die to turn one of your support dice to any side."
+  const veers = (): Character => ({
+    code: '01004',
+    name: 'General Veers',
+    health: 9,
+    isUnique: true,
+    isElite: false,
+    dice: [],
+  });
+  // First Order TIE Fighter (01006) es un apoyo REAL del snapshot: hace falta que lo sea, porque el
+  // autómata mira el tipo y las caras de la carta por código.
+  const apoyo = (face: string): PooledDie => ({
+    characterIndex: -1,
+    code: '01006',
+    name: 'First Order TIE Fighter',
+    dieIndex: 0,
+    face,
+  });
+
+  it('usa la habilidad si su dado está en el pool y hay un dado de apoyo que mejorar', () => {
+    const enemy = enemySide({
+      characters: [veers()],
+      damage: [0],
+      activated: [true],
+      // Su propio dado en blanco (nada que resolver, así que no hay acción mejor) + apoyo en blanco.
+      pool: [die(0, '-'), apoyo('-')],
+    });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toMatchObject({
+      type: 'characterAbility',
+      index: 0,
+    });
+  });
+
+  it('va DESPUÉS de resolver: con un dado de escudo suyo, prefiere escudar', () => {
+    const enemy = enemySide({
+      characters: [veers()],
+      damage: [0],
+      activated: [true],
+      pool: [die(0, '1Sh'), apoyo('-')],
+    });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toMatchObject({ type: 'shield' });
+  });
+
+  it('NO la usa si no tiene ningún dado de apoyo en el pool', () => {
+    const enemy = enemySide({
+      characters: [veers()],
+      damage: [0],
+      activated: [true],
+      pool: [die(0, '-')],
+    });
+    expect(next(enemy, playerSide(), noRerollsUsed)).not.toMatchObject({ type: 'characterAbility' });
+  });
+
+  it('NO la usa sin su propio dado en el pool (su texto dice "retira este dado")', () => {
+    const enemy = enemySide({
+      characters: [veers()],
+      damage: [0],
+      activated: [false],
+      pool: [apoyo('-')],
+    });
+    expect(next(enemy, playerSide(), noRerollsUsed)).not.toMatchObject({ type: 'characterAbility' });
+  });
+});
