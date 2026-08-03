@@ -404,6 +404,16 @@ carguen offline y sean razonablemente completos. Aparecen en el selector de mazo
 personaje** (auto-generando los que falten) es objetivo aparte (una spec futura); SPEC-035 solo reporta la
 cobertura.
 
+### Texto de carta en la mesa (SPEC-044)
+
+Jugando también se puede **leer el texto** de las cartas, sin ir a la sección DB: cada ficha de
+personaje (de los dos bandos), cada mejora y apoyo en juego y cada carta de la mano tienen un
+desplegable **"ℹ Texto"**, cerrado por defecto para no cargar el tablero. El texto se muestra
+legible, sin markup en crudo, y sale del snapshot local, así que funciona sin conexión. Además, las
+cartas cuyo texto el juego **ya aplica de verdad** se distinguen a simple vista de las que son solo
+informativas: la marca se deriva sola del registro de habilidades, así que cada spec que implemente
+un texto nuevo la enciende sin tocar esta pantalla.
+
 ### Base de datos local de cartas (SPEC-030)
 
 El juego incluye un **snapshot local** de todas las cartas de ARH DB (descargado una vez de su

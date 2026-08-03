@@ -120,6 +120,13 @@ export function abilityFor(code: string): CharacterAbility | undefined {
   return BY_CODE.get(code);
 }
 
+/** ¿El juego aplica de verdad el texto de esa carta? (SPEC-044). Se deriva del registro de
+ *  habilidades (SPEC-042) y de los Especiales con efecto real (SPEC-039), así que cada spec futura
+ *  que implemente un texto enciende la marca sola, sin tocar la UI. */
+export function hasImplementedText(code: string): boolean {
+  return BY_CODE.has(code) || KNOWN_SPECIAL_CODES.has(code);
+}
+
 /** Habilidad de ese personaje si se dispara con `trigger`. */
 export function abilityWithTrigger(code: string, trigger: AbilityTrigger): CharacterAbility | undefined {
   const ability = BY_CODE.get(code);

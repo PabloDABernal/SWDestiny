@@ -1,5 +1,6 @@
 import type { Character } from '../model/types';
 import { MAX_SHIELDS } from '../game/damage';
+import { CardTextToggle } from './CardText';
 
 interface CharacterCardProps {
   character: Character;
@@ -14,7 +15,7 @@ interface CharacterCardProps {
   /** El enemigo es pasivo en v1: no muestra botón Activar. */
   showActivate: boolean;
   /** Mejoras en juego ligadas a este personaje (SPEC-020), con sus caras de dado si tiene. */
-  upgrades: { name: string; sides?: string[] }[];
+  upgrades: { code?: string; name: string; sides?: string[] }[];
   /** true mientras se elige objetivo para jugar una mejora (SPEC-020): Activar queda deshabilitado
    * para que no parezca un clic sin efecto. */
   activateDisabled?: boolean;
@@ -76,11 +77,15 @@ export function CharacterCard({
         {character.isElite ? ' · Elite' : ''}
         {` · ${character.dice.length} dado${character.dice.length > 1 ? 's' : ''}`}
       </div>
+      {/* Texto de reglas del personaje (SPEC-044): cerrado por defecto, y no se pinta si la carta
+          no tiene texto. Aplica igual a los personajes del enemigo. */}
+      <CardTextToggle code={character.code} />
       {upgrades.length > 0 && (
         <ul className="character-card__upgrades">
           {upgrades.map((upgrade, i) => (
             <li key={i}>
               <span className="character-card__upgrade-name">⚙ {upgrade.name}</span>
+              {upgrade.code && <CardTextToggle code={upgrade.code} compact />}
               {upgrade.sides && upgrade.sides.length > 0 && (
                 <ol className="die__sides">
                   {upgrade.sides.map((side, j) => (

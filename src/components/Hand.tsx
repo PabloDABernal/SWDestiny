@@ -1,6 +1,7 @@
 import { readCache } from '../import/resolveCards';
 import { useGameStore, type Side } from '../store/gameStore';
 import { abilityFor } from '../game/characterAbilities';
+import { CardTextToggle } from './CardText';
 
 /** Mano visible del jugador (SPEC-018): nombre de cada carta, resuelto desde la caché de import
  * (sin llamadas nuevas a la API; la carta ya se resolvió al importar el mazo). Las mejoras
@@ -55,6 +56,8 @@ export function Hand({
               </label>
             )}
             {card?.name ?? code}
+            {/* Texto de la carta antes de jugarla (SPEC-044). */}
+            <CardTextToggle code={code} compact />
             {/* Elegir carta de la mano para una habilidad (SPEC-042, Tusken Raider). El store filtra
                 cuáles valen (personaje o mejora con dado); aquí solo se ofrece el botón. */}
             {pickingHandCard && (

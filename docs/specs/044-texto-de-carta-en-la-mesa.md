@@ -31,8 +31,10 @@ Verificables jugando. Formato: acción → resultado observable.
       pueden tener varios abiertos a la vez, y abrir uno no cierra los demás.
 - [ ] El texto se ve **legible**, sin markup en crudo: nada de `[special]`, `<i>` o `<b>` a la vista
       (mismo formateo que ya hace la ficha de la DB desde SPEC-039).
-- [ ] Un personaje **sin texto** (los hay) no muestra el control, o lo muestra vacío diciendo que no
-      tiene texto — pero nunca un desplegable en blanco sin explicación.
+- [ ] Una carta **sin texto de reglas** —tanto si el snapshot la trae sin `text` (un Clone Trooper)
+      como si la carta no está en el snapshot— **no muestra el control**. La ficha se ve como hoy.
+      *(Decisión del usuario, 2026-08-03: la sola presencia del control ya avisa de que hay algo que
+      leer, y así no se llena el tablero de controles inútiles.)*
 - [ ] Las **mejoras** pegadas a un personaje y los **apoyos** en juego también pueden desplegar su
       texto, donde hoy solo se ve su nombre y sus caras.
 - [ ] Las cartas de **tu mano** también, para saber qué hace una carta antes de jugarla (y cuál
@@ -78,7 +80,11 @@ Verificables jugando. Formato: acción → resultado observable.
 
 - **`formatCardText` hay que sacarlo de `DbSection.tsx`** (donde lo dejó SPEC-039) a un módulo propio
   reutilizable, p. ej. `src/game/cardText.ts` o `src/components/CardText.tsx`. Es el mismo formateo:
-  no se duplica ni se reescribe.
+  no se duplica ni se reescribe. **Se lleva con él el diccionario `TEXT_TOKEN_LABEL`**, del que
+  depende; ojo con no dejar una copia en `DbSection`.
+- **Las mejoras necesitan su `code`**: hoy `App.tsx` construye `upgradeCards` como `{name, sides}`
+  para pasárselas a `CharacterCard`, sin el código, así que no hay con qué buscar su texto. Hay que
+  añadirlo.
 - **De dónde sale el texto**: `getCardFromSnapshot(code)?.text` / `readCache(code)?.text`, como ya
   hacen los componentes de la mesa para el nombre. El modelo `Character` no lleva `text`, así que se
   busca por `code` — no hace falta tocar el modelo ni el pipeline de import.

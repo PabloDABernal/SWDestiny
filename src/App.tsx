@@ -99,7 +99,8 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
               const ko = isKO(c, dmg);
               const upgradeCards = (s.upgrades[i] ?? []).map((code) => {
                 const card = readCache(code);
-                return { name: card?.name ?? code, sides: card?.sides };
+                // `code` va también para poder desplegar el texto de la mejora (SPEC-044).
+                return { code, name: card?.name ?? code, sides: card?.sides };
               });
               return (
                 <CharacterCard
