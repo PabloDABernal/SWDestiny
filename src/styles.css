@@ -1228,3 +1228,53 @@ button:disabled {
 .image-cache__count {
   color: #9aa0b0;
 }
+
+/* Aviso de habilidad de personaje pendiente (SPEC-042). */
+.app__hint--ability {
+  border-left: 3px solid #2f6feb;
+  padding-left: 8px;
+}
+
+/* Texto de carta desplegable en la mesa (SPEC-044). */
+.card-text {
+  margin: 4px 0;
+}
+.card-text--compact {
+  display: inline-block;
+  margin: 0 0 0 6px;
+}
+.card-text__toggle {
+  background: none;
+  border: 1px solid #3a4152;
+  border-radius: 4px;
+  color: #9aa0b0;
+  font-size: 0.72rem;
+  padding: 1px 6px;
+  cursor: pointer;
+}
+.card-text__toggle:hover {
+  color: #e6e8ee;
+  border-color: #5a6478;
+}
+.card-text__body {
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  background: #0f1117;
+  border: 1px solid #2a2e3a;
+  border-left: 3px solid #3a4152;
+  border-radius: 5px;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: #c9cede;
+  max-height: 160px;
+  overflow-y: auto;
+}
+/* Texto que el juego SÍ aplica: se distingue del meramente informativo. */
+.card-text__body--live {
+  border-left-color: #3fa45b;
+  color: #e6e8ee;
+}
+.card-text__note {
+  color: #7d8494;
+  font-style: italic;
+}

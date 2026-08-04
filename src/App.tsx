@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { readCache } from './import/resolveCards';
-import { useGameStore, opposite, type Side } from './store/gameStore';
+import { useGameStore, opposite, abilityHasTargets, type Side } from './store/gameStore';
 import { CharacterCard } from './components/CharacterCard';
 import { DicePool } from './components/DicePool';
 import { DifficultySelector } from './components/DifficultySelector';
@@ -9,7 +9,7 @@ import { DeckPicker } from './components/DeckPicker';
 import { Hand } from './components/Hand';
 import { SupportList } from './components/SupportList';
 import { currentHealth, isKO } from './game/damage';
-import { VADER_CODE } from './game/characterAbilities';
+import { VADER_CODE, abilityFor } from './game/characterAbilities';
 
 function BattleSide({ side, label }: { side: Side; label: string }) {
   const s = useGameStore((st) => st.sides[side]);
@@ -19,6 +19,10 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
   const turn = useGameStore((st) => st.turn);
   const outcome = useGameStore((st) => st.outcome);
   const indirectDistribution = useGameStore((st) => st.indirectDistribution);
+  const pendingAbility = useGameStore((st) => st.pendingAbility);
+  const abilityTargeting = useGameStore((st) => st.abilityTargeting);
+  const allSides = useGameStore((st) => st.sides);
+  const startAbility = useGameStore((st) => st.startAbility);
   const activate = useGameStore((st) => st.activate);
   const applyDieTo = useGameStore((st) => st.applyDieTo);
   const resolveVaderTarget = useGameStore((st) => st.resolveVaderTarget);
@@ -95,7 +99,8 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
               const ko = isKO(c, dmg);
               const upgradeCards = (s.upgrades[i] ?? []).map((code) => {
                 const card = readCache(code);
-                return { name: card?.name ?? code, sides: card?.sides };
+                // `code` va también para poder desplegar el texto de la mejora (SPEC-044).
+                return { code, name: card?.name ?? code, sides: card?.sides };
               });
               return (
                 <CharacterCard
@@ -107,8 +112,28 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
                   targetable={(targetableSide || vaderTargetable || upgradeTargetableSide || distributingIndirect) && !ko}
                   showActivate={isPlayer}
                   upgrades={upgradeCards}
-                  activateDisabled={outcome !== null || playUpgrade !== null || mulligan !== null || turn !== side}
+                  activateDisabled={outcome !== null || playUpgrade !== null || mulligan !== null || pendingAbility !== null || turn !== side}
                   onActivate={() => activate(side, i)}
+                  {...(isPlayer && abilityFor(c.code)?.trigger === 'action'
+                    ? {
+                        onUseAbility: () => startAbility(side, i),
+                        abilityText: abilityFor(c.code)?.prompt,
+                        // "Retira este dado" (Veers, Leia) exige tenerlo en el pool; Nightsister no.
+                        abilityDisabled:
+                          outcome !== null ||
+                          turn !== side ||
+                          resolve !== null ||
+                          playUpgrade !== null ||
+                          mulligan !== null ||
+                          pendingAbility !== null ||
+                          abilityTargeting !== null ||
+                          (abilityFor(c.code)?.removesOwnDie === true &&
+                            !s.pool.some((d) => d.characterIndex === i)) ||
+                          // Sin nada que elegir (Veers sin apoyos, Leia sin más dados que el suyo),
+                          // el botón se deshabilita en vez de llevar a una selección vacía.
+                          !abilityHasTargets(allSides, side, i, abilityFor(c.code)!),
+                      }
+                    : {})}
                   onTarget={() =>
                     distributingIndirect
                       ? distributeIndirect(i)
@@ -127,7 +152,7 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
             codes={s.supports}
             activated={s.supportsActivated}
             showActivate={isPlayer}
-            activateDisabled={outcome !== null || playUpgrade !== null || mulligan !== null || turn !== side}
+            activateDisabled={outcome !== null || playUpgrade !== null || mulligan !== null || pendingAbility !== null || turn !== side}
             onActivate={(i) => activateSupport(side, i)}
           />
         </>
@@ -146,6 +171,47 @@ export function App() {
   const mulligan = useGameStore((s) => s.mulligan);
   const turn = useGameStore((s) => s.turn);
   const indirectDistribution = useGameStore((s) => s.indirectDistribution);
+  const pendingAbility = useGameStore((s) => s.pendingAbility);
+  const useAbility = useGameStore((s) => s.useAbility);
+  const skipAbility = useGameStore((s) => s.skipAbility);
+  const abilityTargeting = useGameStore((s) => s.abilityTargeting);
+  // Jabba sin dados amarillos, Tusken con la mano sin cartas elegibles: el aviso sale igual (el
+  // personaje se activó) pero "Usar" se deshabilita y solo cabe "No usar", como pide la spec.
+  const pendingAbilityHasTargets = useGameStore((s) => {
+    const p = s.pendingAbility;
+    if (!p) return false;
+    const ability = abilityFor(p.code);
+    return ability ? abilityHasTargets(s.sides, p.side, p.characterIndex, ability) : false;
+  });
+  const confirmAbility = useGameStore((s) => s.confirmAbility);
+  const cancelAbility = useGameStore((s) => s.cancelAbility);
+  const chooseAbilityFace = useGameStore((s) => s.chooseAbilityFace);
+  // Caras entre las que elegir ahora mismo (Veers: las del dado de apoyo elegido; Tusken: las de la
+  // carta de la mano elegida). Vacío si no toca elegir cara.
+  //
+  // OJO: esto NO puede calcularse dentro de un selector de Zustand. Devolver un array nuevo en cada
+  // llamada hace que el store crea que el estado cambió siempre y se entra en un bucle infinito de
+  // renders (React #185, reventaba la app entera). Se deriva aquí, en el cuerpo del componente, de
+  // valores que sí son estables.
+  const playerSides = useGameStore((s) => s.sides.player);
+  const abilityFaceOptions: string[] =
+    abilityTargeting === null || abilityTargeting.side !== 'player' || abilityTargeting.face !== null
+      ? []
+      : abilityTargeting.faceTarget !== null
+        ? (readCache(playerSides.pool[abilityTargeting.faceTarget]?.code ?? '')?.sides ?? [])
+        : abilityTargeting.handCardIndex !== null
+          ? (readCache(playerSides.hand[abilityTargeting.handCardIndex] ?? '')?.sides ?? [])
+          : [];
+  // ¿Se puede confirmar ya? Depende de qué pida la habilidad.
+  const abilityReady = useGameStore((s) => {
+    const cur = s.abilityTargeting;
+    if (!cur) return false;
+    const kind = abilityFor(cur.code)?.targeting.kind;
+    if (kind === 'reroll') return cur.dice.length > 0;
+    if (kind === 'turnSupportDie') return cur.faceTarget !== null && cur.face !== null;
+    if (kind === 'discardHandCardForDie') return cur.handCardIndex !== null && cur.face !== null;
+    return true;
+  });
   const startGame = useGameStore((s) => s.startGame);
   const pass = useGameStore((s) => s.pass);
   const resetAll = useGameStore((s) => s.resetAll);
@@ -222,6 +288,44 @@ export function App() {
         </div>
       )}
       {hint && <p className="app__hint">{hint}</p>}
+      {pendingAbility && pendingAbility.side === 'player' && outcome === null && (
+        <p className="app__hint app__hint--ability">
+          {abilityFor(pendingAbility.code)?.prompt ?? 'Habilidad de personaje disponible.'}{' '}
+          {!pendingAbilityHasTargets && <em>(sin objetivos válidos)</em>}{' '}
+          <button onClick={useAbility} disabled={!pendingAbilityHasTargets}>
+            Usar
+          </button>{' '}
+          <button onClick={skipAbility}>No usar</button>
+        </p>
+      )}
+      {abilityTargeting && abilityTargeting.side === 'player' && outcome === null && (
+        <p className="app__hint app__hint--ability">
+          {abilityFor(abilityTargeting.code)?.prompt}{' '}
+          {abilityTargeting.faceTarget !== null && abilityTargeting.face === null
+            ? 'Elige la cara a la que girarlo.'
+            : abilityTargeting.handCardIndex !== null && abilityTargeting.face === null
+              ? 'Elige la cara de esa carta a resolver.'
+              : abilityFor(abilityTargeting.code)?.targeting.kind === 'reroll'
+                ? `Pulsa los dados a volver a tirar (${abilityTargeting.dice.length}).`
+                : abilityFor(abilityTargeting.code)?.targeting.kind === 'turnSupportDie'
+                  ? 'Pulsa uno de tus dados de apoyo.'
+                  : 'Pulsa una carta de tu mano.'}{' '}
+          <button onClick={confirmAbility} disabled={!abilityReady}>
+            Confirmar
+          </button>{' '}
+          <button onClick={cancelAbility}>Cancelar</button>
+        </p>
+      )}
+      {abilityFaceOptions.length > 0 && (
+        <p className="app__hint app__hint--ability">
+          Caras:{' '}
+          {abilityFaceOptions.map((face) => (
+            <button key={face} onClick={() => chooseAbilityFace(face)}>
+              {face}
+            </button>
+          ))}
+        </p>
+      )}
       {indirectDistribution && outcome === null && (
         <p className="app__hint">
           El enemigo te ataca con daño indirecto: reparte {indirectDistribution.pending} punto(s)

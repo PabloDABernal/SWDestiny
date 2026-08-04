@@ -292,6 +292,19 @@ gasta). Reroll(dado) automático apunta a los dados ya tirados del jugador que m
 anular. Especial automático también se "resuelve" (mismo placeholder) si no le queda ninguna acción
 mejor.
 
+### Texto de personaje por sets (v4, desde SPEC-042)
+
+A partir de aquí el **texto impreso de las cartas** se implementa de verdad, y se hace **por orden de
+set** (01 primero) porque es el orden en que el juego original fue introduciendo sus reglas: dentro de
+cada set, primero los **personajes**, luego las **cartas con dado** y por último las **cartas sin
+dado**. Así las mecánicas nuevas aparecen de una en una en vez de todas de golpe. Sigue sin haber un
+intérprete de texto: es una **tabla de efectos por código de carta** (como SPEC-039), a la que cada
+spec añade entradas. Un personaje cuyo texto aún no esté en la tabla se comporta como hasta ahora
+(sin efecto, y su Especial muestra el aviso de pendiente). SPEC-042 abre la serie con el **mecanismo
+de habilidades** y los 7 personajes del set 01 que se disparan como **acción de turno** (`Action -`,
+que gasta la acción) o **al activar el personaje** (opcional: se pregunta con Usar / No usar). El
+autómata usa esas mismas habilidades cuando le tocan.
+
 ### Reparto inicial y mulligan (primera pieza del bloque de turnos reales, SPEC-024)
 
 Botón nuevo **"Nueva partida"**, habilitado solo cuando ambos bandos tienen mazo importado y
@@ -390,6 +403,16 @@ carguen offline y sean razonablemente completos. Aparecen en el selector de mazo
 (categoría "Comunidad", buscable), cargables como cualquier otro. Garantizar **un mazo por cada
 personaje** (auto-generando los que falten) es objetivo aparte (una spec futura); SPEC-035 solo reporta la
 cobertura.
+
+### Texto de carta en la mesa (SPEC-044)
+
+Jugando también se puede **leer el texto** de las cartas, sin ir a la sección DB: cada ficha de
+personaje (de los dos bandos), cada mejora y apoyo en juego y cada carta de la mano tienen un
+desplegable **"ℹ Texto"**, cerrado por defecto para no cargar el tablero. El texto se muestra
+legible, sin markup en crudo, y sale del snapshot local, así que funciona sin conexión. Además, las
+cartas cuyo texto el juego **ya aplica de verdad** se distinguen a simple vista de las que son solo
+informativas: la marca se deriva sola del registro de habilidades, así que cada spec que implemente
+un texto nuevo la enciende sin tocar esta pantalla.
 
 ### Base de datos local de cartas (SPEC-030)
 

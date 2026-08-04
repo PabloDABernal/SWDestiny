@@ -27,6 +27,8 @@ export function DicePool({ side }: { side: Side }) {
   const chooseFocusFace = useGameStore((s) => s.chooseFocusFace);
   const confirmFocus = useGameStore((s) => s.confirmFocus);
   const pickRerollTarget = useGameStore((s) => s.pickRerollTarget);
+  const abilityTargeting = useGameStore((s) => s.abilityTargeting);
+  const pickAbilityDie = useGameStore((s) => s.pickAbilityDie);
   const confirmReroll = useGameStore((s) => s.confirmReroll);
   const pickLuminaraTarget = useGameStore((s) => s.pickLuminaraTarget);
   const cancelResolve = useGameStore((s) => s.cancelResolve);
@@ -235,7 +237,19 @@ export function DicePool({ side }: { side: Side }) {
                 ? symbol !== null
                 : mode.symbol !== 'special' && mode.focusFaceChoice == null && (mode.symbol === symbol || isGeneric));
 
-            const onClick = canPickFocusTarget
+            // Elegir dado para una habilidad de personaje (SPEC-042): mientras hay una habilidad
+            // pidiendo objetivos, el clic va a ella y no a las resoluciones normales. El propio
+            // store filtra qué dados valen (propios / cualquiera / amarillos / de apoyo), así que
+            // aquí basta con enrutar el clic.
+            const canPickAbilityDie = abilityTargeting !== null && abilityTargeting.side === 'player';
+            const isAbilityPick =
+              abilityTargeting !== null &&
+              (abilityTargeting.dice.some((t) => t.side === side && t.poolIndex === i) ||
+                (side === abilityTargeting.side && abilityTargeting.faceTarget === i));
+
+            const onClick = canPickAbilityDie
+              ? () => pickAbilityDie(side, i)
+              : canPickFocusTarget
               ? () => pickFocusTarget(i)
               : canPickRerollTarget
                 ? () => pickRerollTarget(side, i)
@@ -245,7 +259,7 @@ export function DicePool({ side }: { side: Side }) {
                     ? () => selectDie(side, i)
                     : undefined;
 
-            const marked = isMarked || isRerollTarget || isFocusPick;
+            const marked = isMarked || isRerollTarget || isFocusPick || isAbilityPick;
             const dimmed =
               mode !== null && symbol !== null && symbol !== mode.symbol && !canPickRerollTarget && !canPickLuminaraTarget;
             const cls =
@@ -253,7 +267,7 @@ export function DicePool({ side }: { side: Side }) {
               (symbol ? ` pool-die--${symbolClass(symbol)}` : isGeneric ? ' pool-die--generic' : '') +
               (marked ? ' pool-die--selected' : '') +
               (dimmed ? ' pool-die--dimmed' : '') +
-              (canPickFocusTarget || canPickRerollTarget || canPickLuminaraTarget ? ' pool-die--pickable' : '');
+              (canPickFocusTarget || canPickRerollTarget || canPickLuminaraTarget || canPickAbilityDie ? ' pool-die--pickable' : '');
             return (
               <button
                 key={i}

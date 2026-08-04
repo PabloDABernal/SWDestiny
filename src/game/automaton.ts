@@ -9,7 +9,7 @@ import {
   MAX_SHIELDS,
   type DieSymbol,
 } from './damage';
-import { LUMINARA_CODE, VADER_CODE } from './characterAbilities';
+import { LUMINARA_CODE, VADER_CODE, abilityWithTrigger } from './characterAbilities';
 import { getCardFromSnapshot } from '../data/cards';
 
 /** Vista del bando del jugador que necesita el autómata para el margen "sin overkill" (SPEC-014):
@@ -118,8 +118,59 @@ export type AutomatonAction =
        * o null si no hay ningún personaje vivo al que atacar (no debería ocurrir en partida). */
       vaderTarget?: { side: 'enemy' | 'player'; index: number } | null;
     }
+  | {
+      /** Habilidad `Action -` de un personaje (SPEC-042). Va al final de la tabla de prioridades,
+       * justo antes del reroll de blancos: es un recurso para cuando no hay nada mejor. */
+      type: 'characterAbility';
+      index: number;
+    }
   | { type: 'reroll'; dieIndices: number[]; kind: 'free' | 'extra' }
   | { type: 'pass' };
+
+/** Índice del primer personaje del autómata con una habilidad `Action -` que pueda usar ahora mismo
+ *  (SPEC-042), o null. Criterio conservador:
+ *  - nunca si el daño que se hace a sí mismo lo dejaría KO (Nightsister con 1 de vida),
+ *  - "retira este dado" exige tenerlo en el pool,
+ *  - las de reroll piden algún dado en blanco que arreglar; la de girar un dado de apoyo (Veers)
+ *    pide tener un dado de apoyo en el pool, y lo gira a su mejor cara con la MISMA prioridad que su
+ *    Focus automático (daño > escudo > recurso), decisión del usuario del 2026-08-03. */
+export function usableActionAbilityIndex(enemy: AutomatonSide): number | null {
+  for (let i = 0; i < enemy.characters.length; i++) {
+    const c = enemy.characters[i];
+    const damage = enemy.damage[i] ?? 0;
+    if (damage >= c.health) continue; // KO
+    const ability = abilityWithTrigger(c.code, 'action');
+    if (!ability) continue;
+    if (ability.targeting.kind !== 'reroll' && ability.targeting.kind !== 'turnSupportDie') continue;
+    if (ability.selfDamage && damage + ability.selfDamage >= c.health) continue; // se suicidaría
+    if (ability.removesOwnDie && !enemy.pool.some((d) => d.characterIndex === i)) continue;
+    if (ability.targeting.kind === 'reroll' && blankDieIndices(enemy.pool).length === 0) continue;
+    if (ability.targeting.kind === 'turnSupportDie' && !hasImprovableSupportDie(enemy)) continue;
+    return i;
+  }
+  return null;
+}
+
+/** ¿Tiene el autómata algún dado de apoyo en el pool que MEJORE al girarlo? (SPEC-042, Veers).
+ *  "Mejora" con el mismo criterio que su Focus: que su mejor cara valga más que la que muestra. */
+function hasImprovableSupportDie(enemy: AutomatonSide): boolean {
+  return enemy.pool.some((d) => {
+    if (getCardFromSnapshot(d.code)?.type_code !== 'support') return false;
+    const sides = poolDieSidesFor(d);
+    if (!sides) return false;
+    const best = bestFocusFace(sides);
+    if (best === null) return false;
+    const actual = parsePlayerFace(d.face);
+    const mejor = parsePlayerFace(best);
+    return (mejor?.amount ?? 0) > (actual?.amount ?? 0);
+  });
+}
+
+/** Las 6 caras reales de un dado del pool, buscadas por código en el snapshot. */
+function poolDieSidesFor(d: PooledDie): string[] | null {
+  const sides = getCardFromSnapshot(d.code)?.sides;
+  return Array.isArray(sides) && sides.length > 0 ? sides : null;
+}
 
 function isBlank(face: string): boolean {
   return face === '-';
@@ -307,7 +358,7 @@ const isRerollDieSymbol = (s: DieSymbol | null) => s === 'reroll';
 
 /** Mejor cara disponible de un dado candidato para Focus (SPEC-023): sigue la misma prioridad que
  * el resto de la tabla (daño > escudo > recurso). null si ninguna de sus 6 caras mejora nada. */
-function bestFocusFace(sides: string[]): string | null {
+export function bestFocusFace(sides: string[]): string | null {
   let bestDamage: { face: string; amount: number } | null = null;
   let bestShield: { face: string; amount: number } | null = null;
   let bestResource: { face: string; amount: number } | null = null;
@@ -630,6 +681,11 @@ export function nextAutomatonAction(
     }
     return { type: 'special', dieIndices: [specialIndex], costReceiverIndex: null, ownerCode };
   }
+
+  // Habilidades `Action -` (SPEC-042): último recurso, justo antes del reroll de blancos (decisión
+  // del usuario, 2026-07-30). `usableActionAbilityIndex` ya comprueba que haya algo que ganar.
+  const abilityIndex = usableActionAbilityIndex(enemy);
+  if (abilityIndex !== null) return { type: 'characterAbility', index: abilityIndex };
 
   const blanks = blankDieIndices(enemy.pool);
   if (blanks.length >= 2) {

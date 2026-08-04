@@ -934,3 +934,124 @@ describe('nextAutomatonAction — modificador genérico +X* (SPEC-027, Lure of P
     });
   });
 });
+
+describe('nextAutomatonAction — habilidades `Action -` de personaje (SPEC-042)', () => {
+  // Nightsister (01012): "Reroll a die. Deal 1 damage to this character." No exige estar activada.
+  const nightsister = (health: number): Character => ({
+    code: '01012',
+    name: 'Nightsister',
+    health,
+    isUnique: false,
+    isElite: false,
+    dice: [],
+  });
+
+  it('la usa cuando hay un dado en blanco y no tiene nada mejor que hacer', () => {
+    const enemy = enemySide({
+      characters: [nightsister(7)],
+      damage: [0],
+      activated: [true],
+      pool: [die(0, '-')],
+    });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toMatchObject({
+      type: 'characterAbility',
+      index: 0,
+    });
+  });
+
+  it('NO la usa si el daño que se hace a sí misma la dejaría KO', () => {
+    // 7 de vida y 6 de daño: el +1 de su propia habilidad la mataría.
+    const enemy = enemySide({
+      characters: [nightsister(7)],
+      damage: [6],
+      activated: [true],
+      pool: [die(0, '-')],
+    });
+    expect(next(enemy, playerSide(), noRerollsUsed)).not.toMatchObject({ type: 'characterAbility' });
+  });
+
+  it('NO la usa si no hay ningún dado en blanco que arreglar', () => {
+    const enemy = enemySide({
+      characters: [nightsister(7)],
+      damage: [0],
+      activated: [true],
+      pool: [],
+    });
+    expect(next(enemy, playerSide(), noRerollsUsed)).not.toMatchObject({ type: 'characterAbility' });
+  });
+
+  it('va DESPUÉS de atacar: con daño disponible, ataca en vez de usar la habilidad', () => {
+    const enemy = enemySide({
+      characters: [nightsister(7)],
+      damage: [0],
+      activated: [true],
+      pool: [die(0, '2MD'), die(0, '-')],
+    });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toMatchObject({ type: 'attack' });
+  });
+});
+
+describe('nextAutomatonAction — Veers gira un dado de apoyo (SPEC-042)', () => {
+  // General Veers (01004): "Remove this die to turn one of your support dice to any side."
+  const veers = (): Character => ({
+    code: '01004',
+    name: 'General Veers',
+    health: 9,
+    isUnique: true,
+    isElite: false,
+    dice: [],
+  });
+  // First Order TIE Fighter (01006) es un apoyo REAL del snapshot: hace falta que lo sea, porque el
+  // autómata mira el tipo y las caras de la carta por código.
+  const apoyo = (face: string): PooledDie => ({
+    characterIndex: -1,
+    code: '01006',
+    name: 'First Order TIE Fighter',
+    dieIndex: 0,
+    face,
+  });
+
+  it('usa la habilidad si su dado está en el pool y hay un dado de apoyo que mejorar', () => {
+    const enemy = enemySide({
+      characters: [veers()],
+      damage: [0],
+      activated: [true],
+      // Su propio dado en blanco (nada que resolver, así que no hay acción mejor) + apoyo en blanco.
+      pool: [die(0, '-'), apoyo('-')],
+    });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toMatchObject({
+      type: 'characterAbility',
+      index: 0,
+    });
+  });
+
+  it('va DESPUÉS de resolver: con un dado de escudo suyo, prefiere escudar', () => {
+    const enemy = enemySide({
+      characters: [veers()],
+      damage: [0],
+      activated: [true],
+      pool: [die(0, '1Sh'), apoyo('-')],
+    });
+    expect(next(enemy, playerSide(), noRerollsUsed)).toMatchObject({ type: 'shield' });
+  });
+
+  it('NO la usa si no tiene ningún dado de apoyo en el pool', () => {
+    const enemy = enemySide({
+      characters: [veers()],
+      damage: [0],
+      activated: [true],
+      pool: [die(0, '-')],
+    });
+    expect(next(enemy, playerSide(), noRerollsUsed)).not.toMatchObject({ type: 'characterAbility' });
+  });
+
+  it('NO la usa sin su propio dado en el pool (su texto dice "retira este dado")', () => {
+    const enemy = enemySide({
+      characters: [veers()],
+      damage: [0],
+      activated: [false],
+      pool: [apoyo('-')],
+    });
+    expect(next(enemy, playerSide(), noRerollsUsed)).not.toMatchObject({ type: 'characterAbility' });
+  });
+});

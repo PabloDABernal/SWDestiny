@@ -1,4 +1,5 @@
 import { readCache } from '../import/resolveCards';
+import { CardTextToggle } from './CardText';
 
 /** Apoyos en juego de un bando (SPEC-021): no van ligados a ningún personaje, cada uno con su
  * propio botón "Activar" (parecido a un personaje, pero sin vida/escudos/KO). El enemigo es pasivo
@@ -27,6 +28,8 @@ export function SupportList({
         return (
           <li className="support-card" key={`${code}-${i}`}>
             <span className="support-card__name">{card?.name ?? code}</span>
+            {/* Texto del apoyo (SPEC-044). */}
+            <CardTextToggle code={code} compact />
             {card?.sides && (
               <ol className="die__sides">
                 {card.sides.map((face, j) => (

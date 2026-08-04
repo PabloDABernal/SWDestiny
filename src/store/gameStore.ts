@@ -4,7 +4,15 @@ import { parseDeck, type DeckSlot } from '../import/parseDeck';
 import { parseTextDeck } from '../import/parseTextDeck';
 import { getPresetDeck } from '../data/decks';
 import { getCardFromSnapshot } from '../data/cards';
-import { LUMINARA_CODE, ZUCKUSS_CODE, VADER_CODE, luminaraBoostAmount } from '../game/characterAbilities';
+import {
+  LUMINARA_CODE,
+  ZUCKUSS_CODE,
+  VADER_CODE,
+  luminaraBoostAmount,
+  abilityFor,
+  abilityWithTrigger,
+  type CharacterAbility,
+} from '../game/characterAbilities';
 import { loadLibrary, persistLibrary, type SavedDeck } from '../data/deckLibrary';
 import { resolveCards } from '../import/resolveCards';
 import { buildCharacters } from '../import/buildCharacters';
@@ -22,6 +30,7 @@ import {
 import { computeOutcome as computeOutcomePure, type Outcome } from '../game/outcome';
 import {
   applyEnemyHealthMultiplier,
+  bestFocusFace,
   nextAutomatonAction,
   indirectCostReceiverIndex,
   distributeIncomingDamage,
@@ -987,6 +996,14 @@ interface GameState {
    * los guards existentes de turno (SPEC-025) ya bloquean el resto de acciones del jugador sin
    * necesidad de tocarlos uno a uno; no hay forma de cancelar este reparto. */
   indirectDistribution: { pending: number } | null;
+  /** Habilidad de personaje "tras activar" esperando decisión del jugador (SPEC-042). Mientras no
+   * sea `null`, la activación **no ha terminado**: el turno sigue siendo de `side` y el resto de
+   * acciones están bloqueadas, igual que con `playUpgrade`/`mulligan`. Solo se usa para las
+   * OPCIONALES ("you may…"); las obligatorias (Luke) se aplican solas dentro de `activate`. */
+  pendingAbility: { side: Side; characterIndex: number; code: string } | null;
+  /** Habilidad en curso que está pidiendo objetivos (SPEC-042). Bloquea el resto de acciones igual
+   * que `pendingAbility`. */
+  abilityTargeting: AbilityTargeting | null;
   /** Pases consecutivos sin ninguna acción real entre medias (SPEC-025). Al llegar a 2 dispara el
    * mantenimiento automático y se reinicia a 0. Cualquier acción real lo reinicia a 0. */
   passStreak: number;
@@ -1111,7 +1128,208 @@ interface GameState {
   /** Activa el apoyo en juego `index` de `side`: tira su dado y lo añade al pool del bando
    * (SPEC-021). No-op si ya está activado esta ronda. */
   activateSupport: (side: Side, index: number) => void;
+  /** SPEC-042: aplica la habilidad "tras activar" pendiente y cierra la activación (cede el turno).
+   *  No-op si no hay ninguna pendiente. */
+  useAbility: () => void;
+  /** SPEC-042: renuncia a la habilidad pendiente y cierra la activación (cede el turno igual). */
+  skipAbility: () => void;
+  /** SPEC-042: usa la habilidad `Action -` de un personaje propio. Gasta la acción del turno (RR). */
+  startAbility: (side: Side, characterIndex: number) => void;
+  /** SPEC-042: marca/desmarca un dado como objetivo de la habilidad en curso. */
+  pickAbilityDie: (side: Side, poolIndex: number) => void;
+  /** SPEC-042: elige la cara (Veers: dado de apoyo; Tusken: cara de la carta descartada). */
+  chooseAbilityFace: (face: string) => void;
+  /** SPEC-042: elige la carta de la mano a descartar (Tusken). */
+  pickAbilityHandCard: (handIndex: number) => void;
+  /** SPEC-042: aplica la habilidad con lo elegido. */
+  confirmAbility: () => void;
+  /** SPEC-042: cancela sin aplicar nada. Una `Action -` cancelada NO gasta el turno. */
+  cancelAbility: () => void;
   enemyTurn: () => void;
+}
+
+/** Selección en curso para una habilidad que necesita objetivo (SPEC-042). */
+interface AbilityTargeting {
+  side: Side;
+  characterIndex: number;
+  code: string;
+  /** Dados elegidos para volver a tirar (Jabba, Nightsister, Leia). */
+  dice: { side: Side; poolIndex: number }[];
+  /** Dado de apoyo elegido a la espera de cara (Veers). */
+  faceTarget: number | null;
+  /** Carta de la mano elegida a la espera de cara (Tusken). */
+  handCardIndex: number | null;
+  /** Cara ya elegida (Veers: para el dado de apoyo; Tusken: para la carta descartada). */
+  face: string | null;
+  /** Venía de un "tras activar": al cancelar se vuelve al aviso Usar / No usar en vez de cerrar. */
+  fromActivate: boolean;
+}
+
+/** ¿Es un dado de apoyo? (SPEC-021 los mete al pool con `characterIndex: -1`, pero el sentinela se
+ *  comparte con mejoras sin anfitrión, así que se mira el tipo real de la carta). */
+function isSupportDie(d: PooledDie): boolean {
+  return readCache(d.code)?.type_code === 'support';
+}
+
+/** Elige objetivos para la habilidad que el autómata tiene abierta y devuelve si pudo elegir alguno.
+ *  Criterio simple y conservador; lo importante es que NUNCA deje el modo abierto (colgaría la
+ *  partida) y que no dependa del orden de los dados en el pool. */
+function automatonPickAbilityTargets(
+  targeting: AbilityTargeting,
+  sides: Record<Side, SideState>,
+  ability: CharacterAbility,
+  pickDie: (side: Side, poolIndex: number) => void,
+  pickHandCard: (handIndex: number) => void,
+  chooseFace: (face: string) => void,
+): boolean {
+  const side = targeting.side;
+  switch (ability.targeting.kind) {
+    case 'reroll': {
+      // Solo dados en blanco Y que encajen en el scope (amarillo/propio/cualquiera). Filtrar por
+      // scope ANTES de recortar al máximo: si no, un blanco no elegible se come el único hueco y la
+      // habilidad se desperdicia según el orden del pool (bug real detectado por revisor-codigo).
+      const candidatos: { side: Side; poolIndex: number }[] = [];
+      for (const s of SIDES) {
+        if (ability.targeting.scope === 'own' && s !== side) continue;
+        sides[s].pool.forEach((d, i) => {
+          if (d.face !== '-') return;
+          if (!dieMatchesScope(d, s, side, (ability.targeting as { scope: 'own' | 'any' | 'yellow' }).scope)) return;
+          if (ability.removesOwnDie && s === side && d.characterIndex === targeting.characterIndex) return;
+          candidatos.push({ side: s, poolIndex: i });
+        });
+      }
+      const elegidos = candidatos.slice(0, ability.targeting.max);
+      for (const t of elegidos) pickDie(t.side, t.poolIndex);
+      return elegidos.length > 0;
+    }
+    case 'discardHandCardForDie': {
+      // Tusken: descarta la primera carta elegible y resuelve su mejor cara de daño (o la primera
+      // que no sea blanco). Sin esto el autómata nunca usaba su habilidad.
+      const hand = sides[side].hand;
+      for (let i = 0; i < hand.length; i++) {
+        const card = readCache(hand[i]);
+        if (!card || !Array.isArray(card.sides) || card.sides.length === 0) continue;
+        if (ability.handCardTypes && !ability.handCardTypes.includes(card.type_code)) continue;
+        const mejor = [...card.sides]
+          .filter((f) => f !== '-')
+          .sort((a, b) => (parsePlayerFace(b)?.amount ?? 0) - (parsePlayerFace(a)?.amount ?? 0))[0];
+        if (!mejor) continue;
+        pickHandCard(i);
+        chooseFace(mejor);
+        return true;
+      }
+      return false;
+    }
+    case 'turnSupportDie': {
+      // Veers: gira el dado de apoyo que más mejore, a su mejor cara, con la misma prioridad que su
+      // Focus automático (daño > escudo > recurso). Decisión del usuario, 2026-08-03.
+      const pool = sides[side].pool;
+      for (let i = 0; i < pool.length; i++) {
+        if (!isSupportDie(pool[i])) continue;
+        const caras = poolDieSides(pool[i]);
+        if (!caras) continue;
+        const mejor = bestFocusFace([...caras]);
+        if (mejor === null || mejor === pool[i].face) continue;
+        pickDie(side, i);
+        chooseFace(mejor);
+        return true;
+      }
+      return false;
+    }
+    default:
+      return false;
+  }
+}
+
+/** ¿Hay algo que elegir para esa habilidad ahora mismo? (SPEC-042). Sirve para no ofrecer un botón
+ *  que solo lleva a una pantalla de selección vacía: Veers sin apoyos, Jabba sin dados amarillos,
+ *  Tusken sin cartas elegibles, Leia sin más dados que el suyo. */
+export function abilityHasTargets(
+  sides: Record<Side, SideState>,
+  side: Side,
+  characterIndex: number,
+  ability: CharacterAbility,
+): boolean {
+  switch (ability.targeting.kind) {
+    case 'none':
+      return true;
+    case 'reroll': {
+      const scope = ability.targeting.scope;
+      return SIDES.some((s) => {
+        if (scope === 'own' && s !== side) return false;
+        return sides[s].pool.some((d, i) => {
+          if (ability.removesOwnDie && s === side && d.characterIndex === characterIndex) return false;
+          void i;
+          return dieMatchesScope(d, s, side, scope);
+        });
+      });
+    }
+    case 'turnSupportDie':
+      return sides[side].pool.some((d) => isSupportDie(d));
+    case 'discardHandCardForDie':
+      return sides[side].hand.some((code) => {
+        const card = readCache(code);
+        if (!card || !Array.isArray(card.sides) || card.sides.length === 0) return false;
+        return !ability.handCardTypes || ability.handCardTypes.includes(card.type_code);
+      });
+  }
+}
+
+/** ¿Ese dado del pool vale como objetivo de la habilidad, según su `scope`? */
+function dieMatchesScope(d: PooledDie, dieSide: Side, abilitySide: Side, scope: 'own' | 'any' | 'yellow'): boolean {
+  if (scope === 'own') return dieSide === abilitySide;
+  if (scope === 'yellow') return readCache(d.code)?.faction_code === 'yellow';
+  return true;
+}
+
+/** Roba `n` cartas del mazo a la mano (SPEC-042). Si el mazo no llega, roba lo que haya; el deck-out
+ *  se sigue comprobando en el mantenimiento (SPEC-022), no aquí. */
+function drawCards(side: Side, s: SideState, n: number): SideState {
+  const drawn = s.drawPile.slice(0, n);
+  if (drawn.length === 0) return s;
+  const drawPile = s.drawPile.slice(drawn.length);
+  const hand = [...s.hand, ...drawn];
+  persistDrawPile(side, drawPile);
+  persistHand(side, hand);
+  return { ...s, drawPile, hand };
+}
+
+/** El rival descarta `n` cartas de su mano al azar (SPEC-042, Darth Vader 01010). Su texto dice que
+ *  las elige él; al ser el autómata (o el jugador cuando ataca el autómata) quien elige, se toma al
+ *  azar, igual que ya hace el descarte por símbolo de SPEC-029 (`applyDiscard`). */
+function discardFromHand(side: Side, s: SideState, n: number): SideState {
+  const hand = s.hand.slice();
+  const discarded: string[] = [];
+  const count = Math.min(n, hand.length);
+  for (let i = 0; i < count; i++) {
+    const idx = Math.floor(Math.random() * hand.length);
+    discarded.push(...hand.splice(idx, 1));
+  }
+  if (discarded.length === 0) return s;
+  const discardPile = [...s.discardPile, ...discarded];
+  persistHand(side, hand);
+  persistDiscardPile(side, discardPile);
+  return { ...s, hand, discardPile };
+}
+
+/** Aplica el efecto SIN objetivo de una habilidad de personaje (SPEC-042). Los que necesitan elegir
+ *  (rerolls, girar dado de apoyo, descartar carta de la mano) no pasan por aquí. */
+function applyAbilityEffect(
+  sides: Record<Side, SideState>,
+  side: Side,
+  code: string,
+): Record<Side, SideState> {
+  switch (code) {
+    case '01035': // Luke Skywalker: roba una carta
+      return { ...sides, [side]: drawCards(side, sides[side], 1) };
+    case '01010': {
+      // Darth Vader (Awakenings): el rival descarta una carta de su mano
+      const opp = opposite(side);
+      return { ...sides, [opp]: discardFromHand(opp, sides[opp], 1) };
+    }
+    default:
+      return sides;
+  }
 }
 
 // Mantenimiento (SPEC-009/011/019/022, ahora disparado por SPEC-025 tras dos pases consecutivos en
@@ -1180,6 +1398,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   mulligan: null,
   turn: 'player',
   indirectDistribution: null,
+  pendingAbility: null,
+  abilityTargeting: null,
   passStreak: 0,
   outcome: null,
   lastEnemyAction: null,
@@ -1386,7 +1606,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.resolve?.focusFaceChoice != null) return state;
       // Bloqueado mientras se elige objetivo para jugar una mejora (SPEC-020) o hay un mulligan
       // pendiente de confirmar (SPEC-024).
-      if (state.playUpgrade !== null || state.mulligan !== null) return state;
+      if (state.playUpgrade !== null || state.mulligan !== null || state.pendingAbility !== null || state.abilityTargeting !== null) return state;
       // Bloqueado fuera de tu turno, o si ya tienes un dado marcado sin resolver (SPEC-025): hay
       // que terminar o cancelar esa resolución antes de hacer otra cosa.
       if (state.turn !== side) return state;
@@ -1407,12 +1627,273 @@ export const useGameStore = create<GameState>((set, get) => ({
         return [rollUpgradeDie({ sides: [...card.sides] }, card.code, card.name, index)];
       });
       const pool = [...s.pool, ...rollCharacter(character, index), ...upgradeDice];
-      // Activar es SIEMPRE una acción completa (SPEC-025): cierra el turno de `side`.
+      const activatedSides = { ...state.sides, [side]: { ...s, activated, pool } };
+
+      // Habilidad "tras activar" (SPEC-042). Hasta aquí activar era SIEMPRE una acción completa que
+      // cerraba el turno en el mismo `set()` (SPEC-025); ahora, si el personaje tiene una habilidad
+      // OPCIONAL de este tipo, el turno se DIFIERE hasta que el jugador decida usarla o no
+      // (`useAbility`/`skipAbility`). Sin diferirlo, el aviso "Usar / No usar" saldría cuando el
+      // turno ya es del rival y no habría forma legal de aplicar el efecto.
+      const ability = abilityWithTrigger(character.code, 'afterActivate');
+      if (ability) {
+        if (!ability.optional) {
+          // Obligatoria (Luke: "draw a card", sin "you may"): se aplica sola, sin preguntar, y el
+          // turno se cierra como siempre.
+          return {
+            sides: applyAbilityEffect(activatedSides, side, character.code),
+            turn: opposite(side),
+            passStreak: 0,
+          };
+        }
+        return {
+          sides: activatedSides,
+          pendingAbility: { side, characterIndex: index, code: character.code },
+          turn: side, // se cede al resolver la habilidad, no ahora
+          passStreak: 0,
+        };
+      }
+
+      // Sin habilidad: activar sigue siendo una acción completa (SPEC-025), como hasta ahora.
       return {
-        sides: { ...state.sides, [side]: { ...s, activated, pool } },
+        sides: activatedSides,
         turn: opposite(side),
         passStreak: 0,
       };
+    }),
+
+  startAbility: (side: Side, characterIndex: number) =>
+    set((state) => {
+      if (state.outcome !== null) return state;
+      if (state.turn !== side) return state;
+      if (state.resolve !== null || state.playUpgrade !== null || state.mulligan !== null) return state;
+      if (state.pendingAbility !== null || state.abilityTargeting !== null) return state;
+      const s = state.sides[side];
+      const character = s.characters[characterIndex];
+      if (!character || isKO(character, s.damage[characterIndex] ?? 0)) return state;
+      const ability = abilityWithTrigger(character.code, 'action');
+      if (!ability) return state;
+      // "Retira este dado" (Veers, Leia): exige tenerlo en el pool. Nightsister no lo dice, así que
+      // se puede usar sin haberla activado (decisión del usuario, 2026-07-30).
+      if (ability.removesOwnDie && !s.pool.some((d) => d.characterIndex === characterIndex)) return state;
+      return {
+        abilityTargeting: {
+          side,
+          characterIndex,
+          code: character.code,
+          dice: [],
+          faceTarget: null,
+          handCardIndex: null,
+          face: null,
+          fromActivate: false,
+        },
+        resolveError: null,
+      };
+    }),
+
+  pickAbilityDie: (side: Side, poolIndex: number) =>
+    set((state) => {
+      const cur = state.abilityTargeting;
+      if (cur === null || state.outcome !== null) return state;
+      const ability = abilityFor(cur.code);
+      if (!ability) return state;
+      const die = state.sides[side].pool[poolIndex];
+      if (!die) return state;
+
+      if (ability.targeting.kind === 'turnSupportDie') {
+        // Veers: solo dados de APOYO propios; se elige uno y luego su cara.
+        if (side !== cur.side || !isSupportDie(die)) return state;
+        return { abilityTargeting: { ...cur, faceTarget: poolIndex, face: null } };
+      }
+      if (ability.targeting.kind !== 'reroll') return state;
+      if (!dieMatchesScope(die, side, cur.side, ability.targeting.scope)) return state;
+      // El propio dado que se retira para pagar la habilidad no puede ser objetivo.
+      if (ability.removesOwnDie && side === cur.side && die.characterIndex === cur.characterIndex) return state;
+      const yaElegido = cur.dice.some((t) => t.side === side && t.poolIndex === poolIndex);
+      if (yaElegido) {
+        return { abilityTargeting: { ...cur, dice: cur.dice.filter((t) => !(t.side === side && t.poolIndex === poolIndex)) } };
+      }
+      if (cur.dice.length >= ability.targeting.max) return state;
+      return { abilityTargeting: { ...cur, dice: [...cur.dice, { side, poolIndex }] } };
+    }),
+
+  pickAbilityHandCard: (handIndex: number) =>
+    set((state) => {
+      const cur = state.abilityTargeting;
+      if (cur === null || state.outcome !== null) return state;
+      const ability = abilityFor(cur.code);
+      if (!ability || ability.targeting.kind !== 'discardHandCardForDie') return state;
+      const code = state.sides[cur.side].hand[handIndex];
+      if (!code) return state;
+      const card = readCache(code);
+      // Tusken: "character or upgrade dice" — un apoyo de la mano no vale aunque tenga dado.
+      if (!card || !Array.isArray(card.sides) || card.sides.length === 0) return state;
+      if (ability.handCardTypes && !ability.handCardTypes.includes(card.type_code)) return state;
+      return { abilityTargeting: { ...cur, handCardIndex: handIndex, face: null } };
+    }),
+
+  chooseAbilityFace: (face: string) =>
+    set((state) => {
+      const cur = state.abilityTargeting;
+      if (cur === null || state.outcome !== null) return state;
+      const ability = abilityFor(cur.code);
+      if (!ability) return state;
+      if (ability.targeting.kind === 'turnSupportDie') {
+        if (cur.faceTarget === null) return state;
+        const die = state.sides[cur.side].pool[cur.faceTarget];
+        const sides = die ? poolDieSides(die) : null;
+        if (!sides || !sides.includes(face)) return state;
+        return { abilityTargeting: { ...cur, face } };
+      }
+      if (ability.targeting.kind === 'discardHandCardForDie') {
+        if (cur.handCardIndex === null) return state;
+        const code = state.sides[cur.side].hand[cur.handCardIndex];
+        const card = code ? readCache(code) : null;
+        if (!card || !Array.isArray(card.sides) || !card.sides.includes(face)) return state;
+        return { abilityTargeting: { ...cur, face } };
+      }
+      return state;
+    }),
+
+  cancelAbility: () =>
+    set((state) => {
+      const cur = state.abilityTargeting;
+      if (cur === null) return state;
+      // Venía del aviso "tras activar": se vuelve a él, que la activación sigue sin cerrarse.
+      if (cur.fromActivate) {
+        return {
+          abilityTargeting: null,
+          pendingAbility: { side: cur.side, characterIndex: cur.characterIndex, code: cur.code },
+        };
+      }
+      // `Action -` cancelada: no se ha gastado el turno ni retirado ningún dado.
+      return { abilityTargeting: null };
+    }),
+
+  confirmAbility: () =>
+    set((state) => {
+      const cur = state.abilityTargeting;
+      if (cur === null || state.outcome !== null) return state;
+      const ability = abilityFor(cur.code);
+      if (!ability) return state;
+      const side = cur.side;
+      let sides = state.sides;
+      const own = { ...sides[side] };
+
+      switch (ability.targeting.kind) {
+        case 'reroll': {
+          if (cur.dice.length === 0) return state; // nada elegido: no se puede confirmar
+          const next: Record<Side, SideState> = { ...sides };
+          for (const s of SIDES) {
+            const objetivos = new Set(cur.dice.filter((t) => t.side === s).map((t) => t.poolIndex));
+            if (objetivos.size === 0) continue;
+            next[s] = {
+              ...next[s],
+              pool: next[s].pool.map((d, i) => {
+                if (!objetivos.has(i)) return d;
+                const dieSides = poolDieSides(d);
+                return dieSides ? { ...d, face: rollDie({ sides: [...dieSides] }) } : d;
+              }),
+            };
+          }
+          sides = next;
+          break;
+        }
+        case 'turnSupportDie': {
+          if (cur.faceTarget === null || cur.face === null) return state;
+          const pool = sides[side].pool.map((d, i) => (i === cur.faceTarget ? { ...d, face: cur.face! } : d));
+          sides = { ...sides, [side]: { ...sides[side], pool } };
+          break;
+        }
+        case 'discardHandCardForDie': {
+          if (cur.handCardIndex === null || cur.face === null) return state;
+          const s = sides[side];
+          const code = s.hand[cur.handCardIndex];
+          const card = code ? readCache(code) : null;
+          if (!code || !card) return state;
+          const hand = s.hand.filter((_, i) => i !== cur.handCardIndex);
+          const discardPile = [...s.discardPile, code];
+          persistHand(side, hand);
+          persistDiscardPile(side, discardPile);
+          // "Resolver una de sus caras": el dado entra al pool mostrando esa cara, y se resuelve con
+          // la maquinaria de siempre (misma UI, mismos costes). `characterIndex: -1` es el sentinela
+          // de dado sin personaje anfitrión que ya usan mejoras/apoyos (SPEC-020/021).
+          const pool = [...s.pool, { characterIndex: -1, code, name: card.name, dieIndex: 0, face: cur.face }];
+          sides = { ...sides, [side]: { ...s, hand, discardPile, pool } };
+          break;
+        }
+        case 'none':
+          sides = applyAbilityEffect(sides, side, cur.code);
+          break;
+      }
+
+      // "Retira este dado" (Veers, Leia): se consume el dado del personaje que usa la habilidad.
+      if (ability.removesOwnDie) {
+        const s = sides[side];
+        const idx = s.pool.findIndex((d) => d.characterIndex === cur.characterIndex);
+        if (idx >= 0) sides = { ...sides, [side]: { ...s, pool: s.pool.filter((_, i) => i !== idx) } };
+      }
+
+      // Daño a sí mismo (Nightsister). Puede dejarla KO y terminar la partida.
+      let outcome: Outcome = state.outcome;
+      if (ability.selfDamage) {
+        const s = sides[side];
+        const damage = s.characters.map((_, i) => s.damage[i] ?? 0);
+        damage[cur.characterIndex] = (damage[cur.characterIndex] ?? 0) + ability.selfDamage;
+        sides = { ...sides, [side]: { ...s, damage } };
+        outcome = computeOutcomePure(
+          { characters: sides.player.characters, damage: sides.player.damage },
+          { characters: sides.enemy.characters, damage: sides.enemy.damage },
+        );
+      }
+      void own;
+
+      return {
+        sides,
+        outcome,
+        abilityTargeting: null,
+        pendingAbility: null,
+        // Usar la habilidad cierra la acción: cede el turno, venga de donde venga.
+        turn: opposite(side),
+        passStreak: 0,
+      };
+    }),
+
+  useAbility: () =>
+    set((state) => {
+      const pending = state.pendingAbility;
+      if (pending === null || state.outcome !== null) return state;
+      const ability = abilityFor(pending.code);
+      // Necesita elegir objetivo: se abre el modo de selección en vez de aplicar ya.
+      if (ability && ability.targeting.kind !== 'none') {
+        return {
+          pendingAbility: null,
+          abilityTargeting: {
+            side: pending.side,
+            characterIndex: pending.characterIndex,
+            code: pending.code,
+            dice: [],
+            faceTarget: null,
+            handCardIndex: null,
+            face: null,
+            fromActivate: true,
+          },
+        };
+      }
+      // Ninguno de los efectos sin objetivo (robar, descartar) puede dejar KO a nadie, así que el
+      // resultado de partida no cambia aquí. El deck-out se sigue comprobando en el mantenimiento.
+      return {
+        sides: applyAbilityEffect(state.sides, pending.side, pending.code),
+        pendingAbility: null,
+        turn: opposite(pending.side),
+      };
+    }),
+
+  skipAbility: () =>
+    set((state) => {
+      const pending = state.pendingAbility;
+      if (pending === null || state.outcome !== null) return state;
+      // Renunciar cierra la activación igual: el turno se cede aunque no se use la habilidad.
+      return { pendingAbility: null, turn: opposite(pending.side) };
     }),
 
   // "Pasar" (SPEC-025): cede el turno de `side` sin hacer nada. Dos pases consecutivos (uno de cada
@@ -1425,7 +1906,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.turn !== side) return state;
       // Mismo guard de exclusión mutua que el resto de acciones (SPEC-025): no tiene sentido pasar
       // con una acción a medio construir, hay que cancelarla primero.
-      if (state.resolve !== null || state.playUpgrade !== null || state.mulligan !== null) return state;
+      if (state.resolve !== null || state.playUpgrade !== null || state.mulligan !== null || state.pendingAbility !== null || state.abilityTargeting !== null) return state;
       const passStreak = state.passStreak + 1;
       if (passStreak >= 2) {
         return { ...runMaintenance(state.sides), turn: 'player', passStreak: 0 };
@@ -1480,7 +1961,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.resolve?.focusFaceChoice != null) return state;
       // Bloqueado mientras se elige objetivo para jugar una mejora (SPEC-020) o hay un mulligan
       // pendiente de confirmar (SPEC-024).
-      if (state.playUpgrade !== null || state.mulligan !== null) return state;
+      if (state.playUpgrade !== null || state.mulligan !== null || state.pendingAbility !== null || state.abilityTargeting !== null) return state;
       // Bloqueado fuera de tu turno (SPEC-025).
       if (state.turn !== side) return state;
       const die = state.sides[side].pool[poolIndex];
@@ -2063,7 +2544,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.outcome !== null) return state;
       // Mismos guards de exclusión mutua que jugar una mejora (SPEC-020/021/023/024).
       if (state.resolve?.focusFaceChoice != null) return state;
-      if (state.playUpgrade !== null || state.mulligan !== null) return state;
+      if (state.playUpgrade !== null || state.mulligan !== null || state.pendingAbility !== null || state.abilityTargeting !== null) return state;
       // Bloqueado fuera de tu turno, o si ya tienes un dado marcado sin resolver (SPEC-025).
       if (state.turn !== side) return state;
       if (state.resolve !== null && state.resolve.side === side) return state;
@@ -2097,7 +2578,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.outcome !== null) return state;
       // Mismos guards de exclusión mutua que activar un personaje (SPEC-020/021/023/024).
       if (state.resolve?.focusFaceChoice != null) return state;
-      if (state.playUpgrade !== null || state.mulligan !== null) return state;
+      if (state.playUpgrade !== null || state.mulligan !== null || state.pendingAbility !== null || state.abilityTargeting !== null) return state;
       // Bloqueado fuera de tu turno, o si ya tienes un dado marcado sin resolver (SPEC-025).
       if (state.turn !== side) return state;
       if (state.resolve !== null && state.resolve.side === side) return state;
@@ -2242,7 +2723,73 @@ export const useGameStore = create<GameState>((set, get) => ({
       case 'activate': {
         const character = enemy.characters[action.index];
         get().activate('enemy', action.index);
+        // Habilidad "tras activar" del autómata (SPEC-042): `activate` DIFIERE el turno cuando el
+        // personaje tiene una opcional, así que si no se resuelve aquí mismo la partida se queda
+        // colgada (el turno sigue en 'enemy' y el jugador no tiene forma de tocar ese aviso, que es
+        // del bando enemigo). El autómata siempre la usa: ninguna de las de esta tanda le perjudica.
+        const pending = get().pendingAbility;
+        if (pending !== null && pending.side === 'enemy') {
+          const ability = abilityFor(pending.code);
+          get().useAbility();
+          const targeting = get().abilityTargeting;
+          if (targeting !== null) {
+            // La habilidad pide objetivos: los elige el autómata. Si no encuentra ninguno, renuncia
+            // — pero NUNCA se queda esperando, o la partida se cuelga.
+            const pudo =
+              ability !== undefined &&
+              automatonPickAbilityTargets(
+                targeting,
+                get().sides,
+                ability,
+                get().pickAbilityDie,
+                get().pickAbilityHandCard,
+                get().chooseAbilityFace,
+              );
+            if (pudo) {
+              get().confirmAbility();
+              set({
+                lastEnemyAction: `El enemigo activa a ${character.name} y usa su habilidad: ${ability?.prompt ?? ''}`,
+              });
+              return;
+            }
+            get().cancelAbility(); // vuelve al aviso pendiente…
+            get().skipAbility(); // …y renuncia, cerrando la activación
+            set({ lastEnemyAction: `El enemigo activa a ${character.name}.` });
+            return;
+          }
+          set({
+            lastEnemyAction: `El enemigo activa a ${character.name} y usa su habilidad: ${ability?.prompt ?? ''}`,
+          });
+          return;
+        }
         set({ lastEnemyAction: `El enemigo activa a ${character.name}.` });
+        return;
+      }
+      case 'characterAbility': {
+        // Habilidad `Action -` del autómata (SPEC-042): gasta su acción, igual que al jugador.
+        const character = enemy.characters[action.index];
+        get().startAbility('enemy', action.index);
+        const ability = abilityFor(character.code);
+        const targeting = get().abilityTargeting;
+        const pudo =
+          targeting !== null &&
+          ability !== undefined &&
+          automatonPickAbilityTargets(
+            targeting,
+            get().sides,
+            ability,
+            get().pickAbilityDie,
+            get().pickAbilityHandCard,
+            get().chooseAbilityFace,
+          );
+        if (!pudo) {
+          // Sin objetivo válido: se cancela y se pasa, en vez de dejar el modo colgado.
+          get().cancelAbility();
+          set({ turn: 'player', passStreak: 0, lastEnemyAction: 'El enemigo pasa.' });
+          return;
+        }
+        get().confirmAbility();
+        set({ lastEnemyAction: `El enemigo usa la habilidad de ${character.name}.` });
         return;
       }
       case 'resource': {
