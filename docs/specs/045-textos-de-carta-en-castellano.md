@@ -1,6 +1,6 @@
 # SPEC-045: Textos de carta en castellano (empezando por el set 01)
 
-**Estado:** Pendiente
+**Estado:** Completada
 **Sección del GDD:** §7, amplía la nota "Texto de carta en la mesa" (SPEC-044)
 **Depende de:** SPEC-044 (`cardText()` y `CardTextToggle`, el único sitio por el que pasa el texto),
 SPEC-030 (snapshot)
@@ -66,8 +66,10 @@ Verificables jugando. Formato: acción → resultado observable.
 
 ## Notas técnicas
 
-- **Fichero aparte, nunca dentro de `cards.json`**: `src/data/cardText.es.json`, mapa
-  `{ "<code>": "<texto en castellano>" }`. `cards.json` se **regenera** desde ARH con
+- **Fichero aparte, nunca dentro de `cards.json`**: `src/data/cardTextEs.ts`, mapa
+  `{ "<code>": "<texto en castellano>" }`. *(Se implementó en `.ts` y no en `.json` como decía el
+  borrador de esta spec, para poder llevar el glosario y las reglas de traducción como comentarios en
+  la cabecera del propio fichero, que es donde hacen falta.)* `cards.json` se **regenera** desde ARH con
   `npm run cards:snapshot`, así que meter ahí las traducciones las borraría en la próxima
   regeneración. Este es el motivo principal de separarlas.
 - **Un único punto de lectura**: `cardText(code)` en `src/components/CardText.tsx` (SPEC-044) es por
@@ -95,4 +97,9 @@ El código es pequeño (una función de lectura, un fichero de datos y un test).
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+Completada tras playtest 2026-08-04. Las 170 cartas con texto del set 01 se ven en castellano, tanto
+en la mesa como en la ficha de la DB; las de otros sets siguen en inglés sin romper nada; y los
+símbolos se siguen mostrando como etiqueta legible, no en crudo.
+
+Antes de traducir a mano se comprobó que no hubiera fuente: ARH sirve solo inglés (locale fijo) y
+SWDestinyDB está caída.

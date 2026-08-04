@@ -1,6 +1,6 @@
 # SPEC-042: Habilidades de personaje — mecanismo + set 01 (`Action -` y `After you activate`)
 
-**Estado:** Pendiente
+**Estado:** Completada
 **Sección del GDD:** §5, nueva nota "Texto de personaje por sets (v4)"
 **Depende de:** SPEC-039 (tabla de efectos por código de personaje, `characterAbilities.ts`),
 SPEC-023 (elegir dado objetivo y cara, que estas habilidades reutilizan), SPEC-025 (turnos y
@@ -176,4 +176,16 @@ Avisando antes; no subdividir con sufijos.
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+Completada tras playtest 2026-08-04. Los 7 personajes del set 01 funcionan jugando: Luke roba solo,
+Vader pregunta Usar / No usar sin ceder el turno, Nightsister se usa sin activarla y se lleva su daño,
+Leia exige su dado en el pool y lo retira, Veers gira un dado de apoyo, Tusken solo acepta personajes
+o mejoras de la mano, y Jabba solo dados amarillos. El autómata las usa sin colgar la partida.
+
+El playtest no pudo hacerse a la primera: sin ver el texto de las cartas en la mesa era imposible
+saber qué carta llevaba cada mazo (el usuario probó con el Luke de Legacies, 05031, en vez del de
+Awakenings, 01035 — hay NUEVE cartas con ese nombre). Eso obligó a intercalar SPEC-044, y con ella
+delante el playtest fue directo.
+
+Durante la implementación se corrigieron: dos cuelgues del autómata (se quedaba esperando una
+elección que nadie podía hacer), dos bugs que encontró revisor-codigo (Jabba dependía del orden del
+pool, Tusken no se usaba nunca) y un bucle infinito de renders que dejaba la pantalla en negro.

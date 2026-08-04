@@ -1,6 +1,6 @@
 # SPEC-044: Ver el texto de las cartas en la mesa de juego
 
-**Estado:** Pendiente
+**Estado:** Completada
 **Sección del GDD:** §7, nueva nota "Texto de carta en la mesa"
 **Depende de:** SPEC-039 (`formatCardText`, que hoy vive dentro de `DbSection.tsx`), SPEC-042
 (registro de habilidades por código), SPEC-030 (snapshot: de ahí sale el texto)
@@ -103,4 +103,11 @@ riesgo es bajo. Si se dispara, lo primero que se mueve a otra spec es el texto e
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+Completada tras playtest 2026-08-04. El desplegable funciona en personajes de ambos bandos, mejoras,
+apoyos y mano; las cartas sin texto no muestran control; la marca ✅ distingue las 10 implementadas
+de las informativas; y abrir el texto no dispara el clic de la ficha como objetivo.
+
+Verificado además en un Chrome headless con mazo sembrado antes de dárselo al usuario: 3 fichas, 2
+desplegables (el personaje sin texto no lo pinta), los 2 con marca, y el cuerpo abriéndose al pulsar.
+Esa comprobación se montó justo después del bucle de renders de SPEC-042, que build y tests verdes no
+habían detectado.
