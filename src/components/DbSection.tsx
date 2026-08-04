@@ -3,7 +3,7 @@ import { useGameStore } from '../store/gameStore';
 import { getAllCards, getCardFromSnapshot } from '../data/cards';
 import { cardImageUrl } from '../data/cardImages';
 import { DeckImagesButton, ImageCacheControls } from './ImageDownload';
-import { formatCardText } from './CardText';
+import { formatCardText, cardText } from './CardText';
 import { PRESET_DECKS } from '../data/decks';
 import { COMMUNITY_DECKS } from '../data/communityDecks';
 import type { ArhCard } from '../model/types';
@@ -201,7 +201,11 @@ function CardBrowser({ entries, onOpenDeck }: { entries: DeckEntry[]; onOpenDeck
             {selected.sides.length > 0 && (
               <p className="db-card-detail__line">Dado: {selected.sides.join('  ')}</p>
             )}
-            {selected.text && <p className="db-card-detail__text">{formatCardText(selected.text)}</p>}
+            {/* Pasa por `cardText` (no por `selected.text` a pelo) para que la traducción al
+                castellano de SPEC-045 valga también aquí, no solo en la mesa. */}
+            {cardText(selected.code) && (
+              <p className="db-card-detail__text">{formatCardText(cardText(selected.code)!)}</p>
+            )}
 
             <div className="db-card-detail__decks">
               <h4>Mazos que la usan</h4>

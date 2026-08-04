@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { getCardFromSnapshot } from '../data/cards';
 import { readCache } from '../import/resolveCards';
 import { hasImplementedText } from '../game/characterAbilities';
+import { CARD_TEXT_ES } from '../data/cardTextEs';
 
 // Texto de reglas de una carta, legible (SPEC-039) y desplegable en la mesa de juego (SPEC-044).
 // Vivía dentro de DbSection; se sacó aquí para poder usarlo también jugando, sin duplicarlo.
@@ -49,9 +50,14 @@ export function formatCardText(text: string): ReactNode[] {
   return nodes;
 }
 
-/** Texto de reglas de esa carta, o null si no tiene (o no está en el snapshot). Busca primero en el
- *  snapshot bundleado y luego en la caché de import, igual que hace el resto de la mesa. */
+/** Texto de reglas de esa carta, o null si no tiene (o no está en el snapshot).
+ *
+ *  Devuelve la **traducción al castellano** si existe (SPEC-045); si no, el inglés original del
+ *  snapshot (o de la caché de import). Es el único punto por el que pasa el texto de carta, así que
+ *  traducir una carta la traduce a la vez en la mesa y en la ficha de la DB. */
 export function cardText(code: string): string | null {
+  const es = CARD_TEXT_ES[code];
+  if (es && es.trim() !== '') return es;
   const text = getCardFromSnapshot(code)?.text ?? readCache(code)?.text;
   return text && text.trim() !== '' ? text : null;
 }

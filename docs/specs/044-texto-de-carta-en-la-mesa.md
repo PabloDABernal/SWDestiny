@@ -55,7 +55,7 @@ Verificables jugando. Formato: acción → resultado observable.
 ## Fuera de alcance (explícito)
 
 - **Implementar ningún texto nuevo**: esta spec solo MUESTRA. Los reactivos (`Before…`) siguen en
-  **SPEC-045** y las keywords pasivas en **SPEC-046** (renumeradas al insertarse esta).
+  **SPEC-046** y las keywords pasivas en **SPEC-047** (renumeradas al insertarse esta).
 - **Imágenes de carta en el tablero**: el arte sigue siendo cosa de la sección DB (SPEC-034/041).
 - **Rediseñar la pantalla de juego**: no se reorganiza nada, solo se añade el desplegable donde ya
   están las fichas. *(Asunción: el usuario no lo marcó explícitamente como fuera, pero tampoco pidió
