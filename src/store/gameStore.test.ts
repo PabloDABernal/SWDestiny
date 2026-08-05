@@ -639,7 +639,8 @@ describe('habilidades reactivas (SPEC-046)', () => {
     state().selectDie('player', 0);
   }
 
-  it('Dooku pide decisión ANTES de recibir el daño, sin aplicarlo todavía', () => {
+  it('el Dooku del AUTÓMATA lo decide él, sin preguntarte', () => {
+    // Es su carta: pararte la partida para que decidas por él no tendría sentido.
     setUpGame({
       playerChars: [conCodigo('ATA', 'Atacante', 10)],
       enemyChars: [conCodigo(DOOKU, 'Count Dooku', 10)],
@@ -650,11 +651,44 @@ describe('habilidades reactivas (SPEC-046)', () => {
     conDadoListo();
     state().applyDieTo('enemy', 0);
 
-    expect(state().reactiveAbility?.code).toBe(DOOKU);
-    expect(state().sides.enemy.damage[0]).toBe(0); // el daño AÚN no ha entrado
+    expect(state().reactiveAbility).toBeNull(); // no te pregunta
+    expect(state().sides.enemy.hand).toHaveLength(0); // el autómata la usó
+    expect(state().sides.enemy.damage[0]).toBe(1); // su escudo absorbió 1 de los 2
   });
 
-  it('usar la habilidad de Dooku descarta una carta y el escudo absorbe ese mismo golpe', () => {
+  it('el Dooku del JUGADOR sí para el turno del autómata y espera tu decisión', () => {
+    // Este es el caso de verdad: te atacan y decides si te proteges.
+    setUpGame({
+      playerChars: [conCodigo(DOOKU, 'Count Dooku', 10)],
+      enemyChars: [conCodigo('ATA', 'Atacante', 10)],
+    });
+    useGameStore.setState({
+      turn: 'enemy',
+      sides: {
+        ...state().sides,
+        player: { ...state().sides.player, hand: ['01001'] },
+        enemy: {
+          ...state().sides.enemy,
+          activated: [true],
+          pool: [{ characterIndex: 0, code: 'ATA', name: 'Atacante', dieIndex: 0, face: '2MD' }],
+        },
+      },
+    });
+
+    state().enemyTurn();
+
+    expect(state().reactiveAbility?.code).toBe(DOOKU);
+    expect(state().sides.player.damage[0]).toBe(0); // el daño aún no ha entrado
+    expect(state().turn).toBe('enemy'); // su turno sigue parado
+
+    state().resolveReactive(true);
+    expect(state().sides.player.hand).toHaveLength(0);
+    expect(state().sides.player.damage[0]).toBe(1); // el escudo absorbió 1 de los 2
+    expect(state().reactiveAbility).toBeNull();
+    expect(state().turn).toBe('player'); // y el turno vuelve
+  });
+
+  it('el escudo de Dooku absorbe el MISMO golpe que disparó su habilidad', () => {
     setUpGame({
       playerChars: [conCodigo('ATA', 'Atacante', 10)],
       enemyChars: [conCodigo(DOOKU, 'Count Dooku', 10)],
@@ -674,19 +708,28 @@ describe('habilidades reactivas (SPEC-046)', () => {
 
   it('renunciar deja entrar el daño entero', () => {
     setUpGame({
-      playerChars: [conCodigo('ATA', 'Atacante', 10)],
-      enemyChars: [conCodigo(DOOKU, 'Count Dooku', 10)],
+      playerChars: [conCodigo(DOOKU, 'Count Dooku', 10)],
+      enemyChars: [conCodigo('ATA', 'Atacante', 10)],
     });
     useGameStore.setState({
-      sides: { ...state().sides, enemy: { ...state().sides.enemy, hand: ['01001'] } },
+      turn: 'enemy',
+      sides: {
+        ...state().sides,
+        player: { ...state().sides.player, hand: ['01001'] },
+        enemy: {
+          ...state().sides.enemy,
+          activated: [true],
+          pool: [{ characterIndex: 0, code: 'ATA', name: 'Atacante', dieIndex: 0, face: '2MD' }],
+        },
+      },
     });
-    conDadoListo();
-    state().applyDieTo('enemy', 0);
+    state().enemyTurn();
     state().resolveReactive(false);
 
-    expect(state().sides.enemy.hand).toHaveLength(1); // no descartó
-    expect(state().sides.enemy.damage[0]).toBe(2);
+    expect(state().sides.player.hand).toHaveLength(1); // no descartó
+    expect(state().sides.player.damage[0]).toBe(2); // el golpe entero
     expect(state().reactiveAbility).toBeNull();
+    expect(state().turn).toBe('player');
   });
 
   it('con la mano vacía Dooku no interrumpe nada', () => {
@@ -752,6 +795,48 @@ describe('habilidades reactivas (SPEC-046)', () => {
     state().applyDieTo('enemy', 0);
 
     expect(state().outcome).toBe('victory');
+    expect(state().reactiveAbility).toBeNull();
+  });
+
+  it('Qui-Gon salta al ir a ganar escudos, y solo si ya tiene alguno', () => {
+    const QUIGON = '01037';
+    const ESCUDO = ['1Sh', '1Sh', '1Sh', '1Sh', '1Sh', '1Sh'];
+    setUpGame({
+      playerChars: [conCodigo(QUIGON, 'Qui-Gon Jinn', 10, ESCUDO)],
+      enemyChars: [conCodigo('VIC', 'Víctima', 10)],
+    });
+    // Sin escudos previos: no hay nada que quitarse, así que no interrumpe.
+    state().activate('player', 0);
+    useGameStore.setState({ turn: 'player' });
+    state().selectDie('player', 0);
+    state().applyDieTo('player', 0);
+    expect(state().reactiveAbility).toBeNull();
+    expect(state().sides.player.shields[0]).toBe(1);
+  });
+
+  it('Qui-Gon: usar la habilidad le quita 1 escudo y pega 1 a quien elijas', () => {
+    const QUIGON = '01037';
+    const ESCUDO = ['1Sh', '1Sh', '1Sh', '1Sh', '1Sh', '1Sh'];
+    setUpGame({
+      playerChars: [conCodigo(QUIGON, 'Qui-Gon Jinn', 10, ESCUDO)],
+      enemyChars: [conCodigo('VIC', 'Víctima', 10)],
+    });
+    useGameStore.setState({
+      sides: { ...state().sides, player: { ...state().sides.player, shields: [1] } },
+    });
+    state().activate('player', 0);
+    useGameStore.setState({ turn: 'player' });
+    state().selectDie('player', 0);
+    state().applyDieTo('player', 0);
+
+    expect(state().reactiveAbility?.code).toBe(QUIGON);
+    state().resolveReactive(true);
+    expect(state().reactiveAbility?.awaitingTarget).toBe(true); // espera objetivo
+
+    state().pickReactiveTarget('enemy', 0);
+    expect(state().sides.enemy.damage[0]).toBe(1); // pegó
+    // Perdió 1 escudo por el efecto y ganó 1 por el dado que disparó todo: se queda como estaba.
+    expect(state().sides.player.shields[0]).toBe(1);
     expect(state().reactiveAbility).toBeNull();
   });
 

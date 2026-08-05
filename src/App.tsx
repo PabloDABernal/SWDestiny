@@ -21,6 +21,8 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
   const indirectDistribution = useGameStore((st) => st.indirectDistribution);
   const pendingAbility = useGameStore((st) => st.pendingAbility);
   const abilityTargeting = useGameStore((st) => st.abilityTargeting);
+  const reactiveAbility = useGameStore((st) => st.reactiveAbility);
+  const pickReactiveTarget = useGameStore((st) => st.pickReactiveTarget);
   const allSides = useGameStore((st) => st.sides);
   const startAbility = useGameStore((st) => st.startAbility);
   const activate = useGameStore((st) => st.activate);
@@ -58,6 +60,9 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
   // Reparto de daño indirecto del autómata (SPEC-028): el jugador reparte clic a clic sobre sus
   // PROPIOS personajes, aunque no sea su turno (la acción sigue siendo del autómata).
   const distributingIndirect = outcome === null && indirectDistribution !== null && side === 'player';
+  // Qui-Gon esperando a que elijas a quién pega (SPEC-046): targetable en AMBOS bandos, su texto no
+  // los distingue ("a character").
+  const reactiveTargetable = outcome === null && reactiveAbility?.awaitingTarget === true;
   const isPlayer = side === 'player';
 
   return (
@@ -109,7 +114,7 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
                   health={currentHealth(c, dmg)}
                   shields={s.shields[i] ?? 0}
                   ko={ko}
-                  targetable={(targetableSide || vaderTargetable || upgradeTargetableSide || distributingIndirect) && !ko}
+                  targetable={(targetableSide || vaderTargetable || upgradeTargetableSide || distributingIndirect || reactiveTargetable) && !ko}
                   showActivate={isPlayer}
                   upgrades={upgradeCards}
                   activateDisabled={outcome !== null || playUpgrade !== null || mulligan !== null || pendingAbility !== null || turn !== side}
@@ -135,7 +140,9 @@ function BattleSide({ side, label }: { side: Side; label: string }) {
                       }
                     : {})}
                   onTarget={() =>
-                    distributingIndirect
+                    reactiveTargetable
+                      ? pickReactiveTarget(side, i)
+                      : distributingIndirect
                       ? distributeIndirect(i)
                       : upgradeTargetableSide
                         ? playUpgradeOn(i)
@@ -175,6 +182,8 @@ export function App() {
   const useAbility = useGameStore((s) => s.useAbility);
   const skipAbility = useGameStore((s) => s.skipAbility);
   const abilityTargeting = useGameStore((s) => s.abilityTargeting);
+  const reactiveAbility = useGameStore((s) => s.reactiveAbility);
+  const resolveReactive = useGameStore((s) => s.resolveReactive);
   // Jabba sin dados amarillos, Tusken con la mano sin cartas elegibles: el aviso sale igual (el
   // personaje se activó) pero "Usar" se deshabilita y solo cabe "No usar", como pide la spec.
   const pendingAbilityHasTargets = useGameStore((s) => {
@@ -296,6 +305,19 @@ export function App() {
             Usar
           </button>{' '}
           <button onClick={skipAbility}>No usar</button>
+        </p>
+      )}
+      {reactiveAbility && outcome === null && (
+        <p className="app__hint app__hint--ability">
+          {abilityFor(reactiveAbility.code)?.prompt}{' '}
+          {reactiveAbility.awaitingTarget ? (
+            <em>Pulsa el personaje al que quieres infligir 1 de daño.</em>
+          ) : (
+            <>
+              <button onClick={() => resolveReactive(true)}>Usar</button>{' '}
+              <button onClick={() => resolveReactive(false)}>No usar</button>
+            </>
+          )}
         </p>
       )}
       {abilityTargeting && abilityTargeting.side === 'player' && outcome === null && (

@@ -1008,7 +1008,23 @@ interface GameState {
    * responderse, CONTINÚA esa acción en vez de ceder el turno (que es lo que hace `pendingAbility`).
    * No se persiste, como el resto del estado de partida. */
   reactiveAbility:
-    | (ReactiveHit & { resume: { kind: 'applyDieTo'; targetSide: Side; index: number } | { kind: 'none' } })
+    | (ReactiveHit & {
+        resume:
+          | { kind: 'applyDieTo'; targetSide: Side; index: number }
+          | {
+              /** Ataque del autómata parado a la espera de tu decisión (SPEC-046). */
+              kind: 'enemyAttack';
+              dieIndices: number[];
+              targetIndex: number;
+              costReceiverIndex: number | null;
+              label: string;
+              total: number;
+              targetName: string;
+            }
+          | { kind: 'none' };
+        /** Qui-Gon: el jugador dijo "Usar" y ahora hay que elegir a quién pega (SPEC-046). */
+        awaitingTarget?: boolean;
+      })
     | null;
   /** Pases consecutivos sin ninguna acción real entre medias (SPEC-025). Al llegar a 2 dispara el
    * mantenimiento automático y se reinicia a 0. Cualquier acción real lo reinicia a 0. */
@@ -1154,6 +1170,8 @@ interface GameState {
   /** SPEC-046: responde al aviso de una habilidad reactiva (`true` = usarla) y CONTINÚA la acción
    *  que la disparó. No cede el turno, a diferencia de las habilidades de SPEC-042. */
   resolveReactive: (use: boolean) => void;
+  /** SPEC-046 (Qui-Gon): elige el personaje al que pega su 1 de daño, y continúa la acción. */
+  pickReactiveTarget: (side: Side, index: number) => void;
   enemyTurn: () => void;
 }
 
@@ -1365,6 +1383,31 @@ function reactiveAfterDefeated(
   return null;
 }
 
+/** ¿Usaría el autómata esta habilidad reactiva? Criterio simple y siempre decidible: nunca puede
+ *  quedarse esperando, porque no hay nadie a quien preguntar (esa fue la causa de los dos cuelgues
+ *  de SPEC-042). */
+function automatonWouldUseReactive(state: GameState, hit: ReactiveHit): boolean {
+  const ability = abilityFor(hit.code);
+  if (!ability) return false;
+  switch (ability.targeting.kind) {
+    case 'discardForShield':
+      return state.sides[hit.side].hand.length > 0; // Dooku: si le queda mano, se protege
+    case 'readySelf':
+      return true; // Bala-Tik: enderezarse nunca le perjudica
+    case 'chooseCharacter':
+      return false; // Qui-Gon: gastar un escudo por 1 de daño no le compensa de forma obvia
+    default:
+      return false;
+  }
+}
+
+/** Resuelve un aviso reactivo del bando ENEMIGO sin preguntar a nadie: decide el autómata.
+ *  Devuelve el estado ya con el efecto aplicado (o igual, si decide no usarla). */
+function resolveEnemyReactive(state: GameState, hit: ReactiveHit): GameState {
+  if (!automatonWouldUseReactive(state, hit)) return state;
+  return { ...state, ...applyReactiveEffect(state, hit) } as GameState;
+}
+
 /** Envuelve el resultado de una aplicación: si al aplicarla cayó alguien y eso dispara un reactivo
  *  `afterOpponentDefeated`, deja el aviso abierto. Si la partida terminó, NO se abre ningún aviso
  *  (criterio de la spec: no queda nada colgado en pantalla). */
@@ -1373,6 +1416,12 @@ function withAfterDefeated(antes: GameState, res: Partial<GameState>): Partial<G
   if (res.outcome != null) return res;
   const hit = reactiveAfterDefeated(antes.sides, res.sides);
   if (hit === null) return res;
+  // Si el reactivo es del ENEMIGO, decide el autómata en el acto: no se le pregunta al jugador por
+  // una carta que no controla, y nunca queda un aviso abierto del lado equivocado.
+  if (hit.side === 'enemy') {
+    const conEfecto = resolveEnemyReactive({ ...antes, ...res } as GameState, hit);
+    return { ...res, sides: conEfecto.sides };
+  }
   return { ...res, reactiveAbility: { ...hit, resume: { kind: 'none' } } };
 }
 
@@ -2220,6 +2269,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // resolución. Si hay que preguntar, la tanda se queda guardada y se aplica al responder.
       const reactivo = reactiveBeforeApply(state, targetSide, index);
       if (reactivo !== null) {
+        // Si el reactivo es de un personaje ENEMIGO (el jugador ataca al Dooku del autómata),
+        // decide el autómata sin preguntar; solo se para la partida si la decisión es tuya.
+        if (reactivo.side === 'enemy') {
+          const conEfecto = resolveEnemyReactive(state, reactivo);
+          return withAfterDefeated(conEfecto, applyDieToNow(conEfecto, targetSide, index));
+        }
         return {
           reactiveAbility: { ...reactivo, resume: { kind: 'applyDieTo' as const, targetSide, index } },
         };
@@ -2234,6 +2289,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((state) => {
       const cur = state.reactiveAbility;
       if (cur === null) return state;
+      // Qui-Gon necesita elegir a quién pega: se queda esperando el clic sobre un personaje, sin
+      // cerrar el aviso (`awaitingTarget`). La acción interrumpida sigue guardada mientras tanto.
+      if (use && abilityFor(cur.code)?.targeting.kind === 'chooseCharacter') {
+        return { reactiveAbility: { ...cur, awaitingTarget: true } };
+      }
       let next: GameState = { ...state, reactiveAbility: null };
       if (use) next = { ...next, ...applyReactiveEffect(next, cur) };
       // Continuar donde se había quedado. Ojo: esa aplicación puede provocar un KO que dispare OTRO
@@ -2243,7 +2303,72 @@ export const useGameStore = create<GameState>((set, get) => ({
         const res = withAfterDefeated(next, applyDieToNow(next, cur.resume.targetSide, cur.resume.index));
         return { ...next, ...res };
       }
+      if (cur.resume.kind === 'enemyAttack') {
+        // Continuar el ataque del autómata que se paró para preguntarte, y cerrar su turno.
+        const r = cur.resume;
+        const res = resolvePlayerBatch(
+          next.sides,
+          { side: 'enemy', symbol: 'melee', marked: r.dieIndices },
+          r.targetIndex,
+          r.costReceiverIndex,
+        );
+        if (res === null || res === 'no-base' || res === 'insufficient') {
+          return { ...next, reactiveAbility: null, turn: 'player', passStreak: 0 };
+        }
+        const conDaño: GameState = { ...next, sides: res.sides, outcome: res.outcome };
+        const tras = withAfterDefeated(next, { sides: res.sides, outcome: res.outcome });
+        return {
+          ...conDaño,
+          ...tras,
+          reactiveAbility: tras.reactiveAbility ?? null,
+          lastEnemyAction: `El enemigo ataca a ${r.targetName} con ${r.label} (${r.total} de daño).`,
+          turn: 'player',
+          passStreak: 0,
+        };
+      }
       return { ...next, reactiveAbility: null };
+    }),
+
+  pickReactiveTarget: (side: Side, index: number) =>
+    set((state) => {
+      const cur = state.reactiveAbility;
+      if (cur === null || cur.awaitingTarget !== true) return state;
+      const objetivo = state.sides[side].characters[index];
+      if (!objetivo || isKO(objetivo, state.sides[side].damage[index] ?? 0)) return state;
+
+      // Qui-Gon: pierde 1 escudo propio y le mete 1 de daño al elegido. Ese daño puede matarlo, así
+      // que se recalcula el resultado de partida.
+      const dueño = state.sides[cur.side];
+      const shieldsDueño = dueño.characters.map((_, i) => dueño.shields[i] ?? 0);
+      if ((shieldsDueño[cur.characterIndex] ?? 0) <= 0) return state;
+      shieldsDueño[cur.characterIndex] -= 1;
+
+      let sides: Record<Side, SideState> = {
+        ...state.sides,
+        [cur.side]: { ...dueño, shields: shieldsDueño },
+      };
+      const destino = sides[side];
+      const shieldsDestino = destino.characters.map((_, i) => destino.shields[i] ?? 0);
+      const damage = destino.characters.map((_, i) => destino.damage[i] ?? 0);
+      const golpe = resolveShieldedDamage(shieldsDestino[index] ?? 0, 1);
+      shieldsDestino[index] = golpe.shieldsRemaining;
+      damage[index] = (damage[index] ?? 0) + golpe.healthDamage;
+      sides = { ...sides, [side]: { ...destino, shields: shieldsDestino, damage } };
+
+      const outcome = computeOutcomePure(
+        { characters: sides.player.characters, damage: sides.player.damage },
+        { characters: sides.enemy.characters, damage: sides.enemy.damage },
+      );
+      const conEfecto: GameState = { ...state, sides, outcome, reactiveAbility: null };
+      // Continuar la acción interrumpida: los escudos que Qui-Gon iba a ganar se aplican igual.
+      if (cur.resume.kind === 'applyDieTo' && outcome === null) {
+        const res = withAfterDefeated(
+          conEfecto,
+          applyDieToNow(conEfecto, cur.resume.targetSide, cur.resume.index),
+        );
+        return { ...conEfecto, ...res };
+      }
+      return conEfecto;
     }),
 
   // Resuelve la tanda de recurso marcada (SPEC-008b/010): base + modificadores suman al contador,
@@ -2842,6 +2967,31 @@ export const useGameStore = create<GameState>((set, get) => ({
         const target = player.characters[action.targetIndex];
         const total = batchTotal(action.dieIndices);
         const label = batchLabel(action.dieIndices);
+        // Reactivo del DEFENSOR (SPEC-046): si el objetivo es un personaje tuyo con "antes de
+        // recibir daño", el turno del autómata se para aquí y espera tu decisión. La acción queda
+        // guardada en `reactiveAbility.resume` y se aplica al responder (`resolveReactive`).
+        const defensor = get().sides.player;
+        const golpe = resolveShieldedDamage(defensor.shields[action.targetIndex] ?? 0, total);
+        const abilityDef = abilityWithTrigger(target.code, 'beforeDamaged');
+        if (abilityDef && golpe.healthDamage > 0 && defensor.hand.length > 0) {
+          set({
+            reactiveAbility: {
+              side: 'player',
+              characterIndex: action.targetIndex,
+              code: target.code,
+              resume: {
+                kind: 'enemyAttack',
+                dieIndices: action.dieIndices,
+                targetIndex: action.targetIndex,
+                costReceiverIndex: action.costReceiverIndex,
+                label,
+                total,
+                targetName: target.name,
+              },
+            },
+          });
+          return;
+        }
         set((s) => {
           const res = resolvePlayerBatch(
             s.sides,
