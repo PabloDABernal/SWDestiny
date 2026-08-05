@@ -26,7 +26,16 @@ export function luminaraBoostAmount(targetOwnerIsUnique: boolean): number {
 /** Cuándo se dispara la habilidad.
  *  - `action`: la elige el jugador en su turno y **gasta la acción** (RR).
  *  - `afterActivate`: se dispara justo después de activar al personaje, antes de ceder el turno. */
-export type AbilityTrigger = 'action' | 'afterActivate';
+export type AbilityTrigger =
+  | 'action'
+  | 'afterActivate'
+  // --- Reactivos (SPEC-046): saltan en mitad de otra acción, no al pulsar algo ---
+  /** Antes de que este personaje reciba daño en la vida (los escudos ya descontados). */
+  | 'beforeDamaged'
+  /** Antes de que este personaje gane escudos. */
+  | 'beforeShielded'
+  /** Después de que un personaje del bando contrario sea derrotado. */
+  | 'afterOpponentDefeated';
 
 /** Qué hace falta elegir para aplicarla. `none` se aplica sola. */
 export type AbilityTargeting =
@@ -36,7 +45,14 @@ export type AbilityTargeting =
   /** Elegir un dado propio de APOYO y girarlo a la cara que se quiera. */
   | { kind: 'turnSupportDie' }
   /** Elegir una carta de la mano (personaje o mejora con dado) y una de sus caras. */
-  | { kind: 'discardHandCardForDie' };
+  | { kind: 'discardHandCardForDie' }
+  // --- SPEC-046 ---
+  /** Descartar una carta de la mano para que este personaje gane 1 escudo (Dooku). */
+  | { kind: 'discardForShield' }
+  /** Enderezarse a sí mismo, para poder volver a activarse esta ronda (Bala-Tik). */
+  | { kind: 'readySelf' }
+  /** Elegir un personaje de cualquier bando como objetivo (Qui-Gon). */
+  | { kind: 'chooseCharacter' };
 
 export interface CharacterAbility {
   /** Código de la carta de personaje. */
@@ -85,6 +101,28 @@ const ABILITIES: CharacterAbility[] = [
     optional: true,
     handCardTypes: ['character', 'upgrade'], // texto real: "character or upgrade dice"
     targeting: { kind: 'discardHandCardForDie' },
+  },
+  // --- Set 01, reactivos (SPEC-046) ---
+  {
+    code: '01009', // Count Dooku
+    trigger: 'beforeDamaged',
+    prompt: 'Count Dooku: puedes descartar una carta de tu mano para darle 1 escudo.',
+    optional: true,
+    targeting: { kind: 'discardForShield' },
+  },
+  {
+    code: '01019', // Bala-Tik
+    trigger: 'afterOpponentDefeated',
+    prompt: 'Bala-Tik: puedes enderezarlo (podrá volver a activarse esta ronda).',
+    optional: true,
+    targeting: { kind: 'readySelf' },
+  },
+  {
+    code: '01037', // Qui-Gon Jinn
+    trigger: 'beforeShielded',
+    prompt: 'Qui-Gon Jinn: puedes quitarle 1 escudo para infligir 1 de daño a un personaje.',
+    optional: true,
+    targeting: { kind: 'chooseCharacter' },
   },
   // --- Set 01, acción de turno ---
   {

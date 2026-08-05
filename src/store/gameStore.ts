@@ -1004,6 +1004,12 @@ interface GameState {
   /** Habilidad en curso que está pidiendo objetivos (SPEC-042). Bloquea el resto de acciones igual
    * que `pendingAbility`. */
   abilityTargeting: AbilityTargeting | null;
+  /** Aviso de habilidad REACTIVA pendiente (SPEC-046): salta en mitad de otra acción y, al
+   * responderse, CONTINÚA esa acción en vez de ceder el turno (que es lo que hace `pendingAbility`).
+   * No se persiste, como el resto del estado de partida. */
+  reactiveAbility:
+    | (ReactiveHit & { resume: { kind: 'applyDieTo'; targetSide: Side; index: number } | { kind: 'none' } })
+    | null;
   /** Pases consecutivos sin ninguna acción real entre medias (SPEC-025). Al llegar a 2 dispara el
    * mantenimiento automático y se reinicia a 0. Cualquier acción real lo reinicia a 0. */
   passStreak: number;
@@ -1145,6 +1151,9 @@ interface GameState {
   confirmAbility: () => void;
   /** SPEC-042: cancela sin aplicar nada. Una `Action -` cancelada NO gasta el turno. */
   cancelAbility: () => void;
+  /** SPEC-046: responde al aviso de una habilidad reactiva (`true` = usarla) y CONTINÚA la acción
+   *  que la disparó. No cede el turno, a diferencia de las habilidades de SPEC-042. */
+  resolveReactive: (use: boolean) => void;
   enemyTurn: () => void;
 }
 
@@ -1241,6 +1250,160 @@ function automatonPickAbilityTargets(
   }
 }
 
+// --- Habilidades reactivas (SPEC-046) ----------------------------------------------------------
+//
+// NO se pausa dentro de la resolución de daño: se comprueba en los BORDES. Antes de aplicar una
+// tanda se mira si el objetivo tiene un disparador que deba saltar; si lo tiene, se guarda la acción
+// y se pregunta. Al responder, la acción se aplica entera, de una vez. Así las funciones de daño
+// siguen siendo atómicas y nadie las interrumpe a medias (ver notas técnicas de SPEC-046).
+
+/** Aplica la tanda de daño/escudo sobre un objetivo, SIN mirar disparadores reactivos (ya se han
+ *  mirado antes). Es el cuerpo de `applyDieTo`, extraído para poder reanudarlo tras un aviso. */
+function applyDieToNow(state: GameState, targetSide: Side, index: number): Partial<GameState> {
+  const cur = state.resolve;
+  if (state.outcome !== null || cur === null || cur.marked.length === 0) return {};
+
+  // Recurso/especial se resuelven con su propio botón; focus/reroll con sus propias acciones de
+  // elegir dado objetivo (SPEC-023); indirecto también con su propio botón, sin elegir objetivo
+  // (SPEC-026); disrupt/descarte también (SPEC-029) — ninguno usa el clic sobre un personaje.
+  if (
+    cur.symbol === 'resource' ||
+    cur.symbol === 'special' ||
+    cur.symbol === 'focus' ||
+    cur.symbol === 'reroll' ||
+    cur.symbol === 'indirect' ||
+    cur.symbol === 'disrupt' ||
+    cur.symbol === 'discard'
+  ) {
+    return {};
+  }
+
+  // Elegir objetivo del efecto (daño → contrario; escudo → propio).
+  const wantSide = cur.symbol === 'shield' ? cur.side : opposite(cur.side);
+  if (targetSide !== wantSide) return {};
+  const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
+  if (!sums.hasBase) {
+    return { resolveError: 'Necesitas un dado base del mismo símbolo (un modificador solo no se resuelve).' };
+  }
+  if (state.sides[cur.side].resources < sums.resourceCost) {
+    return { resolveError: 'Recursos insuficientes para pagar el coste.' };
+  }
+  const costReceiverIndex =
+    sums.indirectCost > 0 ? indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost) : null;
+  const res = resolvePlayerBatch(state.sides, cur, index, costReceiverIndex);
+  if (res === null || res === 'no-base' || res === 'insufficient') return {};
+  return {
+    sides: res.sides,
+    outcome: res.outcome,
+    resolveError: null,
+    ...afterApply(cur, res),
+  };
+}
+
+/** Datos del aviso reactivo pendiente, sin la parte de "qué reanudar". */
+interface ReactiveHit {
+  side: Side;
+  characterIndex: number;
+  code: string;
+}
+
+/** ¿Debe saltar un disparador reactivo antes de aplicar esta tanda sobre `targetSide/index`?
+ *  Devuelve el aviso a mostrar, o null si no hay ninguno. */
+function reactiveBeforeApply(state: GameState, targetSide: Side, index: number): ReactiveHit | null {
+  const cur = state.resolve;
+  if (cur === null || state.outcome !== null) return null;
+  const target = state.sides[targetSide].characters[index];
+  if (!target) return null;
+  const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
+  const amount = sums.baseAmount + sums.modifierAmount;
+
+  if (cur.symbol === 'shield') {
+    const ability = abilityWithTrigger(target.code, 'beforeShielded');
+    if (!ability || amount <= 0) return null;
+    // Qui-Gon: hace falta que YA tenga algún escudo que quitarse.
+    if ((state.sides[targetSide].shields[index] ?? 0) <= 0) return null;
+    return { side: targetSide, characterIndex: index, code: target.code };
+  }
+
+  const ability = abilityWithTrigger(target.code, 'beforeDamaged');
+  if (!ability) return null;
+  // Solo salta si el golpe llega DE VERDAD a la vida: si los escudos ya lo absorbían, no se ofrece
+  // (criterio explícito de la spec).
+  const { healthDamage } = resolveShieldedDamage(state.sides[targetSide].shields[index] ?? 0, amount);
+  if (healthDamage <= 0) return null;
+  // Dooku: hace falta una carta en la mano que descartar.
+  if (ability.targeting.kind === 'discardForShield' && state.sides[targetSide].hand.length === 0) return null;
+  return { side: targetSide, characterIndex: index, code: target.code };
+}
+
+/** ¿Ha caído algún personaje en esta aplicación que dispare un `afterOpponentDefeated`?
+ *  Se compara el antes y el después, y se busca al reactivo en el bando CONTRARIO al del caído. */
+function reactiveAfterDefeated(
+  antes: Record<Side, SideState>,
+  despues: Record<Side, SideState>,
+): ReactiveHit | null {
+  for (const caido of SIDES) {
+    const s = despues[caido];
+    const hayNuevoKO = s.characters.some((c, i) => {
+      const yaEstaba = isKO(c, antes[caido].damage[i] ?? 0);
+      return !yaEstaba && isKO(c, s.damage[i] ?? 0);
+    });
+    if (!hayNuevoKO) continue;
+    // El reactivo lo tiene el bando contrario al del personaje derrotado.
+    const dueño = opposite(caido);
+    const lado = despues[dueño];
+    for (let i = 0; i < lado.characters.length; i++) {
+      const c = lado.characters[i];
+      if (isKO(c, lado.damage[i] ?? 0)) continue;
+      const ability = abilityWithTrigger(c.code, 'afterOpponentDefeated');
+      if (!ability) continue;
+      // Bala-Tik: solo tiene sentido si está activado (si no, no hay nada que enderezar).
+      if (ability.targeting.kind === 'readySelf' && lado.activated[i] !== true) continue;
+      return { side: dueño, characterIndex: i, code: c.code };
+    }
+  }
+  return null;
+}
+
+/** Envuelve el resultado de una aplicación: si al aplicarla cayó alguien y eso dispara un reactivo
+ *  `afterOpponentDefeated`, deja el aviso abierto. Si la partida terminó, NO se abre ningún aviso
+ *  (criterio de la spec: no queda nada colgado en pantalla). */
+function withAfterDefeated(antes: GameState, res: Partial<GameState>): Partial<GameState> {
+  if (!res.sides) return res;
+  if (res.outcome != null) return res;
+  const hit = reactiveAfterDefeated(antes.sides, res.sides);
+  if (hit === null) return res;
+  return { ...res, reactiveAbility: { ...hit, resume: { kind: 'none' } } };
+}
+
+/** Aplica el efecto de la habilidad reactiva aceptada. */
+function applyReactiveEffect(state: GameState, hit: ReactiveHit): Partial<GameState> {
+  const ability = abilityFor(hit.code);
+  if (!ability) return {};
+  const s = state.sides[hit.side];
+
+  switch (ability.targeting.kind) {
+    case 'discardForShield': {
+      // Count Dooku: descarta una carta de su mano y gana 1 escudo. El escudo entra ANTES de aplicar
+      // la tanda, así que absorbe ese mismo golpe (decisión del usuario, 2026-08-05).
+      if (s.hand.length === 0) return {};
+      const withDiscard = discardFromHand(hit.side, s, 1);
+      const shields = withDiscard.characters.map((_, i) => withDiscard.shields[i] ?? 0);
+      // Los escudos no se persisten: son estado de partida, como el pool o los daños.
+      shields[hit.characterIndex] = addShields(shields[hit.characterIndex] ?? 0, 1);
+      return { sides: { ...state.sides, [hit.side]: { ...withDiscard, shields } } };
+    }
+    case 'readySelf': {
+      // Bala-Tik: deja de estar activado, así que puede volver a activarse esta ronda.
+      const activated = s.characters.map((_, i) => s.activated[i] === true);
+      activated[hit.characterIndex] = false;
+      return { sides: { ...state.sides, [hit.side]: { ...s, activated } } };
+    }
+    default:
+      return {};
+  }
+}
+
 /** ¿Hay algo que elegir para esa habilidad ahora mismo? (SPEC-042). Sirve para no ofrecer un botón
  *  que solo lleva a una pantalla de selección vacía: Veers sin apoyos, Jabba sin dados amarillos,
  *  Tusken sin cartas elegibles, Leia sin más dados que el suyo. */
@@ -1272,6 +1435,14 @@ export function abilityHasTargets(
         if (!card || !Array.isArray(card.sides) || card.sides.length === 0) return false;
         return !ability.handCardTypes || ability.handCardTypes.includes(card.type_code);
       });
+    // --- Reactivos (SPEC-046): su "hay objetivo" se comprueba al dispararse, en
+    // `reactiveBeforeApply`, porque depende del golpe concreto que los provoca.
+    case 'discardForShield':
+      return sides[side].hand.length > 0;
+    case 'readySelf':
+      return sides[side].activated[characterIndex] === true;
+    case 'chooseCharacter':
+      return true;
   }
 }
 
@@ -1400,6 +1571,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   indirectDistribution: null,
   pendingAbility: null,
   abilityTargeting: null,
+  reactiveAbility: null,
   passStreak: 0,
   outcome: null,
   lastEnemyAction: null,
@@ -2044,44 +2216,34 @@ export const useGameStore = create<GameState>((set, get) => ({
   // a quién le toca, igual que ya hacía el autómata consigo mismo — un único clic resuelve todo.
   applyDieTo: (targetSide: Side, index: number) =>
     set((state) => {
-      const cur = state.resolve;
-      if (state.outcome !== null || cur === null || cur.marked.length === 0) return state;
-
-      // Recurso/especial se resuelven con su propio botón; focus/reroll con sus propias acciones
-      // de elegir dado objetivo (SPEC-023); indirecto también con su propio botón, sin elegir
-      // objetivo (SPEC-026: lo reparte el defensor, no quien ataca); disrupt/descarte también, sin
-      // objetivo de personaje (SPEC-029: afectan al bando rival entero) — ninguno de estos siete
-      // usa el clic sobre un personaje.
-      if (
-        cur.symbol === 'resource' ||
-        cur.symbol === 'special' ||
-        cur.symbol === 'focus' ||
-        cur.symbol === 'reroll' ||
-        cur.symbol === 'indirect' ||
-        cur.symbol === 'disrupt' ||
-        cur.symbol === 'discard'
-      ) {
-        return state;
+      // Disparador reactivo del objetivo (SPEC-046): se pregunta ANTES de aplicar, no a mitad de la
+      // resolución. Si hay que preguntar, la tanda se queda guardada y se aplica al responder.
+      const reactivo = reactiveBeforeApply(state, targetSide, index);
+      if (reactivo !== null) {
+        return {
+          reactiveAbility: { ...reactivo, resume: { kind: 'applyDieTo' as const, targetSide, index } },
+        };
       }
+      return withAfterDefeated(state, applyDieToNow(state, targetSide, index));
+    }),
 
-      // Elegir objetivo del efecto (daño → contrario; escudo → propio).
-      const wantSide = cur.symbol === 'shield' ? cur.side : opposite(cur.side);
-      if (targetSide !== wantSide) return state;
-      const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
-      if (!sums.hasBase) return { resolveError: 'Necesitas un dado base del mismo símbolo (un modificador solo no se resuelve).' };
-      if (state.sides[cur.side].resources < sums.resourceCost) {
-        return { resolveError: 'Recursos insuficientes para pagar el coste.' };
+  /** Responde al aviso de una habilidad reactiva (SPEC-046) y CONTINÚA la acción interrumpida.
+   *  A diferencia de las habilidades de SPEC-042, esto NO cede el turno: la acción que disparó el
+   *  aviso sigue siendo de quien la empezó. */
+  resolveReactive: (use: boolean) =>
+    set((state) => {
+      const cur = state.reactiveAbility;
+      if (cur === null) return state;
+      let next: GameState = { ...state, reactiveAbility: null };
+      if (use) next = { ...next, ...applyReactiveEffect(next, cur) };
+      // Continuar donde se había quedado. Ojo: esa aplicación puede provocar un KO que dispare OTRO
+      // reactivo (el daño mata a Dooku y eso despierta al Bala-Tik rival), así que se vuelve a
+      // comprobar. Nunca hay dos avisos a la vez: este se cierra antes de abrirse el siguiente.
+      if (cur.resume.kind === 'applyDieTo') {
+        const res = withAfterDefeated(next, applyDieToNow(next, cur.resume.targetSide, cur.resume.index));
+        return { ...next, ...res };
       }
-      const costReceiverIndex =
-        sums.indirectCost > 0 ? indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost) : null;
-      const res = resolvePlayerBatch(state.sides, cur, index, costReceiverIndex);
-      if (res === null || res === 'no-base' || res === 'insufficient') return state;
-      return {
-        sides: res.sides,
-        outcome: res.outcome,
-        resolveError: null,
-        ...afterApply(cur, res),
-      };
+      return { ...next, reactiveAbility: null };
     }),
 
   // Resuelve la tanda de recurso marcada (SPEC-008b/010): base + modificadores suman al contador,

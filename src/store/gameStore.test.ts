@@ -59,6 +59,7 @@ function setUpGame(options: { playerChars?: Character[]; enemyChars?: Character[
     // del store tiene que añadirse aquí.
     pendingAbility: null,
     abilityTargeting: null,
+    reactiveAbility: null,
     turn: 'player',
     passStreak: 0,
     outcome: null,
@@ -542,6 +543,227 @@ describe('habilidades con objetivo (SPEC-042)', () => {
     state().startAbility('player', 0);
     state().pickAbilityDie('player', 0); // su propio dado NO es de apoyo
     expect(state().abilityTargeting?.faceTarget).toBeNull();
+  });
+});
+
+describe('caminos de daño — red para SPEC-046', () => {
+  // Fija el comportamiento ACTUAL de los sitios por los que entra daño a un personaje, que es donde
+  // SPEC-046 va a enganchar los disparadores reactivos (Dooku "antes de recibir daño"). Si al meter
+  // esos ganchos alguno de estos caminos cambia sin querer, salta aquí.
+
+  it('los escudos absorben antes que la vida', () => {
+    setUpGame({
+      playerChars: [character('Héroe', 10, [['2MD', '2MD', '2MD', '2MD', '2MD', '2MD']])],
+      enemyChars: [character('Villano', 10)],
+    });
+    useGameStore.setState({
+      sides: { ...state().sides, enemy: { ...state().sides.enemy, shields: [1] } },
+    });
+    state().activate('player', 0);
+    useGameStore.setState({ turn: 'player' });
+    state().selectDie('player', 0);
+    state().applyDieTo('enemy', 0);
+
+    // 2 de daño contra 1 escudo: se come el escudo y entra 1 a la vida.
+    expect(state().sides.enemy.shields[0]).toBe(0);
+    expect(state().sides.enemy.damage[0]).toBe(1);
+  });
+
+  it('con escudos de sobra no entra nada a la vida', () => {
+    setUpGame({
+      playerChars: [character('Héroe', 10, [['1MD', '1MD', '1MD', '1MD', '1MD', '1MD']])],
+      enemyChars: [character('Villano', 10)],
+    });
+    useGameStore.setState({
+      sides: { ...state().sides, enemy: { ...state().sides.enemy, shields: [3] } },
+    });
+    state().activate('player', 0);
+    useGameStore.setState({ turn: 'player' });
+    state().selectDie('player', 0);
+    state().applyDieTo('enemy', 0);
+
+    // Este es el caso en el que SPEC-046 NO debe ofrecer el aviso de Dooku: el golpe no llega a la vida.
+    expect(state().sides.enemy.shields[0]).toBe(2);
+    expect(state().sides.enemy.damage[0]).toBe(0);
+  });
+
+  it('el reparto de daño indirecto del enemigo entra por su propio camino', () => {
+    setUpGame({
+      playerChars: [character('Héroe', 10), character('Otro', 10)],
+      enemyChars: [character('Villano', 10)],
+    });
+    useGameStore.setState({ indirectDistribution: { pending: 2 }, turn: 'enemy' });
+
+    state().distributeIndirect(0);
+    expect(state().sides.player.damage[0]).toBe(1);
+    expect(state().indirectDistribution).toEqual({ pending: 1 });
+
+    state().distributeIndirect(1);
+    expect(state().sides.player.damage[1]).toBe(1);
+    expect(state().indirectDistribution).toBeNull();
+  });
+
+  it('el KO se dispara al llegar el daño a la vida, no antes', () => {
+    setUpGame({
+      playerChars: [character('Héroe', 10, [['2MD', '2MD', '2MD', '2MD', '2MD', '2MD']])],
+      enemyChars: [character('Villano', 2)],
+    });
+    state().activate('player', 0);
+    useGameStore.setState({ turn: 'player' });
+    state().selectDie('player', 0);
+    state().applyDieTo('enemy', 0);
+
+    expect(state().sides.enemy.damage[0]).toBe(2);
+    expect(state().outcome).toBe('victory');
+  });
+});
+
+describe('habilidades reactivas (SPEC-046)', () => {
+  const DOOKU = '01009'; // Antes de recibir daño: descarta una carta para ganar 1 escudo
+  const BALATIK = '01019'; // Tras caer un rival: puedes enderezarlo
+  const ATACANTE = ['2MD', '2MD', '2MD', '2MD', '2MD', '2MD'];
+
+  const conCodigo = (code: string, name: string, health: number, faces = ATACANTE): Character => ({
+    code,
+    name,
+    health,
+    isUnique: true,
+    isElite: false,
+    dice: [{ sides: faces }],
+  });
+
+  /** Deja al jugador con un dado de 2 de daño marcado, listo para mandarlo a un enemigo. */
+  function conDadoListo() {
+    state().activate('player', 0);
+    useGameStore.setState({ turn: 'player' });
+    state().selectDie('player', 0);
+  }
+
+  it('Dooku pide decisión ANTES de recibir el daño, sin aplicarlo todavía', () => {
+    setUpGame({
+      playerChars: [conCodigo('ATA', 'Atacante', 10)],
+      enemyChars: [conCodigo(DOOKU, 'Count Dooku', 10)],
+    });
+    useGameStore.setState({
+      sides: { ...state().sides, enemy: { ...state().sides.enemy, hand: ['01001'] } },
+    });
+    conDadoListo();
+    state().applyDieTo('enemy', 0);
+
+    expect(state().reactiveAbility?.code).toBe(DOOKU);
+    expect(state().sides.enemy.damage[0]).toBe(0); // el daño AÚN no ha entrado
+  });
+
+  it('usar la habilidad de Dooku descarta una carta y el escudo absorbe ese mismo golpe', () => {
+    setUpGame({
+      playerChars: [conCodigo('ATA', 'Atacante', 10)],
+      enemyChars: [conCodigo(DOOKU, 'Count Dooku', 10)],
+    });
+    useGameStore.setState({
+      sides: { ...state().sides, enemy: { ...state().sides.enemy, hand: ['01001'] } },
+    });
+    conDadoListo();
+    state().applyDieTo('enemy', 0);
+    state().resolveReactive(true);
+
+    expect(state().sides.enemy.hand).toHaveLength(0); // descartó
+    // 2 de daño contra el escudo recién ganado: absorbe 1, entra 1. Ese es el criterio del usuario.
+    expect(state().sides.enemy.damage[0]).toBe(1);
+    expect(state().reactiveAbility).toBeNull();
+  });
+
+  it('renunciar deja entrar el daño entero', () => {
+    setUpGame({
+      playerChars: [conCodigo('ATA', 'Atacante', 10)],
+      enemyChars: [conCodigo(DOOKU, 'Count Dooku', 10)],
+    });
+    useGameStore.setState({
+      sides: { ...state().sides, enemy: { ...state().sides.enemy, hand: ['01001'] } },
+    });
+    conDadoListo();
+    state().applyDieTo('enemy', 0);
+    state().resolveReactive(false);
+
+    expect(state().sides.enemy.hand).toHaveLength(1); // no descartó
+    expect(state().sides.enemy.damage[0]).toBe(2);
+    expect(state().reactiveAbility).toBeNull();
+  });
+
+  it('con la mano vacía Dooku no interrumpe nada', () => {
+    setUpGame({
+      playerChars: [conCodigo('ATA', 'Atacante', 10)],
+      enemyChars: [conCodigo(DOOKU, 'Count Dooku', 10)],
+    });
+    conDadoListo();
+    state().applyDieTo('enemy', 0);
+
+    expect(state().reactiveAbility).toBeNull();
+    expect(state().sides.enemy.damage[0]).toBe(2);
+  });
+
+  it('si los escudos ya absorbían el golpe, Dooku no se dispara', () => {
+    setUpGame({
+      playerChars: [conCodigo('ATA', 'Atacante', 10)],
+      enemyChars: [conCodigo(DOOKU, 'Count Dooku', 10)],
+    });
+    useGameStore.setState({
+      sides: {
+        ...state().sides,
+        enemy: { ...state().sides.enemy, hand: ['01001'], shields: [3] },
+      },
+    });
+    conDadoListo();
+    state().applyDieTo('enemy', 0);
+
+    expect(state().reactiveAbility).toBeNull();
+    expect(state().sides.enemy.damage[0]).toBe(0);
+    expect(state().sides.enemy.shields[0]).toBe(1);
+  });
+
+  it('Bala-Tik se ofrece tras caer un rival, y enderezarlo le deja volver a activarse', () => {
+    setUpGame({
+      playerChars: [conCodigo('ATA', 'Atacante', 10), conCodigo(BALATIK, 'Bala-Tik', 10)],
+      enemyChars: [conCodigo('VIC', 'Víctima', 2), conCodigo('OTRO', 'Otro', 10)],
+    });
+    // Bala-Tik ya activado: si no, no hay nada que enderezar.
+    useGameStore.setState({
+      sides: { ...state().sides, player: { ...state().sides.player, activated: [false, true] } },
+    });
+    conDadoListo();
+    state().applyDieTo('enemy', 0); // 2 de daño a un enemigo de 2 de vida → cae
+
+    expect(state().sides.enemy.damage[0]).toBe(2);
+    expect(state().reactiveAbility?.code).toBe(BALATIK);
+
+    state().resolveReactive(true);
+    expect(state().sides.player.activated[1]).toBe(false); // enderezado
+    expect(state().reactiveAbility).toBeNull();
+  });
+
+  it('si el KO termina la partida no queda ningún aviso colgado', () => {
+    setUpGame({
+      playerChars: [conCodigo('ATA', 'Atacante', 10), conCodigo(BALATIK, 'Bala-Tik', 10)],
+      enemyChars: [conCodigo('VIC', 'Víctima', 2)], // único enemigo: su KO da la victoria
+    });
+    useGameStore.setState({
+      sides: { ...state().sides, player: { ...state().sides.player, activated: [false, true] } },
+    });
+    conDadoListo();
+    state().applyDieTo('enemy', 0);
+
+    expect(state().outcome).toBe('victory');
+    expect(state().reactiveAbility).toBeNull();
+  });
+
+  it('Bala-Tik sin activar no se ofrece', () => {
+    setUpGame({
+      playerChars: [conCodigo('ATA', 'Atacante', 10), conCodigo(BALATIK, 'Bala-Tik', 10)],
+      enemyChars: [conCodigo('VIC', 'Víctima', 2), conCodigo('OTRO', 'Otro', 10)],
+    });
+    conDadoListo();
+    state().applyDieTo('enemy', 0);
+
+    expect(state().reactiveAbility).toBeNull();
   });
 });
 
