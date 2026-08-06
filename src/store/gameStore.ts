@@ -1023,11 +1023,18 @@ interface GameState {
               targetName: string;
             }
           | { kind: 'distributeIndirect'; characterIndex: number }
+          /** Reanudar una acción del store tal cual, volviéndola a llamar (SPEC-046). Sirve para
+           *  las que pagan coste indirecto propio, que son seis y comparten forma. */
+          | { kind: 'retryAction'; action: RetryableAction }
+          | { kind: 'vaderTarget'; targetSide: Side; targetIndex: number }
           | { kind: 'none' };
         /** Qui-Gon: el jugador dijo "Usar" y ahora hay que elegir a quién pega (SPEC-046). */
         awaitingTarget?: boolean;
       })
     | null;
+  /** Personaje al que ya se le preguntó por su reactivo en la acción en curso (SPEC-046). Evita
+   * volver a preguntar al reanudarla, que sería un bucle. Se limpia al terminar la acción. */
+  reactiveHandled: { side: Side; characterIndex: number } | null;
   /** Pases consecutivos sin ninguna acción real entre medias (SPEC-025). Al llegar a 2 dispara el
    * mantenimiento automático y se reinicia a 0. Cualquier acción real lo reinicia a 0. */
   passStreak: number;
@@ -1356,6 +1363,16 @@ function distributeIndirectNow(state: GameState, characterIndex: number): Partia
   return { sides, outcome, indirectDistribution: { pending } };
 }
 
+/** Acciones que pagan coste indirecto propio y por tanto pueden hacer saltar un `beforeDamaged`
+ *  sobre un personaje del que las usa. Se reanudan volviéndolas a llamar tal cual. */
+type RetryableAction =
+  | 'resolveResources'
+  | 'confirmFocus'
+  | 'confirmReroll'
+  | 'resolveDisrupt'
+  | 'resolveDiscard'
+  | 'resolveIndirect';
+
 /** Datos del aviso reactivo pendiente, sin la parte de "qué reanudar". */
 interface ReactiveHit {
   side: Side;
@@ -1497,6 +1514,29 @@ function withAfterDefeated(antes: GameState, res: Partial<GameState>): Partial<G
     return { ...res, sides: conEfecto.sides };
   }
   return { ...res, reactiveAbility: { ...hit, resume: { kind: 'none' } } };
+}
+
+/** ¿El receptor del coste indirecto propio tiene un `beforeDamaged` que deba saltar? (SPEC-046).
+ *  Pagar un dado con daño a los tuyos también es "recibir daño", así que Dooku reacciona.
+ *  `yaPreguntado` evita volver a preguntar al reanudar la misma acción (si no, bucle infinito). */
+function reactiveOnIndirectCost(state: GameState, action: RetryableAction): ReactiveHit | null {
+  const cur = state.resolve;
+  if (cur === null || state.outcome !== null) return null;
+  const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
+  if (sums.indirectCost <= 0) return null;
+  const receptor = indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost);
+  if (receptor === null) return null;
+  const s = state.sides[cur.side];
+  const ch = s.characters[receptor];
+  if (!ch) return null;
+  if (state.reactiveHandled?.side === cur.side && state.reactiveHandled.characterIndex === receptor) return null;
+  const ability = abilityWithTrigger(ch.code, 'beforeDamaged');
+  if (!ability) return null;
+  if (resolveShieldedDamage(s.shields[receptor] ?? 0, sums.indirectCost).healthDamage <= 0) return null;
+  // Si es del autómata, decide él: no se pregunta al jugador por una carta que no controla.
+  if (cur.side === 'enemy') return null;
+  void action;
+  return { side: cur.side, characterIndex: receptor, code: ch.code };
 }
 
 /** Aplica el efecto de la habilidad reactiva aceptada. */
@@ -1695,6 +1735,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   pendingAbility: null,
   abilityTargeting: null,
   reactiveAbility: null,
+  reactiveHandled: null,
   passStreak: 0,
   outcome: null,
   lastEnemyAction: null,
@@ -2363,7 +2404,26 @@ export const useGameStore = create<GameState>((set, get) => ({
   /** Responde al aviso de una habilidad reactiva (SPEC-046) y CONTINÚA la acción interrumpida.
    *  A diferencia de las habilidades de SPEC-042, esto NO cede el turno: la acción que disparó el
    *  aviso sigue siendo de quien la empezó. */
-  resolveReactive: (use: boolean) =>
+  resolveReactive: (use: boolean) => {
+    // Las acciones que pagan coste indirecto se reanudan volviéndolas a llamar, y eso no se puede
+    // hacer dentro de un `set`. Por eso esta acción no es un `set` suelto como las demás.
+    const pendiente = get().reactiveAbility;
+    const resume = pendiente?.resume;
+    if (pendiente !== null && (resume?.kind === 'retryAction' || resume?.kind === 'vaderTarget')) {
+      set((state) => {
+        const conEfecto = use ? applyReactiveEffect(state, pendiente) : {};
+        return {
+          ...conEfecto,
+          reactiveAbility: null,
+          // Marca para que al reanudar no se vuelva a preguntar por el mismo personaje.
+          reactiveHandled: { side: pendiente.side, characterIndex: pendiente.characterIndex },
+        };
+      });
+      if (resume.kind === 'retryAction') get()[resume.action]();
+      else get().resolveVaderTarget(resume.targetSide, resume.targetIndex);
+      set({ reactiveHandled: null });
+      return;
+    }
     set((state) => {
       const cur = state.reactiveAbility;
       if (cur === null) return state;
@@ -2409,7 +2469,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         };
       }
       return { ...next, reactiveAbility: null };
-    }),
+    });
+  },
 
   pickReactiveTarget: (side: Side, index: number) =>
     set((state) => {
@@ -2455,6 +2516,12 @@ export const useGameStore = create<GameState>((set, get) => ({
   // pagando el coste de recurso. Si hay coste indirecto, pasa al paso de receptor (atómico).
   resolveResources: () =>
     set((state) => {
+      // Reactivo del receptor del coste indirecto propio (SPEC-046): pagar un dado con daño a
+      // los tuyos también es "recibir daño".
+      const reactivoCoste = reactiveOnIndirectCost(state, 'resolveResources');
+      if (reactivoCoste !== null) {
+        return { reactiveAbility: { ...reactivoCoste, resume: { kind: 'retryAction' as const, action: 'resolveResources' as const } } };
+      }
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.symbol !== 'resource') return state;
       if (cur.marked.length === 0) return state;
@@ -2532,6 +2599,12 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   confirmFocus: () =>
     set((state) => {
+      // Reactivo del receptor del coste indirecto propio (SPEC-046): pagar un dado con daño a
+      // los tuyos también es "recibir daño".
+      const reactivoCoste = reactiveOnIndirectCost(state, 'confirmFocus');
+      if (reactivoCoste !== null) {
+        return { reactiveAbility: { ...reactivoCoste, resume: { kind: 'retryAction' as const, action: 'confirmFocus' as const } } };
+      }
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.symbol !== 'focus') return state;
       if (cur.focusFaceChoice != null) return state;
@@ -2580,6 +2653,12 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   confirmReroll: () =>
     set((state) => {
+      // Reactivo del receptor del coste indirecto propio (SPEC-046): pagar un dado con daño a
+      // los tuyos también es "recibir daño".
+      const reactivoCoste = reactiveOnIndirectCost(state, 'confirmReroll');
+      if (reactivoCoste !== null) {
+        return { reactiveAbility: { ...reactivoCoste, resume: { kind: 'retryAction' as const, action: 'confirmReroll' as const } } };
+      }
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.symbol !== 'reroll') return state;
       const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
@@ -2724,6 +2803,25 @@ export const useGameStore = create<GameState>((set, get) => ({
       const target = state.sides[targetSide];
       const targetChar = target.characters[targetIndex];
       if (!targetChar || isKO(targetChar, target.damage[targetIndex] ?? 0)) return state;
+
+      // Reactivo del objetivo (SPEC-046): el daño fijo del Especial de Vader también es daño, así
+      // que un Dooku apuntado reacciona antes de recibirlo. Solo se pregunta si es del jugador.
+      if (
+        state.reactiveAbility === null &&
+        targetSide === 'player' &&
+        abilityWithTrigger(targetChar.code, 'beforeDamaged') &&
+        !(state.reactiveHandled?.side === targetSide && state.reactiveHandled.characterIndex === targetIndex) &&
+        resolveShieldedDamage(target.shields[targetIndex] ?? 0, 3).healthDamage > 0
+      ) {
+        return {
+          reactiveAbility: {
+            side: targetSide,
+            characterIndex: targetIndex,
+            code: targetChar.code,
+            resume: { kind: 'vaderTarget', targetSide, targetIndex },
+          },
+        };
+      }
       const vaderIndex = die.characterIndex;
       const vaderChar = own.characters[vaderIndex];
       if (!vaderChar) return state;
@@ -2748,6 +2846,12 @@ export const useGameStore = create<GameState>((set, get) => ({
   // valor solo entre sus personajes (distributeIncomingDamage, src/game/automaton.ts).
   resolveIndirect: () =>
     set((state) => {
+      // Reactivo del receptor del coste indirecto propio (SPEC-046): pagar un dado con daño a
+      // los tuyos también es "recibir daño".
+      const reactivoCoste = reactiveOnIndirectCost(state, 'resolveIndirect');
+      if (reactivoCoste !== null) {
+        return { reactiveAbility: { ...reactivoCoste, resume: { kind: 'retryAction' as const, action: 'resolveIndirect' as const } } };
+      }
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.symbol !== 'indirect') return state;
       if (cur.marked.length === 0) return state;
@@ -2798,6 +2902,12 @@ export const useGameStore = create<GameState>((set, get) => ({
   // no gana nada (los recursos del rival solo desaparecen, no es "robar").
   resolveDisrupt: () =>
     set((state) => {
+      // Reactivo del receptor del coste indirecto propio (SPEC-046): pagar un dado con daño a
+      // los tuyos también es "recibir daño".
+      const reactivoCoste = reactiveOnIndirectCost(state, 'resolveDisrupt');
+      if (reactivoCoste !== null) {
+        return { reactiveAbility: { ...reactivoCoste, resume: { kind: 'retryAction' as const, action: 'resolveDisrupt' as const } } };
+      }
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.symbol !== 'disrupt') return state;
       if (cur.marked.length === 0) return state;
@@ -2823,6 +2933,12 @@ export const useGameStore = create<GameState>((set, get) => ({
   // real (Math.random), tanto si lo sufre el jugador como el autómata.
   resolveDiscard: () =>
     set((state) => {
+      // Reactivo del receptor del coste indirecto propio (SPEC-046): pagar un dado con daño a
+      // los tuyos también es "recibir daño".
+      const reactivoCoste = reactiveOnIndirectCost(state, 'resolveDiscard');
+      if (reactivoCoste !== null) {
+        return { reactiveAbility: { ...reactivoCoste, resume: { kind: 'retryAction' as const, action: 'resolveDiscard' as const } } };
+      }
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.symbol !== 'discard') return state;
       if (cur.marked.length === 0) return state;

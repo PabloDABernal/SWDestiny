@@ -946,6 +946,53 @@ describe('habilidades reactivas (SPEC-046)', () => {
     expect(state().indirectDistribution).toEqual({ pending: 1 }); // el reparto continúa
   });
 
+  it('Dooku reacciona al coste indirecto que paga su propio bando', () => {
+    // Caso límite de la spec: pagar un dado con daño a los tuyos también es "recibir daño".
+    // La cara `2Ri1` es recurso 2 con coste de 1 de daño indirecto propio.
+    setUpGame({
+      playerChars: [
+        conCodigo(DOOKU, 'Count Dooku', 10, ['2Ri1', '2Ri1', '2Ri1', '2Ri1', '2Ri1', '2Ri1']),
+      ],
+      enemyChars: [conCodigo('ATA', 'Atacante', 10)],
+    });
+    useGameStore.setState({
+      sides: { ...state().sides, player: { ...state().sides.player, hand: ['01001'] } },
+    });
+    state().activate('player', 0);
+    useGameStore.setState({ turn: 'player' });
+    state().selectDie('player', 0);
+    state().resolveResources();
+
+    expect(state().reactiveAbility?.code).toBe(DOOKU);
+
+    state().resolveReactive(true);
+    expect(state().sides.player.hand).toHaveLength(0); // descartó para protegerse
+    expect(state().sides.player.damage[0]).toBe(0); // el escudo absorbió el coste
+    expect(state().reactiveAbility).toBeNull();
+    expect(state().reactiveHandled).toBeNull(); // la marca se limpia al terminar
+  });
+
+  it('reanudar tras el aviso no vuelve a preguntar por el mismo personaje', () => {
+    // Sin la marca `reactiveHandled`, reanudar la acción volvería a disparar el mismo aviso: bucle.
+    setUpGame({
+      playerChars: [
+        conCodigo(DOOKU, 'Count Dooku', 10, ['2Ri1', '2Ri1', '2Ri1', '2Ri1', '2Ri1', '2Ri1']),
+      ],
+      enemyChars: [conCodigo('ATA', 'Atacante', 10)],
+    });
+    useGameStore.setState({
+      sides: { ...state().sides, player: { ...state().sides.player, hand: ['01001'] } },
+    });
+    state().activate('player', 0);
+    useGameStore.setState({ turn: 'player' });
+    state().selectDie('player', 0);
+    state().resolveResources();
+    state().resolveReactive(false); // renuncia
+
+    expect(state().reactiveAbility).toBeNull(); // no vuelve a preguntar
+    expect(state().sides.player.resources).toBeGreaterThan(2); // y el recurso se resolvió
+  });
+
   it('Bala-Tik sin activar no se ofrece', () => {
     setUpGame({
       playerChars: [conCodigo('ATA', 'Atacante', 10), conCodigo(BALATIK, 'Bala-Tik', 10)],
