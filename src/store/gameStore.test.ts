@@ -840,6 +840,112 @@ describe('habilidades reactivas (SPEC-046)', () => {
     expect(state().reactiveAbility).toBeNull();
   });
 
+  it('con un aviso reactivo abierto no se puede hacer otra cosa', () => {
+    // Bloqueante que encontró revisor-codigo: sin este guard se podía mandar el dado a otro objetivo
+    // con el aviso de Qui-Gon en pantalla, y la acción guardada se perdía en silencio.
+    const QUIGON = '01037';
+    const ESCUDO = ['1Sh', '1Sh', '1Sh', '1Sh', '1Sh', '1Sh'];
+    setUpGame({
+      playerChars: [conCodigo(QUIGON, 'Qui-Gon Jinn', 10, ESCUDO)],
+      enemyChars: [conCodigo('VIC', 'Víctima', 10)],
+    });
+    useGameStore.setState({
+      sides: { ...state().sides, player: { ...state().sides.player, shields: [1] } },
+    });
+    state().activate('player', 0);
+    useGameStore.setState({ turn: 'player' });
+    state().selectDie('player', 0);
+    state().applyDieTo('player', 0);
+    expect(state().reactiveAbility).not.toBeNull();
+
+    const antes = JSON.stringify(state().sides);
+    state().applyDieTo('enemy', 0); // intento de colar otra acción
+    state().activate('player', 0);
+    expect(JSON.stringify(state().sides)).toBe(antes); // no ha pasado nada
+    expect(state().reactiveAbility).not.toBeNull(); // el aviso sigue ahí
+  });
+
+  it('un KO causado por Qui-Gon limpia los dados y las mejoras del muerto', () => {
+    // Bloqueante de revisor-codigo: duplicaba el cálculo del daño y dejaba el KO a medio limpiar.
+    const QUIGON = '01037';
+    const ESCUDO = ['1Sh', '1Sh', '1Sh', '1Sh', '1Sh', '1Sh'];
+    setUpGame({
+      playerChars: [conCodigo(QUIGON, 'Qui-Gon Jinn', 10, ESCUDO)],
+      enemyChars: [conCodigo('VIC', 'Víctima', 1)], // muere con 1 de daño
+    });
+    useGameStore.setState({
+      sides: {
+        ...state().sides,
+        player: { ...state().sides.player, shields: [1] },
+        enemy: {
+          ...state().sides.enemy,
+          upgrades: [['01008']],
+          pool: [{ characterIndex: 0, code: 'VIC', name: 'Víctima', dieIndex: 0, face: '2MD' }],
+        },
+      },
+    });
+    state().activate('player', 0);
+    useGameStore.setState({ turn: 'player' });
+    state().selectDie('player', 0);
+    state().applyDieTo('player', 0);
+    state().resolveReactive(true);
+    state().pickReactiveTarget('enemy', 0);
+
+    expect(state().sides.enemy.damage[0]).toBe(1);
+    expect(state().sides.enemy.pool).toHaveLength(0); // su dado se retiró
+    expect(state().sides.enemy.upgrades[0]).toEqual([]); // su mejora se descartó
+  });
+
+  it('Bala-Tik reacciona a un KO causado por el ataque normal del autómata', () => {
+    // Bloqueante de revisor-codigo: solo saltaba si además había un Dooku parando la acción.
+    setUpGame({
+      // Dos personajes: si muriera el único, la partida terminaría y no debe saltar ningún aviso.
+      playerChars: [conCodigo('VIC', 'Víctima', 2), conCodigo('OTRO', 'Otro', 10)],
+      enemyChars: [conCodigo('ATA', 'Atacante', 10), conCodigo(BALATIK, 'Bala-Tik', 10)],
+    });
+    useGameStore.setState({
+      turn: 'enemy',
+      sides: {
+        ...state().sides,
+        enemy: {
+          ...state().sides.enemy,
+          activated: [true, true], // Bala-Tik activado: hay algo que enderezar
+          pool: [{ characterIndex: 0, code: 'ATA', name: 'Atacante', dieIndex: 0, face: '2MD' }],
+        },
+      },
+    });
+
+    state().enemyTurn(); // ataca y mata
+
+    expect(state().sides.player.damage[0]).toBe(2);
+    // Es el Bala-Tik del AUTÓMATA: lo decide él y se endereza solo, sin preguntar.
+    expect(state().sides.enemy.activated[1]).toBe(false);
+    expect(state().reactiveAbility).toBeNull();
+  });
+
+  it('Dooku también reacciona al repartir daño indirecto sobre él', () => {
+    // Caso límite explícito de la spec: repartir indirecto sobre tu propio Dooku también es
+    // "recibir daño". No estaba enganchado (lo cazó revisor-codigo).
+    setUpGame({
+      playerChars: [conCodigo(DOOKU, 'Count Dooku', 10), conCodigo('OTRO', 'Otro', 10)],
+      enemyChars: [conCodigo('ATA', 'Atacante', 10)],
+    });
+    useGameStore.setState({
+      indirectDistribution: { pending: 2 },
+      turn: 'enemy',
+      sides: { ...state().sides, player: { ...state().sides.player, hand: ['01001'] } },
+    });
+
+    state().distributeIndirect(0);
+    expect(state().reactiveAbility?.code).toBe(DOOKU);
+    expect(state().sides.player.damage[0]).toBe(0); // aún no ha entrado
+
+    state().resolveReactive(true);
+    expect(state().sides.player.hand).toHaveLength(0); // descartó
+    expect(state().sides.player.damage[0]).toBe(0); // el escudo absorbió el punto entero
+    expect(state().indirectDistribution).toEqual({ pending: 1 }); // el reparto continúa
+  });
+
   it('Bala-Tik sin activar no se ofrece', () => {
     setUpGame({
       playerChars: [conCodigo('ATA', 'Atacante', 10), conCodigo(BALATIK, 'Bala-Tik', 10)],

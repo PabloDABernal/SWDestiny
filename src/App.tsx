@@ -184,6 +184,14 @@ export function App() {
   const abilityTargeting = useGameStore((s) => s.abilityTargeting);
   const reactiveAbility = useGameStore((s) => s.reactiveAbility);
   const resolveReactive = useGameStore((s) => s.resolveReactive);
+  // Dooku con la mano vacía: el aviso sale igual (su personaje sí fue atacado), pero "Usar" se
+  // deshabilita y solo cabe "No usar", como ya hace Jabba en SPEC-042.
+  const reactiveCanUse = useGameStore((s) => {
+    const r = s.reactiveAbility;
+    if (!r) return false;
+    const ability = abilityFor(r.code);
+    return ability ? abilityHasTargets(s.sides, r.side, r.characterIndex, ability) : false;
+  });
   // Jabba sin dados amarillos, Tusken con la mano sin cartas elegibles: el aviso sale igual (el
   // personaje se activó) pero "Usar" se deshabilita y solo cabe "No usar", como pide la spec.
   const pendingAbilityHasTargets = useGameStore((s) => {
@@ -314,7 +322,10 @@ export function App() {
             <em>Pulsa el personaje al que quieres infligir 1 de daño.</em>
           ) : (
             <>
-              <button onClick={() => resolveReactive(true)}>Usar</button>{' '}
+              {!reactiveCanUse && <em>(no puedes usarla ahora)</em>}{' '}
+              <button onClick={() => resolveReactive(true)} disabled={!reactiveCanUse}>
+                Usar
+              </button>{' '}
               <button onClick={() => resolveReactive(false)}>No usar</button>
             </>
           )}
