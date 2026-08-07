@@ -618,6 +618,56 @@ describe('caminos de daño — red para SPEC-046', () => {
   });
 });
 
+describe('el turno del enemigo siempre vuelve', () => {
+  // Detectado JUGANDO SPEC-046 (2026-08-07): con dos Especiales sin implementar, el primero se
+  // resolvía, el turno seguía siendo del enemigo por la excepción de SPEC-039, y la app —que solo
+  // llama al autómata cuando CAMBIA el turno— dejaba la partida muerta.
+  it('con dos Especiales pendientes de implementar, una sola llamada resuelve el turno', () => {
+    const yoda: Character = {
+      code: '05033', // Yoda de Legacies: dos caras Sp, sin efecto implementado
+      name: 'Yoda',
+      health: 10,
+      isUnique: true,
+      isElite: false,
+      dice: [{ sides: ['2F', '1Dr', '1Dc', '1Sh', 'Sp', 'Sp'] }],
+    };
+    setUpGame({ playerChars: [character('Héroe', 10)], enemyChars: [yoda] });
+    useGameStore.setState({
+      turn: 'enemy',
+      sides: {
+        ...state().sides,
+        enemy: {
+          ...state().sides.enemy,
+          activated: [true],
+          pool: [
+            { characterIndex: 0, code: '05033', name: 'Yoda', dieIndex: 0, face: 'Sp' },
+            { characterIndex: 0, code: '05033', name: 'Yoda', dieIndex: 1, face: 'Sp' },
+          ],
+        },
+      },
+    });
+
+    state().enemyTurn();
+
+    expect(state().turn).toBe('player');
+    expect(state().sides.enemy.pool.filter((d) => d.face === 'Sp')).toHaveLength(0);
+  });
+
+  it('el bucle no se come el turno cuando hay que esperar al jugador', () => {
+    // Con un reparto de indirecto pendiente, el autómata NO debe seguir encadenando acciones.
+    setUpGame({
+      playerChars: [character('Héroe', 10), character('Otro', 10)],
+      enemyChars: [character('Villano', 10)],
+    });
+    useGameStore.setState({ turn: 'enemy', indirectDistribution: { pending: 2 } });
+
+    state().enemyTurn();
+
+    expect(state().indirectDistribution).toEqual({ pending: 2 }); // intacto
+    expect(state().turn).toBe('enemy'); // sigue esperando tu reparto
+  });
+});
+
 describe('habilidades reactivas (SPEC-046)', () => {
   const DOOKU = '01009'; // Antes de recibir daño: descarta una carta para ganar 1 escudo
   const BALATIK = '01019'; // Tras caer un rival: puedes enderezarlo
@@ -682,6 +732,7 @@ describe('habilidades reactivas (SPEC-046)', () => {
     expect(state().turn).toBe('enemy'); // su turno sigue parado
 
     state().resolveReactive(true);
+    state().pickReactiveHandCard(0); // ahora eliges TÚ qué carta descartas
     expect(state().sides.player.hand).toHaveLength(0);
     expect(state().sides.player.damage[0]).toBe(1); // el escudo absorbió 1 de los 2
     expect(state().reactiveAbility).toBeNull();
@@ -699,6 +750,7 @@ describe('habilidades reactivas (SPEC-046)', () => {
     conDadoListo();
     state().applyDieTo('enemy', 0);
     state().resolveReactive(true);
+    state().pickReactiveHandCard(0); // ahora eliges TÚ qué carta descartas
 
     expect(state().sides.enemy.hand).toHaveLength(0); // descartó
     // 2 de daño contra el escudo recién ganado: absorbe 1, entra 1. Ese es el criterio del usuario.
@@ -941,6 +993,7 @@ describe('habilidades reactivas (SPEC-046)', () => {
     expect(state().sides.player.damage[0]).toBe(0); // aún no ha entrado
 
     state().resolveReactive(true);
+    state().pickReactiveHandCard(0); // ahora eliges TÚ qué carta descartas
     expect(state().sides.player.hand).toHaveLength(0); // descartó
     expect(state().sides.player.damage[0]).toBe(0); // el escudo absorbió el punto entero
     expect(state().indirectDistribution).toEqual({ pending: 1 }); // el reparto continúa
@@ -966,6 +1019,7 @@ describe('habilidades reactivas (SPEC-046)', () => {
     expect(state().reactiveAbility?.code).toBe(DOOKU);
 
     state().resolveReactive(true);
+    state().pickReactiveHandCard(0); // ahora eliges TÚ qué carta descartas
     expect(state().sides.player.hand).toHaveLength(0); // descartó para protegerse
     expect(state().sides.player.damage[0]).toBe(0); // el escudo absorbió el coste
     expect(state().reactiveAbility).toBeNull();
@@ -1035,6 +1089,7 @@ describe('habilidades reactivas (SPEC-046)', () => {
     expect(state().reactiveAbility).not.toBeNull(); // el aviso sigue
 
     state().resolveReactive(true);
+    state().pickReactiveHandCard(0); // ahora eliges TÚ qué carta descartas
     expect(state().sides.player.resources).toBeGreaterThan(2); // la acción sí se completó
   });
 

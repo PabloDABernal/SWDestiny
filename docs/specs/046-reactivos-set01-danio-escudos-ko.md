@@ -28,7 +28,8 @@ Verificables jugando. Formato: acción → resultado observable.
 
 - [ ] Con Dooku en mesa y cartas en la mano, cuando **va a recibir daño** (de un dado tuyo mal
       dirigido no: del enemigo) aparece el aviso **Usar / No usar** con su texto.
-- [ ] **Usar** → se descarta una carta de tu mano (baja el contador de mano, sube el descarte), Dooku
+- [ ] **Usar** → **eliges tú qué carta** de tu mano se descarta (su texto no dice que sea al azar;
+      señalado por el usuario jugando, 2026-08-07). Al elegirla (baja el contador de mano, sube el descarte), Dooku
       **gana 1 escudo**, y **ese escudo absorbe 1 punto del daño que disparó la habilidad**: si iban a
       entrarle 3, entran 2. *(Decisión del usuario, 2026-08-05: es lo que significa "antes de" y es lo
       único que hace útil la carta.)*

@@ -319,7 +319,11 @@ export function App() {
         <p className="app__hint app__hint--ability">
           {abilityFor(reactiveAbility.code)?.prompt}{' '}
           {reactiveAbility.awaitingTarget ? (
-            <em>Pulsa el personaje al que quieres infligir 1 de daño.</em>
+            abilityFor(reactiveAbility.code)?.targeting.kind === 'discardForShield' ? (
+              <em>Elige en tu mano la carta que quieres descartar.</em>
+            ) : (
+              <em>Pulsa el personaje al que quieres infligir 1 de daño.</em>
+            )
           ) : (
             <>
               {!reactiveCanUse && <em>(no puedes usarla ahora)</em>}{' '}

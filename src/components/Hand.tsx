@@ -28,6 +28,11 @@ export function Hand({
   const playSupport = useGameStore((s) => s.playSupport);
   const abilityTargeting = useGameStore((s) => s.abilityTargeting);
   const pickAbilityHandCard = useGameStore((s) => s.pickAbilityHandCard);
+  const pickReactiveHandCard = useGameStore((s) => s.pickReactiveHandCard);
+  const pickingReactiveCard = useGameStore(
+    (s) => s.reactiveAbility?.awaitingTarget === true && s.reactiveAbility.side === side &&
+      abilityFor(s.reactiveAbility.code)?.targeting.kind === 'discardForShield',
+  );
   const pickingHandCard =
     abilityTargeting !== null &&
     abilityTargeting.side === side &&
@@ -60,6 +65,12 @@ export function Hand({
             <CardTextToggle code={code} compact />
             {/* Elegir carta de la mano para una habilidad (SPEC-042, Tusken Raider). El store filtra
                 cuáles valen (personaje o mejora con dado); aquí solo se ofrece el botón. */}
+            {/* Elegir QUÉ carta descarta Dooku (SPEC-046): su texto no dice que sea al azar. */}
+            {pickingReactiveCard && (
+              <button className="hand__play-button" onClick={() => pickReactiveHandCard(i)}>
+                Descartar esta
+              </button>
+            )}
             {pickingHandCard && (
               <button
                 className="hand__play-button"
