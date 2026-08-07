@@ -305,6 +305,12 @@ de habilidades** y los 7 personajes del set 01 que se disparan como **acción de
 que gasta la acción) o **al activar el personaje** (opcional: se pregunta con Usar / No usar). El
 autómata usa esas mismas habilidades cuando le tocan.
 
+Desde SPEC-046 hay además **disparadores reactivos**: textos que no saltan cuando pulsas algo, sino
+**en mitad de otra acción** (antes de recibir daño, antes de ganar escudos, al caer un personaje).
+Cuando uno salta, la acción en curso **se para** —incluido el turno del autómata— y sale el mismo
+aviso de Usar / No usar; al elegir, la acción continúa donde estaba. Si el personaje es del autómata,
+decide él sin preguntar.
+
 ### Reparto inicial y mulligan (primera pieza del bloque de turnos reales, SPEC-024)
 
 Botón nuevo **"Nueva partida"**, habilitado solo cuando ambos bandos tienen mazo importado y

@@ -24,6 +24,7 @@ import {
   parsePlayerFace,
   addShields,
   resolveShieldedDamage,
+  currentHealth,
   isKO,
   type DieSymbol,
 } from '../game/damage';
@@ -1004,6 +1005,36 @@ interface GameState {
   /** Habilidad en curso que está pidiendo objetivos (SPEC-042). Bloquea el resto de acciones igual
    * que `pendingAbility`. */
   abilityTargeting: AbilityTargeting | null;
+  /** Aviso de habilidad REACTIVA pendiente (SPEC-046): salta en mitad de otra acción y, al
+   * responderse, CONTINÚA esa acción en vez de ceder el turno (que es lo que hace `pendingAbility`).
+   * No se persiste, como el resto del estado de partida. */
+  reactiveAbility:
+    | (ReactiveHit & {
+        resume:
+          | { kind: 'applyDieTo'; targetSide: Side; index: number }
+          | {
+              /** Ataque del autómata parado a la espera de tu decisión (SPEC-046). */
+              kind: 'enemyAttack';
+              dieIndices: number[];
+              targetIndex: number;
+              costReceiverIndex: number | null;
+              label: string;
+              total: number;
+              targetName: string;
+            }
+          | { kind: 'distributeIndirect'; characterIndex: number }
+          /** Reanudar una acción del store tal cual, volviéndola a llamar (SPEC-046). Sirve para
+           *  las que pagan coste indirecto propio, que son seis y comparten forma. */
+          | { kind: 'retryAction'; action: RetryableAction }
+          | { kind: 'vaderTarget'; targetSide: Side; targetIndex: number }
+          | { kind: 'none' };
+        /** Qui-Gon: el jugador dijo "Usar" y ahora hay que elegir a quién pega (SPEC-046). */
+        awaitingTarget?: boolean;
+      })
+    | null;
+  /** Personaje al que ya se le preguntó por su reactivo en la acción en curso (SPEC-046). Evita
+   * volver a preguntar al reanudarla, que sería un bucle. Se limpia al terminar la acción. */
+  reactiveHandled: { side: Side; characterIndex: number } | null;
   /** Pases consecutivos sin ninguna acción real entre medias (SPEC-025). Al llegar a 2 dispara el
    * mantenimiento automático y se reinicia a 0. Cualquier acción real lo reinicia a 0. */
   passStreak: number;
@@ -1145,7 +1176,18 @@ interface GameState {
   confirmAbility: () => void;
   /** SPEC-042: cancela sin aplicar nada. Una `Action -` cancelada NO gasta el turno. */
   cancelAbility: () => void;
+  /** SPEC-046: responde al aviso de una habilidad reactiva (`true` = usarla) y CONTINÚA la acción
+   *  que la disparó. No cede el turno, a diferencia de las habilidades de SPEC-042. */
+  resolveReactive: (use: boolean) => void;
+  /** SPEC-046 (Qui-Gon): elige el personaje al que pega su 1 de daño, y continúa la acción. */
+  pickReactiveTarget: (side: Side, index: number) => void;
+  /** SPEC-046 (Dooku): elige QUÉ carta de la mano descarta, y continúa la acción. Su texto no dice
+   *  que sea al azar. */
+  pickReactiveHandCard: (handIndex: number) => void;
   enemyTurn: () => void;
+  /** Una sola acción del autómata (SPEC-025). `enemyTurn` la llama en bucle mientras el turno siga
+   *  siendo suyo, por la excepción de Especial de SPEC-039. */
+  enemyTurnOnce: () => void;
 }
 
 /** Selección en curso para una habilidad que necesita objetivo (SPEC-042). */
@@ -1241,6 +1283,296 @@ function automatonPickAbilityTargets(
   }
 }
 
+// --- Habilidades reactivas (SPEC-046) ----------------------------------------------------------
+//
+// NO se pausa dentro de la resolución de daño: se comprueba en los BORDES. Antes de aplicar una
+// tanda se mira si el objetivo tiene un disparador que deba saltar; si lo tiene, se guarda la acción
+// y se pregunta. Al responder, la acción se aplica entera, de una vez. Así las funciones de daño
+// siguen siendo atómicas y nadie las interrumpe a medias (ver notas técnicas de SPEC-046).
+
+/** Aplica la tanda de daño/escudo sobre un objetivo, SIN mirar disparadores reactivos (ya se han
+ *  mirado antes). Es el cuerpo de `applyDieTo`, extraído para poder reanudarlo tras un aviso. */
+function applyDieToNow(state: GameState, targetSide: Side, index: number): Partial<GameState> {
+  const cur = state.resolve;
+  if (state.outcome !== null || cur === null || cur.marked.length === 0) return {};
+
+  // Recurso/especial se resuelven con su propio botón; focus/reroll con sus propias acciones de
+  // elegir dado objetivo (SPEC-023); indirecto también con su propio botón, sin elegir objetivo
+  // (SPEC-026); disrupt/descarte también (SPEC-029) — ninguno usa el clic sobre un personaje.
+  if (
+    cur.symbol === 'resource' ||
+    cur.symbol === 'special' ||
+    cur.symbol === 'focus' ||
+    cur.symbol === 'reroll' ||
+    cur.symbol === 'indirect' ||
+    cur.symbol === 'disrupt' ||
+    cur.symbol === 'discard'
+  ) {
+    return {};
+  }
+
+  // Elegir objetivo del efecto (daño → contrario; escudo → propio).
+  const wantSide = cur.symbol === 'shield' ? cur.side : opposite(cur.side);
+  if (targetSide !== wantSide) return {};
+  const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
+  if (!sums.hasBase) {
+    return { resolveError: 'Necesitas un dado base del mismo símbolo (un modificador solo no se resuelve).' };
+  }
+  if (state.sides[cur.side].resources < sums.resourceCost) {
+    return { resolveError: 'Recursos insuficientes para pagar el coste.' };
+  }
+  const costReceiverIndex =
+    sums.indirectCost > 0 ? indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost) : null;
+  const res = resolvePlayerBatch(state.sides, cur, index, costReceiverIndex);
+  if (res === null || res === 'no-base' || res === 'insufficient') return {};
+  return {
+    sides: res.sides,
+    outcome: res.outcome,
+    resolveError: null,
+    ...afterApply(cur, res),
+  };
+}
+
+/** Aplica UN punto de daño indirecto al personaje elegido del jugador, SIN mirar reactivos (ya se
+ *  han mirado antes). Cuerpo de `distributeIndirect`, extraído para poder reanudarlo tras un aviso. */
+function distributeIndirectNow(state: GameState, characterIndex: number): Partial<GameState> {
+  if (state.indirectDistribution === null) return {};
+  const player = state.sides.player;
+  const ch = player.characters[characterIndex];
+  if (!ch || isKO(ch, player.damage[characterIndex] ?? 0)) return {};
+
+  const shields = player.characters.map((_, i) => player.shields[i] ?? 0);
+  const damage = player.characters.map((_, i) => player.damage[i] ?? 0);
+  const { shieldsRemaining, healthDamage } = resolveShieldedDamage(shields[characterIndex], 1);
+  shields[characterIndex] = shieldsRemaining;
+  damage[characterIndex] = Math.min(ch.health, damage[characterIndex] + healthDamage);
+
+  let pool = player.pool;
+  let upgrades = player.upgrades;
+  if (isKO(ch, damage[characterIndex])) {
+    pool = pool.filter((d) => d.characterIndex !== characterIndex);
+    upgrades = upgrades.map((codes, i) => (i === characterIndex ? [] : codes));
+    persistUpgrades('player', upgrades);
+  }
+
+  const sides: Record<Side, SideState> = {
+    ...state.sides,
+    player: { ...player, shields, damage, pool, upgrades },
+  };
+  const outcome = computeOutcome(sides);
+  const pending = state.indirectDistribution.pending - 1;
+  // Al agotar el valor (o si la partida termina a mitad de repartir) se completa la acción del
+  // autómata: cierra su turno y pasa al jugador, igual que el resto de sus acciones (SPEC-025).
+  if (pending <= 0 || outcome !== null) {
+    return { sides, outcome, indirectDistribution: null, turn: 'player', passStreak: 0 };
+  }
+  return { sides, outcome, indirectDistribution: { pending } };
+}
+
+/** Acciones que pagan coste indirecto propio y por tanto pueden hacer saltar un `beforeDamaged`
+ *  sobre un personaje del que las usa. Se reanudan volviéndolas a llamar tal cual. */
+type RetryableAction =
+  | 'resolveResources'
+  | 'confirmFocus'
+  | 'confirmReroll'
+  | 'resolveDisrupt'
+  | 'resolveDiscard'
+  | 'resolveIndirect';
+
+/** Datos del aviso reactivo pendiente, sin la parte de "qué reanudar". */
+interface ReactiveHit {
+  side: Side;
+  characterIndex: number;
+  code: string;
+}
+
+/** ¿Debe saltar un disparador reactivo antes de aplicar esta tanda sobre `targetSide/index`?
+ *  Devuelve el aviso a mostrar, o null si no hay ninguno. */
+function reactiveBeforeApply(state: GameState, targetSide: Side, index: number): ReactiveHit | null {
+  const cur = state.resolve;
+  if (cur === null || state.outcome !== null) return null;
+  const target = state.sides[targetSide].characters[index];
+  if (!target) return null;
+  const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
+  const amount = sums.baseAmount + sums.modifierAmount;
+
+  if (cur.symbol === 'shield') {
+    const ability = abilityWithTrigger(target.code, 'beforeShielded');
+    if (!ability || amount <= 0) return null;
+    // Qui-Gon: hace falta que YA tenga algún escudo que quitarse.
+    if ((state.sides[targetSide].shields[index] ?? 0) <= 0) return null;
+    return { side: targetSide, characterIndex: index, code: target.code };
+  }
+
+  const ability = abilityWithTrigger(target.code, 'beforeDamaged');
+  if (!ability) return null;
+  // Solo salta si el golpe llega DE VERDAD a la vida: si los escudos ya lo absorbían, no se ofrece
+  // (criterio explícito de la spec).
+  const { healthDamage } = resolveShieldedDamage(state.sides[targetSide].shields[index] ?? 0, amount);
+  if (healthDamage <= 0) return null;
+  // Ojo: con la mano vacía el aviso SÍ sale (con "Usar" deshabilitado), como pide la spec y como ya
+  // hace Jabba en SPEC-042. Salvo que sea del autómata, que no tiene a quién preguntar.
+  if (
+    targetSide === 'enemy' &&
+    ability.targeting.kind === 'discardForShield' &&
+    state.sides[targetSide].hand.length === 0
+  ) {
+    return null;
+  }
+  return { side: targetSide, characterIndex: index, code: target.code };
+}
+
+/** ¿Ha caído algún personaje en esta aplicación que dispare un `afterOpponentDefeated`?
+ *  Se compara el antes y el después, y se busca al reactivo en el bando CONTRARIO al del caído. */
+function reactiveAfterDefeated(
+  antes: Record<Side, SideState>,
+  despues: Record<Side, SideState>,
+): ReactiveHit | null {
+  for (const caido of SIDES) {
+    const s = despues[caido];
+    const hayNuevoKO = s.characters.some((c, i) => {
+      const yaEstaba = isKO(c, antes[caido].damage[i] ?? 0);
+      return !yaEstaba && isKO(c, s.damage[i] ?? 0);
+    });
+    if (!hayNuevoKO) continue;
+    // El reactivo lo tiene el bando contrario al del personaje derrotado.
+    const dueño = opposite(caido);
+    const lado = despues[dueño];
+    for (let i = 0; i < lado.characters.length; i++) {
+      const c = lado.characters[i];
+      if (isKO(c, lado.damage[i] ?? 0)) continue;
+      const ability = abilityWithTrigger(c.code, 'afterOpponentDefeated');
+      if (!ability) continue;
+      // Bala-Tik: solo tiene sentido si está activado (si no, no hay nada que enderezar).
+      if (ability.targeting.kind === 'readySelf' && lado.activated[i] !== true) continue;
+      return { side: dueño, characterIndex: i, code: c.code };
+    }
+  }
+  return null;
+}
+
+/** ¿Usaría el autómata esta habilidad reactiva? Criterio simple y siempre decidible: nunca puede
+ *  quedarse esperando, porque no hay nadie a quien preguntar (esa fue la causa de los dos cuelgues
+ *  de SPEC-042). */
+function automatonWouldUseReactive(state: GameState, hit: ReactiveHit): boolean {
+  const ability = abilityFor(hit.code);
+  if (!ability) return false;
+  switch (ability.targeting.kind) {
+    case 'discardForShield':
+      return state.sides[hit.side].hand.length > 0; // Dooku: si le queda mano, se protege
+    case 'readySelf':
+      return true; // Bala-Tik: enderezarse nunca le perjudica
+    case 'chooseCharacter':
+      return false; // Qui-Gon se resuelve aparte, en `resolveEnemyReactive` (necesita elegir objetivo)
+    default:
+      return false;
+  }
+}
+
+/** Resuelve un aviso reactivo del bando ENEMIGO sin preguntar a nadie: decide el autómata.
+ *  Devuelve el estado ya con el efecto aplicado (o igual, si decide no usarla). */
+function resolveEnemyReactive(state: GameState, hit: ReactiveHit): GameState {
+  const ability = abilityFor(hit.code);
+  // Qui-Gon del autómata: solo le compensa gastar un escudo si ese 1 de daño MATA a alguien
+  // (criterio de las notas técnicas de la spec). Elige él el objetivo, sin preguntar.
+  if (ability?.targeting.kind === 'chooseCharacter') {
+    const rival = opposite(hit.side);
+    const lado = state.sides[rival];
+    if ((state.sides[hit.side].shields[hit.characterIndex] ?? 0) <= 0) return state;
+    const victima = lado.characters.findIndex(
+      (c, i) => !isKO(c, lado.damage[i] ?? 0) && (lado.shields[i] ?? 0) === 0 && currentHealth(c, lado.damage[i] ?? 0) <= 1,
+    );
+    if (victima < 0) return state;
+    const dueño = state.sides[hit.side];
+    const shields = dueño.characters.map((_, i) => dueño.shields[i] ?? 0);
+    shields[hit.characterIndex] -= 1;
+    const sides = applyFixedDamage(
+      { ...state.sides, [hit.side]: { ...dueño, shields } },
+      rival,
+      victima,
+      1,
+    );
+    return {
+      ...state,
+      sides,
+      outcome: computeOutcomePure(
+        { characters: sides.player.characters, damage: sides.player.damage },
+        { characters: sides.enemy.characters, damage: sides.enemy.damage },
+      ),
+    };
+  }
+  if (!automatonWouldUseReactive(state, hit)) return state;
+  return { ...state, ...applyReactiveEffect(state, hit) } as GameState;
+}
+
+/** Envuelve el resultado de una aplicación: si al aplicarla cayó alguien y eso dispara un reactivo
+ *  `afterOpponentDefeated`, deja el aviso abierto. Si la partida terminó, NO se abre ningún aviso
+ *  (criterio de la spec: no queda nada colgado en pantalla). */
+function withAfterDefeated(antes: GameState, res: Partial<GameState>): Partial<GameState> {
+  if (!res.sides) return res;
+  if (res.outcome != null) return res;
+  const hit = reactiveAfterDefeated(antes.sides, res.sides);
+  if (hit === null) return res;
+  // Si el reactivo es del ENEMIGO, decide el autómata en el acto: no se le pregunta al jugador por
+  // una carta que no controla, y nunca queda un aviso abierto del lado equivocado.
+  if (hit.side === 'enemy') {
+    const conEfecto = resolveEnemyReactive({ ...antes, ...res } as GameState, hit);
+    return { ...res, sides: conEfecto.sides };
+  }
+  return { ...res, reactiveAbility: { ...hit, resume: { kind: 'none' } } };
+}
+
+/** ¿El receptor del coste indirecto propio tiene un `beforeDamaged` que deba saltar? (SPEC-046).
+ *  Pagar un dado con daño a los tuyos también es "recibir daño", así que Dooku reacciona.
+ *  `yaPreguntado` evita volver a preguntar al reanudar la misma acción (si no, bucle infinito). */
+function reactiveOnIndirectCost(state: GameState, action: RetryableAction): ReactiveHit | null {
+  const cur = state.resolve;
+  if (cur === null || state.outcome !== null) return null;
+  const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
+  if (sums.indirectCost <= 0) return null;
+  const receptor = indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost);
+  if (receptor === null) return null;
+  const s = state.sides[cur.side];
+  const ch = s.characters[receptor];
+  if (!ch) return null;
+  if (state.reactiveHandled?.side === cur.side && state.reactiveHandled.characterIndex === receptor) return null;
+  const ability = abilityWithTrigger(ch.code, 'beforeDamaged');
+  if (!ability) return null;
+  if (resolveShieldedDamage(s.shields[receptor] ?? 0, sums.indirectCost).healthDamage <= 0) return null;
+  // Si es del autómata, decide él: no se pregunta al jugador por una carta que no controla.
+  if (cur.side === 'enemy') return null;
+  void action;
+  return { side: cur.side, characterIndex: receptor, code: ch.code };
+}
+
+/** Aplica el efecto de la habilidad reactiva aceptada. */
+function applyReactiveEffect(state: GameState, hit: ReactiveHit): Partial<GameState> {
+  const ability = abilityFor(hit.code);
+  if (!ability) return {};
+  const s = state.sides[hit.side];
+
+  switch (ability.targeting.kind) {
+    case 'discardForShield': {
+      // Count Dooku: descarta una carta de su mano y gana 1 escudo. El escudo entra ANTES de aplicar
+      // la tanda, así que absorbe ese mismo golpe (decisión del usuario, 2026-08-05).
+      if (s.hand.length === 0) return {};
+      const withDiscard = discardFromHand(hit.side, s, 1);
+      const shields = withDiscard.characters.map((_, i) => withDiscard.shields[i] ?? 0);
+      // Los escudos no se persisten: son estado de partida, como el pool o los daños.
+      shields[hit.characterIndex] = addShields(shields[hit.characterIndex] ?? 0, 1);
+      return { sides: { ...state.sides, [hit.side]: { ...withDiscard, shields } } };
+    }
+    case 'readySelf': {
+      // Bala-Tik: deja de estar activado, así que puede volver a activarse esta ronda.
+      const activated = s.characters.map((_, i) => s.activated[i] === true);
+      activated[hit.characterIndex] = false;
+      return { sides: { ...state.sides, [hit.side]: { ...s, activated } } };
+    }
+    default:
+      return {};
+  }
+}
+
 /** ¿Hay algo que elegir para esa habilidad ahora mismo? (SPEC-042). Sirve para no ofrecer un botón
  *  que solo lleva a una pantalla de selección vacía: Veers sin apoyos, Jabba sin dados amarillos,
  *  Tusken sin cartas elegibles, Leia sin más dados que el suyo. */
@@ -1272,6 +1604,14 @@ export function abilityHasTargets(
         if (!card || !Array.isArray(card.sides) || card.sides.length === 0) return false;
         return !ability.handCardTypes || ability.handCardTypes.includes(card.type_code);
       });
+    // --- Reactivos (SPEC-046): su "hay objetivo" se comprueba al dispararse, en
+    // `reactiveBeforeApply`, porque depende del golpe concreto que los provoca.
+    case 'discardForShield':
+      return sides[side].hand.length > 0;
+    case 'readySelf':
+      return sides[side].activated[characterIndex] === true;
+    case 'chooseCharacter':
+      return true;
   }
 }
 
@@ -1312,6 +1652,20 @@ function discardFromHand(side: Side, s: SideState, n: number): SideState {
   return { ...s, hand, discardPile };
 }
 
+/** Aviso de qué carta se ha descartado, comparando la pila de descarte antes y después. Devuelve
+ *  null si no se descartó nada (para no ensuciar la pantalla con avisos vacíos). */
+function mensajeDeDescarte(
+  antes: Record<Side, SideState>,
+  despues: Record<Side, SideState>,
+  side: Side,
+): string | null {
+  const nuevas = despues[side].discardPile.slice(antes[side].discardPile.length);
+  if (nuevas.length === 0) return null;
+  const nombres = nuevas.map((code) => readCache(code)?.name ?? code).join(', ');
+  const quien = side === 'player' ? 'Descartas' : 'El rival descarta';
+  return `${quien}: ${nombres}.`;
+}
+
 /** Aplica el efecto SIN objetivo de una habilidad de personaje (SPEC-042). Los que necesitan elegir
  *  (rerolls, girar dado de apoyo, descartar carta de la mano) no pasan por aquí. */
 function applyAbilityEffect(
@@ -1323,7 +1677,8 @@ function applyAbilityEffect(
     case '01035': // Luke Skywalker: roba una carta
       return { ...sides, [side]: drawCards(side, sides[side], 1) };
     case '01010': {
-      // Darth Vader (Awakenings): el rival descarta una carta de su mano
+      // Darth Vader (Awakenings): el rival descarta una carta de su mano. La elige él, así que
+      // cuando el rival es el autómata se toma al azar (no hay a quién preguntar).
       const opp = opposite(side);
       return { ...sides, [opp]: discardFromHand(opp, sides[opp], 1) };
     }
@@ -1400,6 +1755,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   indirectDistribution: null,
   pendingAbility: null,
   abilityTargeting: null,
+  reactiveAbility: null,
+  reactiveHandled: null,
   passStreak: 0,
   outcome: null,
   lastEnemyAction: null,
@@ -1606,7 +1963,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.resolve?.focusFaceChoice != null) return state;
       // Bloqueado mientras se elige objetivo para jugar una mejora (SPEC-020) o hay un mulligan
       // pendiente de confirmar (SPEC-024).
-      if (state.playUpgrade !== null || state.mulligan !== null || state.pendingAbility !== null || state.abilityTargeting !== null) return state;
+      if (state.playUpgrade !== null || state.mulligan !== null || state.pendingAbility !== null || state.abilityTargeting !== null || state.reactiveAbility !== null) return state;
       // Bloqueado fuera de tu turno, o si ya tienes un dado marcado sin resolver (SPEC-025): hay
       // que terminar o cancelar esa resolución antes de hacer otra cosa.
       if (state.turn !== side) return state;
@@ -1881,10 +2238,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       // Ninguno de los efectos sin objetivo (robar, descartar) puede dejar KO a nadie, así que el
       // resultado de partida no cambia aquí. El deck-out se sigue comprobando en el mantenimiento.
+      const sidesTras = applyAbilityEffect(state.sides, pending.side, pending.code);
       return {
-        sides: applyAbilityEffect(state.sides, pending.side, pending.code),
+        sides: sidesTras,
         pendingAbility: null,
         turn: opposite(pending.side),
+        // Decir QUÉ se descartó: si no, la mano del rival baja de número y no se sabe por qué
+        // (señalado por el usuario jugando, 2026-08-07).
+        resolveError: mensajeDeDescarte(state.sides, sidesTras, opposite(pending.side)),
       };
     }),
 
@@ -1906,7 +2267,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.turn !== side) return state;
       // Mismo guard de exclusión mutua que el resto de acciones (SPEC-025): no tiene sentido pasar
       // con una acción a medio construir, hay que cancelarla primero.
-      if (state.resolve !== null || state.playUpgrade !== null || state.mulligan !== null || state.pendingAbility !== null || state.abilityTargeting !== null) return state;
+      if (state.resolve !== null || state.playUpgrade !== null || state.mulligan !== null || state.pendingAbility !== null || state.abilityTargeting !== null || state.reactiveAbility !== null) return state;
       const passStreak = state.passStreak + 1;
       if (passStreak >= 2) {
         return { ...runMaintenance(state.sides), turn: 'player', passStreak: 0 };
@@ -1961,7 +2322,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.resolve?.focusFaceChoice != null) return state;
       // Bloqueado mientras se elige objetivo para jugar una mejora (SPEC-020) o hay un mulligan
       // pendiente de confirmar (SPEC-024).
-      if (state.playUpgrade !== null || state.mulligan !== null || state.pendingAbility !== null || state.abilityTargeting !== null) return state;
+      if (state.playUpgrade !== null || state.mulligan !== null || state.pendingAbility !== null || state.abilityTargeting !== null || state.reactiveAbility !== null) return state;
       // Bloqueado fuera de tu turno (SPEC-025).
       if (state.turn !== side) return state;
       const die = state.sides[side].pool[poolIndex];
@@ -2044,50 +2405,204 @@ export const useGameStore = create<GameState>((set, get) => ({
   // a quién le toca, igual que ya hacía el autómata consigo mismo — un único clic resuelve todo.
   applyDieTo: (targetSide: Side, index: number) =>
     set((state) => {
-      const cur = state.resolve;
-      if (state.outcome !== null || cur === null || cur.marked.length === 0) return state;
-
-      // Recurso/especial se resuelven con su propio botón; focus/reroll con sus propias acciones
-      // de elegir dado objetivo (SPEC-023); indirecto también con su propio botón, sin elegir
-      // objetivo (SPEC-026: lo reparte el defensor, no quien ataca); disrupt/descarte también, sin
-      // objetivo de personaje (SPEC-029: afectan al bando rival entero) — ninguno de estos siete
-      // usa el clic sobre un personaje.
-      if (
-        cur.symbol === 'resource' ||
-        cur.symbol === 'special' ||
-        cur.symbol === 'focus' ||
-        cur.symbol === 'reroll' ||
-        cur.symbol === 'indirect' ||
-        cur.symbol === 'disrupt' ||
-        cur.symbol === 'discard'
-      ) {
-        return state;
+      // Disparador reactivo del objetivo (SPEC-046): se pregunta ANTES de aplicar, no a mitad de la
+      // resolución. Si hay que preguntar, la tanda se queda guardada y se aplica al responder.
+      // Con un aviso reactivo abierto no se puede hacer nada más (SPEC-046). Sin este guard, con el
+      // aviso de Qui-Gon en pantalla —que no cierra `resolve` ni cambia el turno— se podía mandar el
+      // dado a otro objetivo y perder en silencio la acción que había quedado guardada.
+      if (state.reactiveAbility !== null) return state;
+      const reactivo = reactiveBeforeApply(state, targetSide, index);
+      if (reactivo !== null) {
+        // Si el reactivo es de un personaje ENEMIGO (el jugador ataca al Dooku del autómata),
+        // decide el autómata sin preguntar; solo se para la partida si la decisión es tuya.
+        if (reactivo.side === 'enemy') {
+          const conEfecto = resolveEnemyReactive(state, reactivo);
+          return withAfterDefeated(conEfecto, applyDieToNow(conEfecto, targetSide, index));
+        }
+        return {
+          reactiveAbility: { ...reactivo, resume: { kind: 'applyDieTo' as const, targetSide, index } },
+        };
       }
+      return withAfterDefeated(state, applyDieToNow(state, targetSide, index));
+    }),
 
-      // Elegir objetivo del efecto (daño → contrario; escudo → propio).
-      const wantSide = cur.symbol === 'shield' ? cur.side : opposite(cur.side);
-      if (targetSide !== wantSide) return state;
-      const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
-      if (!sums.hasBase) return { resolveError: 'Necesitas un dado base del mismo símbolo (un modificador solo no se resuelve).' };
-      if (state.sides[cur.side].resources < sums.resourceCost) {
-        return { resolveError: 'Recursos insuficientes para pagar el coste.' };
+  /** Responde al aviso de una habilidad reactiva (SPEC-046) y CONTINÚA la acción interrumpida.
+   *  A diferencia de las habilidades de SPEC-042, esto NO cede el turno: la acción que disparó el
+   *  aviso sigue siendo de quien la empezó. */
+  resolveReactive: (use: boolean) => {
+    // Las acciones que pagan coste indirecto se reanudan volviéndolas a llamar, y eso no se puede
+    // hacer dentro de un `set`. Por eso esta acción no es un `set` suelto como las demás.
+    const pendiente = get().reactiveAbility;
+    const resume = pendiente?.resume;
+    if (pendiente !== null && (resume?.kind === 'retryAction' || resume?.kind === 'vaderTarget')) {
+      set((state) => {
+        const conEfecto = use ? applyReactiveEffect(state, pendiente) : {};
+        return {
+          ...conEfecto,
+          reactiveAbility: null,
+          // Marca para que al reanudar no se vuelva a preguntar por el mismo personaje.
+          reactiveHandled: { side: pendiente.side, characterIndex: pendiente.characterIndex },
+        };
+      });
+      if (resume.kind === 'retryAction') get()[resume.action]();
+      else get().resolveVaderTarget(resume.targetSide, resume.targetIndex);
+      set({ reactiveHandled: null });
+      return;
+    }
+    set((state) => {
+      const cur = state.reactiveAbility;
+      if (cur === null) return state;
+      // Qui-Gon necesita elegir a quién pega; Dooku, QUÉ carta descarta (su texto dice "descarta una
+      // carta de tu mano", sin decir al azar — lo señaló el usuario jugando, 2026-08-07). Los dos se
+      // quedan esperando un clic, sin cerrar el aviso; la acción interrumpida sigue guardada.
+      const kind = abilityFor(cur.code)?.targeting.kind;
+      if (use && (kind === 'chooseCharacter' || kind === 'discardForShield')) {
+        return { reactiveAbility: { ...cur, awaitingTarget: true } };
       }
-      const costReceiverIndex =
-        sums.indirectCost > 0 ? indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost) : null;
-      const res = resolvePlayerBatch(state.sides, cur, index, costReceiverIndex);
-      if (res === null || res === 'no-base' || res === 'insufficient') return state;
+      let next: GameState = { ...state, reactiveAbility: null };
+      if (use) next = { ...next, ...applyReactiveEffect(next, cur) };
+      // Continuar donde se había quedado. Ojo: esa aplicación puede provocar un KO que dispare OTRO
+      // reactivo (el daño mata a Dooku y eso despierta al Bala-Tik rival), así que se vuelve a
+      // comprobar. Nunca hay dos avisos a la vez: este se cierra antes de abrirse el siguiente.
+      if (cur.resume.kind === 'applyDieTo') {
+        const res = withAfterDefeated(next, applyDieToNow(next, cur.resume.targetSide, cur.resume.index));
+        return { ...next, ...res };
+      }
+      if (cur.resume.kind === 'distributeIndirect') {
+        const res = withAfterDefeated(next, distributeIndirectNow(next, cur.resume.characterIndex));
+        return { ...next, ...res };
+      }
+      if (cur.resume.kind === 'enemyAttack') {
+        // Continuar el ataque del autómata que se paró para preguntarte, y cerrar su turno.
+        const r = cur.resume;
+        const res = resolvePlayerBatch(
+          next.sides,
+          { side: 'enemy', symbol: 'melee', marked: r.dieIndices },
+          r.targetIndex,
+          r.costReceiverIndex,
+        );
+        if (res === null || res === 'no-base' || res === 'insufficient') {
+          return { ...next, reactiveAbility: null, turn: 'player', passStreak: 0 };
+        }
+        const conDaño: GameState = { ...next, sides: res.sides, outcome: res.outcome };
+        const tras = withAfterDefeated(next, { sides: res.sides, outcome: res.outcome });
+        return {
+          ...conDaño,
+          ...tras,
+          reactiveAbility: tras.reactiveAbility ?? null,
+          lastEnemyAction: `El enemigo ataca a ${r.targetName} con ${r.label} (${r.total} de daño).`,
+          turn: 'player',
+          passStreak: 0,
+        };
+      }
+      return { ...next, reactiveAbility: null };
+    });
+  },
+
+  pickReactiveHandCard: (handIndex: number) => {
+    const cur = get().reactiveAbility;
+    if (cur === null || cur.awaitingTarget !== true) return;
+    const s = get().sides[cur.side];
+    if (!s.hand[handIndex]) return;
+
+    // Descarta LA CARTA ELEGIDA y da el escudo; luego continúa la acción interrumpida, igual que
+    // hace `resolveReactive` (mismo reparto de casos, para no duplicar reglas de reanudación).
+    set((state) => {
+      const lado = state.sides[cur.side];
+      const code = lado.hand[handIndex];
+      const hand = lado.hand.filter((_, i) => i !== handIndex);
+      const discardPile = [...lado.discardPile, code];
+      persistHand(cur.side, hand);
+      persistDiscardPile(cur.side, discardPile);
+      const shields = lado.characters.map((_, i) => lado.shields[i] ?? 0);
+      shields[cur.characterIndex] = addShields(shields[cur.characterIndex] ?? 0, 1);
       return {
-        sides: res.sides,
-        outcome: res.outcome,
-        resolveError: null,
-        ...afterApply(cur, res),
+        sides: { ...state.sides, [cur.side]: { ...lado, hand, discardPile, shields } },
+        reactiveAbility: null,
+        reactiveHandled: { side: cur.side, characterIndex: cur.characterIndex },
       };
+    });
+
+    const resume = cur.resume;
+    if (resume.kind === 'retryAction') get()[resume.action]();
+    else if (resume.kind === 'vaderTarget') get().resolveVaderTarget(resume.targetSide, resume.targetIndex);
+    else if (resume.kind === 'applyDieTo') {
+      set((st) => withAfterDefeated(st, applyDieToNow(st, resume.targetSide, resume.index)));
+    } else if (resume.kind === 'distributeIndirect') {
+      set((st) => withAfterDefeated(st, distributeIndirectNow(st, resume.characterIndex)));
+    } else if (resume.kind === 'enemyAttack') {
+      const r = resume;
+      set((st) => {
+        const res = resolvePlayerBatch(
+          st.sides,
+          { side: 'enemy', symbol: 'melee', marked: r.dieIndices },
+          r.targetIndex,
+          r.costReceiverIndex,
+        );
+        if (res === null || res === 'no-base' || res === 'insufficient') {
+          return { turn: 'player', passStreak: 0 };
+        }
+        return {
+          ...withAfterDefeated(st, { sides: res.sides, outcome: res.outcome }),
+          lastEnemyAction: `El enemigo ataca a ${r.targetName} con ${r.label} (${r.total} de daño).`,
+          turn: 'player',
+          passStreak: 0,
+        };
+      });
+    }
+    set({ reactiveHandled: null });
+  },
+
+  pickReactiveTarget: (side: Side, index: number) =>
+    set((state) => {
+      const cur = state.reactiveAbility;
+      if (cur === null || cur.awaitingTarget !== true) return state;
+      const objetivo = state.sides[side].characters[index];
+      if (!objetivo || isKO(objetivo, state.sides[side].damage[index] ?? 0)) return state;
+
+      // Qui-Gon: pierde 1 escudo propio y le mete 1 de daño al elegido. Ese daño puede matarlo, así
+      // que se recalcula el resultado de partida.
+      const dueño = state.sides[cur.side];
+      const shieldsDueño = dueño.characters.map((_, i) => dueño.shields[i] ?? 0);
+      if ((shieldsDueño[cur.characterIndex] ?? 0) <= 0) return state;
+      shieldsDueño[cur.characterIndex] -= 1;
+
+      // El 1 de daño se aplica con el MISMO helper que el resto del motor (`applyFixedDamage`), que
+      // ya limpia los dados del pool y descarta las mejoras ligadas si el golpe deja KO al objetivo.
+      // Duplicar ese cálculo aquí dejaba un KO a medio limpiar (lo cazó revisor-codigo).
+      const sides: Record<Side, SideState> = applyFixedDamage(
+        { ...state.sides, [cur.side]: { ...dueño, shields: shieldsDueño } },
+        side,
+        index,
+        1,
+      );
+
+      const outcome = computeOutcomePure(
+        { characters: sides.player.characters, damage: sides.player.damage },
+        { characters: sides.enemy.characters, damage: sides.enemy.damage },
+      );
+      const conEfecto: GameState = { ...state, sides, outcome, reactiveAbility: null };
+      // Continuar la acción interrumpida: los escudos que Qui-Gon iba a ganar se aplican igual.
+      if (cur.resume.kind === 'applyDieTo' && outcome === null) {
+        const res = withAfterDefeated(
+          conEfecto,
+          applyDieToNow(conEfecto, cur.resume.targetSide, cur.resume.index),
+        );
+        return { ...conEfecto, ...res };
+      }
+      return conEfecto;
     }),
 
   // Resuelve la tanda de recurso marcada (SPEC-008b/010): base + modificadores suman al contador,
   // pagando el coste de recurso. Si hay coste indirecto, pasa al paso de receptor (atómico).
   resolveResources: () =>
     set((state) => {
+      // Reactivo del receptor del coste indirecto propio (SPEC-046): pagar un dado con daño a
+      // los tuyos también es "recibir daño".
+      const reactivoCoste = reactiveOnIndirectCost(state, 'resolveResources');
+      if (reactivoCoste !== null) {
+        return { reactiveAbility: { ...reactivoCoste, resume: { kind: 'retryAction' as const, action: 'resolveResources' as const } } };
+      }
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.symbol !== 'resource') return state;
       if (cur.marked.length === 0) return state;
@@ -2101,12 +2616,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         sums.indirectCost > 0 ? indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost) : null;
       const res = resolvePlayerBatch(state.sides, cur, null, costReceiverIndex);
       if (res === null || res === 'no-base' || res === 'insufficient') return state;
-      return {
+      // Si la tanda (o su coste indirecto propio) remata a alguien, puede disparar un
+      // `afterOpponentDefeated` (Bala-Tik). Lo cazó revisor-codigo: se había enganchado el lado de
+      // Dooku pero no este.
+      return withAfterDefeated(state, {
         sides: res.sides,
         outcome: res.outcome,
         resolveError: null,
         ...afterApply(cur, res),
-      };
+      });
     }),
 
   // Cancelar una resolución en curso (SPEC-008a). Si venía de convertir el Especial de Luminara en
@@ -2116,6 +2634,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   // antes de cancelar (bug real, detectado jugando SPEC-039).
   cancelResolve: () =>
     set((state) => {
+      // Con un aviso reactivo abierto, `resolve` sigue poblado a propósito (hace falta para
+      // reanudar), así que "Cancelar" seguía siendo pulsable: al responder luego al aviso, la acción
+      // reanudada no encontraba nada que hacer y el uso de Dooku (carta + escudo) se desperdiciaba.
+      // Lo cazó revisor-codigo en la segunda pasada.
+      if (state.reactiveAbility !== null) return state;
       const cur = state.resolve;
       if (!cur?.specialRevert) return { resolve: null, resolveError: null };
       const { poolIndex, face, resourceCost } = cur.specialRevert;
@@ -2165,6 +2688,12 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   confirmFocus: () =>
     set((state) => {
+      // Reactivo del receptor del coste indirecto propio (SPEC-046): pagar un dado con daño a
+      // los tuyos también es "recibir daño".
+      const reactivoCoste = reactiveOnIndirectCost(state, 'confirmFocus');
+      if (reactivoCoste !== null) {
+        return { reactiveAbility: { ...reactivoCoste, resume: { kind: 'retryAction' as const, action: 'confirmFocus' as const } } };
+      }
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.symbol !== 'focus') return state;
       if (cur.focusFaceChoice != null) return state;
@@ -2181,12 +2710,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         sums.indirectCost > 0 ? indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost) : null;
       const res = applyFocus(state.sides, cur.side, cur.marked, picks, costReceiverIndex);
       if (res === null || res === 'no-base' || res === 'insufficient') return state;
-      return {
+      // Si la tanda (o su coste indirecto propio) remata a alguien, puede disparar un
+      // `afterOpponentDefeated` (Bala-Tik). Lo cazó revisor-codigo: se había enganchado el lado de
+      // Dooku pero no este.
+      return withAfterDefeated(state, {
         sides: res.sides,
         outcome: res.outcome,
         resolveError: null,
         ...afterApply(cur, res),
-      };
+      });
     }),
 
   // Reroll de dado (SPEC-023): elegir dados objetivo de cualquier pool (hasta el presupuesto =
@@ -2213,6 +2745,12 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   confirmReroll: () =>
     set((state) => {
+      // Reactivo del receptor del coste indirecto propio (SPEC-046): pagar un dado con daño a
+      // los tuyos también es "recibir daño".
+      const reactivoCoste = reactiveOnIndirectCost(state, 'confirmReroll');
+      if (reactivoCoste !== null) {
+        return { reactiveAbility: { ...reactivoCoste, resume: { kind: 'retryAction' as const, action: 'confirmReroll' as const } } };
+      }
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.symbol !== 'reroll') return state;
       const sums = sumPlayerMarked(state.sides[cur.side].pool, cur.marked);
@@ -2227,12 +2765,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         sums.indirectCost > 0 ? indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost) : null;
       const res = applyRerollDice(state.sides, cur.side, cur.marked, targets, costReceiverIndex);
       if (res === null || res === 'no-base' || res === 'insufficient') return state;
-      return {
+      // Si la tanda (o su coste indirecto propio) remata a alguien, puede disparar un
+      // `afterOpponentDefeated` (Bala-Tik). Lo cazó revisor-codigo: se había enganchado el lado de
+      // Dooku pero no este.
+      return withAfterDefeated(state, {
         sides: res.sides,
         outcome: res.outcome,
         resolveError: null,
         ...afterApply(cur, res),
-      };
+      });
     }),
 
   // Especial (SPEC-023/039): placeholder sin efecto real para códigos no cubiertos (Luminara/
@@ -2279,12 +2820,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         die?.code === LUMINARA_CODE
           ? 'Sin dado objetivo válido: se resuelve sin efecto.'
           : 'Habilidad especial de la carta (pendiente de implementar).';
-      return {
+      return withAfterDefeated(state, {
         sides: res.sides,
         outcome: res.outcome,
         resolveError: message,
         ...afterApply(cur, res),
-      };
+      });
     }),
 
   // Luminara Unduli (SPEC-039): elige el dado objetivo del +2/+3 y lo aplica de inmediato —
@@ -2357,6 +2898,25 @@ export const useGameStore = create<GameState>((set, get) => ({
       const target = state.sides[targetSide];
       const targetChar = target.characters[targetIndex];
       if (!targetChar || isKO(targetChar, target.damage[targetIndex] ?? 0)) return state;
+
+      // Reactivo del objetivo (SPEC-046): el daño fijo del Especial de Vader también es daño, así
+      // que un Dooku apuntado reacciona antes de recibirlo. Solo se pregunta si es del jugador.
+      if (
+        state.reactiveAbility === null &&
+        targetSide === 'player' &&
+        abilityWithTrigger(targetChar.code, 'beforeDamaged') &&
+        !(state.reactiveHandled?.side === targetSide && state.reactiveHandled.characterIndex === targetIndex) &&
+        resolveShieldedDamage(target.shields[targetIndex] ?? 0, 3).healthDamage > 0
+      ) {
+        return {
+          reactiveAbility: {
+            side: targetSide,
+            characterIndex: targetIndex,
+            code: targetChar.code,
+            resume: { kind: 'vaderTarget', targetSide, targetIndex },
+          },
+        };
+      }
       const vaderIndex = die.characterIndex;
       const vaderChar = own.characters[vaderIndex];
       if (!vaderChar) return state;
@@ -2369,18 +2929,24 @@ export const useGameStore = create<GameState>((set, get) => ({
       sides = applyFixedDamage(sides, targetSide, targetIndex, 3);
       sides = applyFixedDamage(sides, side, vaderIndex, 1);
       const outcome = computeOutcome(sides);
-      return {
+      return withAfterDefeated(state, {
         sides,
         outcome,
         resolveError: null,
         ...specialTurnClose(side, sides, outcome),
-      };
+      });
     }),
 
   // Daño indirecto (SPEC-026): sin objetivo elegido por quien ataca, el bando contrario reparte el
   // valor solo entre sus personajes (distributeIncomingDamage, src/game/automaton.ts).
   resolveIndirect: () =>
     set((state) => {
+      // Reactivo del receptor del coste indirecto propio (SPEC-046): pagar un dado con daño a
+      // los tuyos también es "recibir daño".
+      const reactivoCoste = reactiveOnIndirectCost(state, 'resolveIndirect');
+      if (reactivoCoste !== null) {
+        return { reactiveAbility: { ...reactivoCoste, resume: { kind: 'retryAction' as const, action: 'resolveIndirect' as const } } };
+      }
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.symbol !== 'indirect') return state;
       if (cur.marked.length === 0) return state;
@@ -2393,54 +2959,53 @@ export const useGameStore = create<GameState>((set, get) => ({
         sums.indirectCost > 0 ? indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost) : null;
       const res = applyIndirectDamage(state.sides, cur, costReceiverIndex);
       if (res === null || res === 'no-base' || res === 'insufficient') return state;
-      return {
+      // Si la tanda (o su coste indirecto propio) remata a alguien, puede disparar un
+      // `afterOpponentDefeated` (Bala-Tik). Lo cazó revisor-codigo: se había enganchado el lado de
+      // Dooku pero no este.
+      return withAfterDefeated(state, {
         sides: res.sides,
         outcome: res.outcome,
         resolveError: null,
         ...afterApply(cur, res),
-      };
+      });
     }),
 
   distributeIndirect: (characterIndex: number) =>
     set((state) => {
       if (state.outcome !== null || state.indirectDistribution === null) return state;
+      if (state.reactiveAbility !== null) return state;
       const player = state.sides.player;
       const ch = player.characters[characterIndex];
       if (!ch || isKO(ch, player.damage[characterIndex] ?? 0)) return state;
 
-      const shields = player.characters.map((_, i) => player.shields[i] ?? 0);
-      const damage = player.characters.map((_, i) => player.damage[i] ?? 0);
-      const { shieldsRemaining, healthDamage } = resolveShieldedDamage(shields[characterIndex], 1);
-      shields[characterIndex] = shieldsRemaining;
-      damage[characterIndex] = Math.min(ch.health, damage[characterIndex] + healthDamage);
-
-      let pool = player.pool;
-      let upgrades = player.upgrades;
-      if (isKO(ch, damage[characterIndex])) {
-        pool = pool.filter((d) => d.characterIndex !== characterIndex);
-        upgrades = upgrades.map((codes, i) => (i === characterIndex ? [] : codes));
-        persistUpgrades('player', upgrades);
+      // Reactivo del que recibe el punto (SPEC-046): repartir indirecto sobre tu propio Dooku
+      // también es "recibir daño", así que se le pregunta antes de aplicarlo (caso límite explícito
+      // de la spec). Se pregunta por cada punto, porque cada clic es un golpe distinto.
+      const abilityInd = abilityWithTrigger(ch.code, 'beforeDamaged');
+      if (abilityInd && resolveShieldedDamage(player.shields[characterIndex] ?? 0, 1).healthDamage > 0) {
+        return {
+          reactiveAbility: {
+            side: 'player',
+            characterIndex,
+            code: ch.code,
+            resume: { kind: 'distributeIndirect', characterIndex },
+          },
+        };
       }
 
-      const sides: Record<Side, SideState> = {
-        ...state.sides,
-        player: { ...player, shields, damage, pool, upgrades },
-      };
-      const outcome = computeOutcome(sides);
-      const pending = state.indirectDistribution.pending - 1;
-      // Al agotar el valor (o si la partida termina a mitad de repartir) se completa la acción del
-      // autómata: cierra su turno y pasa al jugador con normalidad, igual que el resto de acciones
-      // del autómata (SPEC-025).
-      if (pending <= 0 || outcome !== null) {
-        return { sides, outcome, indirectDistribution: null, turn: 'player', passStreak: 0 };
-      }
-      return { sides, outcome, indirectDistribution: { pending } };
+      return withAfterDefeated(state, distributeIndirectNow(state, characterIndex));
     }),
 
   // Disrupt (SPEC-029): sin objetivo de personaje, afecta al bando contrario entero. Quien resuelve
   // no gana nada (los recursos del rival solo desaparecen, no es "robar").
   resolveDisrupt: () =>
     set((state) => {
+      // Reactivo del receptor del coste indirecto propio (SPEC-046): pagar un dado con daño a
+      // los tuyos también es "recibir daño".
+      const reactivoCoste = reactiveOnIndirectCost(state, 'resolveDisrupt');
+      if (reactivoCoste !== null) {
+        return { reactiveAbility: { ...reactivoCoste, resume: { kind: 'retryAction' as const, action: 'resolveDisrupt' as const } } };
+      }
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.symbol !== 'disrupt') return state;
       if (cur.marked.length === 0) return state;
@@ -2454,18 +3019,24 @@ export const useGameStore = create<GameState>((set, get) => ({
       const res = applyDisrupt(state.sides, cur, costReceiverIndex);
       if (res === null || res === 'no-base' || res === 'insufficient') return state;
       const effectTotal = sums.baseAmount + sums.modifierAmount;
-      return {
+      return withAfterDefeated(state, {
         sides: res.sides,
         outcome: res.outcome,
         resolveError: `El rival pierde ${effectTotal} de recursos.`,
         ...afterApply(cur, res),
-      };
+      });
     }),
 
   // Descarte (SPEC-029): sin objetivo de personaje, afecta al bando contrario entero. Aleatoriedad
   // real (Math.random), tanto si lo sufre el jugador como el autómata.
   resolveDiscard: () =>
     set((state) => {
+      // Reactivo del receptor del coste indirecto propio (SPEC-046): pagar un dado con daño a
+      // los tuyos también es "recibir daño".
+      const reactivoCoste = reactiveOnIndirectCost(state, 'resolveDiscard');
+      if (reactivoCoste !== null) {
+        return { reactiveAbility: { ...reactivoCoste, resume: { kind: 'retryAction' as const, action: 'resolveDiscard' as const } } };
+      }
       const cur = state.resolve;
       if (state.outcome !== null || cur === null || cur.symbol !== 'discard') return state;
       if (cur.marked.length === 0) return state;
@@ -2479,12 +3050,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       const res = applyDiscard(state.sides, cur, costReceiverIndex);
       if (res === null || res === 'no-base' || res === 'insufficient') return state;
       const names = res.discarded.map((code) => readCache(code)?.name ?? code);
-      return {
+      return withAfterDefeated(state, {
         sides: res.sides,
         outcome: res.outcome,
         resolveError: names.length > 0 ? `El rival descarta: ${names.join(', ')}.` : null,
         ...afterApply(cur, res),
-      };
+      });
     }),
 
   selectUpgradeCard: (side: Side, code: string) =>
@@ -2544,7 +3115,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.outcome !== null) return state;
       // Mismos guards de exclusión mutua que jugar una mejora (SPEC-020/021/023/024).
       if (state.resolve?.focusFaceChoice != null) return state;
-      if (state.playUpgrade !== null || state.mulligan !== null || state.pendingAbility !== null || state.abilityTargeting !== null) return state;
+      if (state.playUpgrade !== null || state.mulligan !== null || state.pendingAbility !== null || state.abilityTargeting !== null || state.reactiveAbility !== null) return state;
       // Bloqueado fuera de tu turno, o si ya tienes un dado marcado sin resolver (SPEC-025).
       if (state.turn !== side) return state;
       if (state.resolve !== null && state.resolve.side === side) return state;
@@ -2578,7 +3149,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (state.outcome !== null) return state;
       // Mismos guards de exclusión mutua que activar un personaje (SPEC-020/021/023/024).
       if (state.resolve?.focusFaceChoice != null) return state;
-      if (state.playUpgrade !== null || state.mulligan !== null || state.pendingAbility !== null || state.abilityTargeting !== null) return state;
+      if (state.playUpgrade !== null || state.mulligan !== null || state.pendingAbility !== null || state.abilityTargeting !== null || state.reactiveAbility !== null) return state;
       // Bloqueado fuera de tu turno, o si ya tienes un dado marcado sin resolver (SPEC-025).
       if (state.turn !== side) return state;
       if (state.resolve !== null && state.resolve.side === side) return state;
@@ -2608,9 +3179,30 @@ export const useGameStore = create<GameState>((set, get) => ({
   // dispara automáticamente, ver App.tsx, cuando `turn === 'enemy'`); cada acción (o pase) cierra
   // el turno igual que las del jugador.
   enemyTurn: () => {
+    // El autómata encadena acciones mientras el turno SIGA siendo suyo. Hace falta por la excepción
+    // de Especial (SPEC-039): resolver un Especial no cierra su turno si le queda otro, y la app solo
+    // vuelve a llamar aquí cuando el turno CAMBIA — así que la partida se quedaba muerta esperando
+    // algo que nadie iba a disparar (detectado jugando SPEC-046 con un Yoda de dos caras Sp).
+    //
+    // Se para en cuanto: el turno pasa al jugador, la partida acaba, hay que esperar una decisión
+    // suya (reparto de indirecto o aviso reactivo), o el estado deja de cambiar. Y con un tope duro,
+    // para que ningún caso raro futuro pueda colgar el navegador.
+    for (let vuelta = 0; vuelta < 20; vuelta++) {
+      const antes = get();
+      if (antes.turn !== 'enemy' || antes.outcome !== null) return;
+      if (antes.indirectDistribution !== null || antes.reactiveAbility !== null) return;
+      get().enemyTurnOnce();
+      const despues = get();
+      if (despues.sides === antes.sides && despues.turn === antes.turn) return; // sin progreso
+    }
+  },
+
+  enemyTurnOnce: () => {
     const state = get();
     if (state.outcome !== null) return;
     if (state.turn !== 'enemy') return;
+    // Con un aviso reactivo abierto la acción anterior sigue a medias: no evaluar una nueva.
+    if (state.reactiveAbility !== null) return;
     // Mientras el jugador tenga un reparto de indirecto pendiente (SPEC-028), la acción del autómata
     // que lo generó sigue en curso: no evaluar una acción nueva hasta que termine de repartir.
     if (state.indirectDistribution !== null) return;
@@ -2680,6 +3272,31 @@ export const useGameStore = create<GameState>((set, get) => ({
         const target = player.characters[action.targetIndex];
         const total = batchTotal(action.dieIndices);
         const label = batchLabel(action.dieIndices);
+        // Reactivo del DEFENSOR (SPEC-046): si el objetivo es un personaje tuyo con "antes de
+        // recibir daño", el turno del autómata se para aquí y espera tu decisión. La acción queda
+        // guardada en `reactiveAbility.resume` y se aplica al responder (`resolveReactive`).
+        const defensor = get().sides.player;
+        const golpe = resolveShieldedDamage(defensor.shields[action.targetIndex] ?? 0, total);
+        const abilityDef = abilityWithTrigger(target.code, 'beforeDamaged');
+        if (abilityDef && golpe.healthDamage > 0) {
+          set({
+            reactiveAbility: {
+              side: 'player',
+              characterIndex: action.targetIndex,
+              code: target.code,
+              resume: {
+                kind: 'enemyAttack',
+                dieIndices: action.dieIndices,
+                targetIndex: action.targetIndex,
+                costReceiverIndex: action.costReceiverIndex,
+                label,
+                total,
+                targetName: target.name,
+              },
+            },
+          });
+          return;
+        }
         set((s) => {
           const res = resolvePlayerBatch(
             s.sides,
@@ -2688,9 +3305,11 @@ export const useGameStore = create<GameState>((set, get) => ({
             action.costReceiverIndex,
           );
           if (res === null || res === 'no-base' || res === 'insufficient') return s;
+          // Si el ataque remata a alguien, puede disparar un `afterOpponentDefeated` (Bala-Tik).
+          // Sin esto solo saltaba cuando además había un Dooku parando la misma acción, que era el
+          // caso raro en vez del normal (lo cazó revisor-codigo).
           return {
-            sides: res.sides,
-            outcome: res.outcome,
+            ...withAfterDefeated(s, { sides: res.sides, outcome: res.outcome }),
             lastEnemyAction: `El enemigo ataca a ${target.name} con ${label} (${total} de daño).`,
           };
         });
@@ -2704,16 +3323,27 @@ export const useGameStore = create<GameState>((set, get) => ({
         const total = batchTotal(action.dieIndices);
         const label = batchLabel(action.dieIndices);
         set((s) => {
+          // Reactivo del que va a ganar escudos (SPEC-046, Qui-Gon del autómata): decide él, no se
+          // pregunta al jugador. Sin esto su rama era código muerto: nunca se disparaba.
+          let base: GameState = s;
+          const abilitySh = abilityWithTrigger(target.code, 'beforeShielded');
+          if (abilitySh && (s.sides.enemy.shields[action.targetIndex] ?? 0) > 0) {
+            base = resolveEnemyReactive(s, {
+              side: 'enemy',
+              characterIndex: action.targetIndex,
+              code: target.code,
+            });
+          }
           const res = resolvePlayerBatch(
-            s.sides,
+            base.sides,
             { side: 'enemy', symbol: 'shield', marked: action.dieIndices },
             action.targetIndex,
             action.costReceiverIndex,
           );
-          if (res === null || res === 'no-base' || res === 'insufficient') return s;
+          if (res === null || res === 'no-base' || res === 'insufficient') return base;
           return {
-            sides: res.sides,
-            outcome: res.outcome,
+            ...base,
+            ...withAfterDefeated(base, { sides: res.sides, outcome: res.outcome }),
             lastEnemyAction: `El enemigo aplica ${label} a ${target.name} (${total} de escudo).`,
           };
         });
@@ -2730,7 +3360,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         const pending = get().pendingAbility;
         if (pending !== null && pending.side === 'enemy') {
           const ability = abilityFor(pending.code);
+          const manoAntes = get().sides.player.hand.length;
           get().useAbility();
+          // Si su habilidad te hizo descartar, decirlo con nombre y apellidos.
+          const avisoDescarte = get().resolveError;
+          if (get().sides.player.hand.length < manoAntes && avisoDescarte) {
+            set({
+              lastEnemyAction: `El enemigo activa a ${character.name} y te hace descartar. ${avisoDescarte}`,
+              resolveError: null,
+            });
+            return;
+          }
           const targeting = get().abilityTargeting;
           if (targeting !== null) {
             // La habilidad pide objetivos: los elige el autómata. Si no encuentra ninguno, renuncia
