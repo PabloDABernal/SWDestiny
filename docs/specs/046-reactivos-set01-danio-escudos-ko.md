@@ -1,6 +1,6 @@
 # SPEC-046: Habilidades reactivas del set 01 — ganchos en daño, escudos y KO
 
-**Estado:** Pendiente
+**Estado:** Completada
 **Sección del GDD:** §5, amplía la nota "Texto de personaje por sets (v4)" (SPEC-042)
 **Depende de:** SPEC-042 (registro de habilidades y el aviso Usar / No usar), SPEC-043 (red de tests
 del store: daño, KO y turnos), SPEC-005 (escudos), SPEC-025 (turnos)
@@ -178,4 +178,24 @@ Avisando antes; no subdividir con sufijos.
 
 ## Resultado del playtest
 
-<Se rellena al jugar: fecha, qué pasos del guion QA pasaron/fallaron.>
+Completada tras playtest 2026-08-07. Los tres reactivos funcionan jugando: Dooku para el turno del
+autómata cuando te atacan y su escudo absorbe ese mismo golpe, Qui-Gon cambia escudo por daño
+eligiendo objetivo, y Bala-Tik se endereza al caer un rival pudiendo volver a activarse.
+
+Es la spec que más correcciones ha necesitado, y ninguna la habría visto yo solo:
+
+- El agente `revisor-specs` **tumbó el enfoque antes de escribir código**. El borrador pausaba dentro
+  de la resolución de daño; la revisión demostró que esa función se llama desde ~10 sitios, que
+  `enemyTurn` resuelve cada acción de un tirón, y que la maquinaria de avisos de SPEC-042 siempre
+  cede el turno. Se rehizo comprobando en los bordes.
+- El agente `revisor-codigo` dio **NO CUMPLE dos veces**, con 7 bloqueantes en total. Los más graves: faltaba
+  el guard que impide actuar con un aviso abierto (se perdía la acción en silencio), el KO de Qui-Gon
+  no limpiaba dados ni mejoras, Bala-Tik no reaccionaba al ataque normal del autómata, y el Qui-Gon
+  del autómata era código muerto. En la primera corrección enganché solo el lado de Dooku y me dejé
+  el suyo: hizo falta la segunda pasada para verlo.
+- **Jugando** aparecieron tres más: una partida colgada con dos Especiales sin implementar del
+  enemigo (bug anterior, de SPEC-039: el turno no volvía porque la app solo llama al autómata cuando
+  cambia), Dooku descartando al azar cuando su texto deja elegir, y avisos de descarte que no decían
+  qué carta caía.
+
+De 275 a 277 tests, con regresión para cada bloqueante.
