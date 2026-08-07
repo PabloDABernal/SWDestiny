@@ -993,6 +993,51 @@ describe('habilidades reactivas (SPEC-046)', () => {
     expect(state().sides.player.resources).toBeGreaterThan(2); // y el recurso se resolvió
   });
 
+  it('Bala-Tik también reacciona a un KO por reparto de indirecto', () => {
+    // Segunda pasada del revisor: se había enganchado el lado de Dooku pero no el de Bala-Tik.
+    setUpGame({
+      playerChars: [conCodigo('VIC', 'Víctima', 1), conCodigo('OTRO', 'Otro', 10)],
+      enemyChars: [conCodigo(BALATIK, 'Bala-Tik', 10)],
+    });
+    useGameStore.setState({
+      indirectDistribution: { pending: 2 },
+      turn: 'enemy',
+      sides: { ...state().sides, enemy: { ...state().sides.enemy, activated: [true] } },
+    });
+
+    state().distributeIndirect(0); // 1 de daño mata a la Víctima
+
+    expect(state().sides.player.damage[0]).toBe(1);
+    // Es el Bala-Tik del autómata: decide él y se endereza solo.
+    expect(state().sides.enemy.activated[0]).toBe(false);
+  });
+
+  it('no se puede cancelar la resolución con un aviso reactivo abierto', () => {
+    // Segunda pasada del revisor: cancelar dejaba el aviso colgado y al responder se desperdiciaba
+    // la carta y el escudo de Dooku sin motivo.
+    setUpGame({
+      playerChars: [
+        conCodigo(DOOKU, 'Count Dooku', 10, ['2Ri1', '2Ri1', '2Ri1', '2Ri1', '2Ri1', '2Ri1']),
+      ],
+      enemyChars: [conCodigo('ATA', 'Atacante', 10)],
+    });
+    useGameStore.setState({
+      sides: { ...state().sides, player: { ...state().sides.player, hand: ['01001'] } },
+    });
+    state().activate('player', 0);
+    useGameStore.setState({ turn: 'player' });
+    state().selectDie('player', 0);
+    state().resolveResources();
+    expect(state().reactiveAbility).not.toBeNull();
+
+    state().cancelResolve();
+    expect(state().resolve).not.toBeNull(); // no se ha cancelado
+    expect(state().reactiveAbility).not.toBeNull(); // el aviso sigue
+
+    state().resolveReactive(true);
+    expect(state().sides.player.resources).toBeGreaterThan(2); // la acción sí se completó
+  });
+
   it('Bala-Tik sin activar no se ofrece', () => {
     setUpGame({
       playerChars: [conCodigo('ATA', 'Atacante', 10), conCodigo(BALATIK, 'Bala-Tik', 10)],

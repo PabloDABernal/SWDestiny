@@ -2535,12 +2535,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         sums.indirectCost > 0 ? indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost) : null;
       const res = resolvePlayerBatch(state.sides, cur, null, costReceiverIndex);
       if (res === null || res === 'no-base' || res === 'insufficient') return state;
-      return {
+      // Si la tanda (o su coste indirecto propio) remata a alguien, puede disparar un
+      // `afterOpponentDefeated` (Bala-Tik). Lo cazó revisor-codigo: se había enganchado el lado de
+      // Dooku pero no este.
+      return withAfterDefeated(state, {
         sides: res.sides,
         outcome: res.outcome,
         resolveError: null,
         ...afterApply(cur, res),
-      };
+      });
     }),
 
   // Cancelar una resolución en curso (SPEC-008a). Si venía de convertir el Especial de Luminara en
@@ -2550,6 +2553,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   // antes de cancelar (bug real, detectado jugando SPEC-039).
   cancelResolve: () =>
     set((state) => {
+      // Con un aviso reactivo abierto, `resolve` sigue poblado a propósito (hace falta para
+      // reanudar), así que "Cancelar" seguía siendo pulsable: al responder luego al aviso, la acción
+      // reanudada no encontraba nada que hacer y el uso de Dooku (carta + escudo) se desperdiciaba.
+      // Lo cazó revisor-codigo en la segunda pasada.
+      if (state.reactiveAbility !== null) return state;
       const cur = state.resolve;
       if (!cur?.specialRevert) return { resolve: null, resolveError: null };
       const { poolIndex, face, resourceCost } = cur.specialRevert;
@@ -2621,12 +2629,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         sums.indirectCost > 0 ? indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost) : null;
       const res = applyFocus(state.sides, cur.side, cur.marked, picks, costReceiverIndex);
       if (res === null || res === 'no-base' || res === 'insufficient') return state;
-      return {
+      // Si la tanda (o su coste indirecto propio) remata a alguien, puede disparar un
+      // `afterOpponentDefeated` (Bala-Tik). Lo cazó revisor-codigo: se había enganchado el lado de
+      // Dooku pero no este.
+      return withAfterDefeated(state, {
         sides: res.sides,
         outcome: res.outcome,
         resolveError: null,
         ...afterApply(cur, res),
-      };
+      });
     }),
 
   // Reroll de dado (SPEC-023): elegir dados objetivo de cualquier pool (hasta el presupuesto =
@@ -2673,12 +2684,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         sums.indirectCost > 0 ? indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost) : null;
       const res = applyRerollDice(state.sides, cur.side, cur.marked, targets, costReceiverIndex);
       if (res === null || res === 'no-base' || res === 'insufficient') return state;
-      return {
+      // Si la tanda (o su coste indirecto propio) remata a alguien, puede disparar un
+      // `afterOpponentDefeated` (Bala-Tik). Lo cazó revisor-codigo: se había enganchado el lado de
+      // Dooku pero no este.
+      return withAfterDefeated(state, {
         sides: res.sides,
         outcome: res.outcome,
         resolveError: null,
         ...afterApply(cur, res),
-      };
+      });
     }),
 
   // Especial (SPEC-023/039): placeholder sin efecto real para códigos no cubiertos (Luminara/
@@ -2725,12 +2739,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         die?.code === LUMINARA_CODE
           ? 'Sin dado objetivo válido: se resuelve sin efecto.'
           : 'Habilidad especial de la carta (pendiente de implementar).';
-      return {
+      return withAfterDefeated(state, {
         sides: res.sides,
         outcome: res.outcome,
         resolveError: message,
         ...afterApply(cur, res),
-      };
+      });
     }),
 
   // Luminara Unduli (SPEC-039): elige el dado objetivo del +2/+3 y lo aplica de inmediato —
@@ -2834,12 +2848,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       sides = applyFixedDamage(sides, targetSide, targetIndex, 3);
       sides = applyFixedDamage(sides, side, vaderIndex, 1);
       const outcome = computeOutcome(sides);
-      return {
+      return withAfterDefeated(state, {
         sides,
         outcome,
         resolveError: null,
         ...specialTurnClose(side, sides, outcome),
-      };
+      });
     }),
 
   // Daño indirecto (SPEC-026): sin objetivo elegido por quien ataca, el bando contrario reparte el
@@ -2864,12 +2878,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         sums.indirectCost > 0 ? indirectCostReceiverIndex(state.sides[cur.side], sums.indirectCost) : null;
       const res = applyIndirectDamage(state.sides, cur, costReceiverIndex);
       if (res === null || res === 'no-base' || res === 'insufficient') return state;
-      return {
+      // Si la tanda (o su coste indirecto propio) remata a alguien, puede disparar un
+      // `afterOpponentDefeated` (Bala-Tik). Lo cazó revisor-codigo: se había enganchado el lado de
+      // Dooku pero no este.
+      return withAfterDefeated(state, {
         sides: res.sides,
         outcome: res.outcome,
         resolveError: null,
         ...afterApply(cur, res),
-      };
+      });
     }),
 
   distributeIndirect: (characterIndex: number) =>
@@ -2895,7 +2912,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         };
       }
 
-      return distributeIndirectNow(state, characterIndex);
+      return withAfterDefeated(state, distributeIndirectNow(state, characterIndex));
     }),
 
   // Disrupt (SPEC-029): sin objetivo de personaje, afecta al bando contrario entero. Quien resuelve
@@ -2921,12 +2938,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       const res = applyDisrupt(state.sides, cur, costReceiverIndex);
       if (res === null || res === 'no-base' || res === 'insufficient') return state;
       const effectTotal = sums.baseAmount + sums.modifierAmount;
-      return {
+      return withAfterDefeated(state, {
         sides: res.sides,
         outcome: res.outcome,
         resolveError: `El rival pierde ${effectTotal} de recursos.`,
         ...afterApply(cur, res),
-      };
+      });
     }),
 
   // Descarte (SPEC-029): sin objetivo de personaje, afecta al bando contrario entero. Aleatoriedad
@@ -2952,12 +2969,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       const res = applyDiscard(state.sides, cur, costReceiverIndex);
       if (res === null || res === 'no-base' || res === 'insufficient') return state;
       const names = res.discarded.map((code) => readCache(code)?.name ?? code);
-      return {
+      return withAfterDefeated(state, {
         sides: res.sides,
         outcome: res.outcome,
         resolveError: names.length > 0 ? `El rival descarta: ${names.join(', ')}.` : null,
         ...afterApply(cur, res),
-      };
+      });
     }),
 
   selectUpgradeCard: (side: Side, code: string) =>
@@ -3204,16 +3221,27 @@ export const useGameStore = create<GameState>((set, get) => ({
         const total = batchTotal(action.dieIndices);
         const label = batchLabel(action.dieIndices);
         set((s) => {
+          // Reactivo del que va a ganar escudos (SPEC-046, Qui-Gon del autómata): decide él, no se
+          // pregunta al jugador. Sin esto su rama era código muerto: nunca se disparaba.
+          let base: GameState = s;
+          const abilitySh = abilityWithTrigger(target.code, 'beforeShielded');
+          if (abilitySh && (s.sides.enemy.shields[action.targetIndex] ?? 0) > 0) {
+            base = resolveEnemyReactive(s, {
+              side: 'enemy',
+              characterIndex: action.targetIndex,
+              code: target.code,
+            });
+          }
           const res = resolvePlayerBatch(
-            s.sides,
+            base.sides,
             { side: 'enemy', symbol: 'shield', marked: action.dieIndices },
             action.targetIndex,
             action.costReceiverIndex,
           );
-          if (res === null || res === 'no-base' || res === 'insufficient') return s;
+          if (res === null || res === 'no-base' || res === 'insufficient') return base;
           return {
-            sides: res.sides,
-            outcome: res.outcome,
+            ...base,
+            ...withAfterDefeated(base, { sides: res.sides, outcome: res.outcome }),
             lastEnemyAction: `El enemigo aplica ${label} a ${target.name} (${total} de escudo).`,
           };
         });
